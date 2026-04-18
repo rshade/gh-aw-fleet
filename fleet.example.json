@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "profiles": {
+    "default": {
+      "description": "hvmesh minus shadow-engineer — see profiles/default.json for the canonical copy. Loaded automatically when a profile is named 'default' and this block is absent.",
+      "sources": {
+        "github/gh-aw": { "ref": "v0.68.3" },
+        "githubnext/agentics": { "ref": "main" }
+      },
+      "workflows": [
+        { "name": "audit-workflows",          "source": "github/gh-aw" },
+        { "name": "ci-doctor",                "source": "github/gh-aw" },
+        { "name": "code-simplifier",          "source": "github/gh-aw" },
+        { "name": "daily-doc-updater",        "source": "github/gh-aw" },
+        { "name": "docs-noob-tester",         "source": "github/gh-aw" },
+        { "name": "mergefest",                "source": "github/gh-aw" },
+        { "name": "daily-malicious-code-scan","source": "githubnext/agentics" },
+        { "name": "pr-fix",                   "source": "githubnext/agentics" },
+        { "name": "weekly-issue-summary",     "source": "githubnext/agentics" }
+      ]
+    }
+  },
+  "repos": {
+    "__TODO__": {
+      "profiles": ["default"],
+      "engine": "copilot",
+      "extra": [],
+      "exclude": []
+    }
+  }
+}
