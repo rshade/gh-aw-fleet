@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "defaults": {
+    "engine": "copilot"
+  },
+  "profiles": {
+    "default": {
+      "description": "Baseline every tracked repo gets. Low-noise, broadly useful.",
+      "sources": {
+        "github/gh-aw": { "ref": "v0.68.3" },
+        "githubnext/agentics": { "ref": "main" }
+      },
+      "workflows": [
+        { "name": "audit-workflows",          "source": "github/gh-aw" },
+        { "name": "docs-noob-tester",         "source": "github/gh-aw" },
+        { "name": "mergefest",                "source": "github/gh-aw" },
+        { "name": "ci-doctor",                "source": "githubnext/agentics" },
+        { "name": "code-simplifier",          "source": "githubnext/agentics" },
+        { "name": "daily-doc-updater",        "source": "githubnext/agentics" },
+        { "name": "daily-malicious-code-scan","source": "githubnext/agentics" },
+        { "name": "pr-fix",                   "source": "githubnext/agentics" },
+        { "name": "weekly-issue-summary",     "source": "githubnext/agentics" },
+        { "name": "issue-arborist",           "source": "githubnext/agentics" },
+        { "name": "sub-issue-closer",         "source": "githubnext/agentics" },
+        { "name": "dependabot-pr-bundler",    "source": "githubnext/agentics" }
+      ]
+    },
+    "quality-plus": {
+      "description": "PR-generating quality agents. Noisier — opt in for actively-developed repos.",
+      "sources": {
+        "githubnext/agentics": { "ref": "main" }
+      },
+      "workflows": [
+        { "name": "daily-test-improver",         "source": "githubnext/agentics" },
+        { "name": "daily-perf-improver",         "source": "githubnext/agentics" },
+        { "name": "repository-quality-improver", "source": "githubnext/agentics" }
+      ]
+    },
+    "security-plus": {
+      "description": "SAST, secret scanning, outbound-traffic audits. Layered on top of default's malicious-code-scan.",
+      "sources": {
+        "github/gh-aw": { "ref": "v0.68.3" }
+      },
+      "workflows": [
+        { "name": "daily-semgrep-scan",     "source": "github/gh-aw" },
+        { "name": "daily-secrets-analysis", "source": "github/gh-aw" },
+        { "name": "daily-firewall-report",  "source": "github/gh-aw" }
+      ]
+    },
+    "docs-plus": {
+      "description": "Heavier docs maintenance. Assumes the repo has a real docs site.",
+      "sources": {
+        "githubnext/agentics": { "ref": "main" }
+      },
+      "workflows": [
+        { "name": "glossary-maintainer",           "source": "githubnext/agentics" },
+        { "name": "unbloat-docs",                  "source": "githubnext/agentics" },
+        { "name": "update-docs",                   "source": "githubnext/agentics" },
+        { "name": "link-checker",                  "source": "githubnext/agentics" },
+        { "name": "markdown-linter",               "source": "githubnext/agentics" },
+        { "name": "daily-multi-device-docs-tester","source": "githubnext/agentics" }
+      ]
+    },
+    "community-plus": {
+      "description": "Contributor-facing helpers. All command-triggered or event-scoped, dormant when idle.",
+      "sources": {
+        "githubnext/agentics": { "ref": "main" }
+      },
+      "workflows": [
+        { "name": "grumpy-reviewer",      "source": "githubnext/agentics" },
+        { "name": "pr-nitpick-reviewer",  "source": "githubnext/agentics" },
+        { "name": "archie",               "source": "githubnext/agentics" },
+        { "name": "repo-ask",             "source": "githubnext/agentics" }
+      ]
+    }
+  },
+  "repos": {
+    "rshade/gh-aw-fleet": {
+      "profiles": ["default"],
+      "exclude": [
+        "audit-workflows",
+        "docs-noob-tester",
+        "daily-doc-updater",
+        "mergefest",
+        "weekly-issue-summary",
+        "issue-arborist",
+        "sub-issue-closer",
+        "dependabot-pr-bundler"
+      ]
+    }
+  }
+}

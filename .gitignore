@@ -1,0 +1,14 @@
+/gh-aw-fleet
+/gh-aw-fleet.exe
+/bin/
+*.test
+*.out
+.vscode/
+.idea/
+
+# Private fleet state — contains repo names that shouldn't be public.
+# See fleet.json (committed example) vs fleet.local.json (your real fleet).
+fleet.local.json
+
+# Local PR draft — regenerated per session via /pr-message.
+PR_MESSAGE.md
