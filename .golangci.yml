@@ -1,0 +1,52 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - revive
+    - misspell
+    - gocyclo
+  settings:
+    # Orchestrator functions (Deploy/Sync/Upgrade) are naturally branchy —
+    # pipeline flow with multiple early returns. Raise the ceiling; revisit
+    # if/when we refactor into smaller stages.
+    gocyclo:
+      min-complexity: 40
+    revive:
+      # Disable rules that conflict with project style (see CLAUDE.md:
+      # "Comments explain WHY ... never restate WHAT well-named code says").
+      # Also disable unused-parameter for Cobra RunE signatures that require
+      # (cmd, args) whether or not both are used.
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+    gocritic:
+      # Stylistic preference, not a correctness issue.
+      disabled-checks:
+        - ifElseChain
+  exclusions:
+    rules:
+      # Unchecked writes to stdout/stderr and cleanup-path closes are idiomatic Go.
+      - linters:
+          - errcheck
+        text: "Error return value of .*(Close|Remove|RemoveAll|Fprintf|Fprintln|Fprint)"
+      - linters:
+          - gocyclo
+        path: _test\.go$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
