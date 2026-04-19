@@ -1,21 +1,26 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "release-type": "go",
   "packages": {
     ".": {
       "release-type": "go",
       "package-name": "gh-aw-fleet",
       "include-v-in-tag": true,
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "changelog-path": "CHANGELOG.md",
+      "draft": false,
+      "prerelease": false,
       "changelog-sections": [
-        { "type": "feat", "section": "Features" },
-        { "type": "fix",  "section": "Bug Fixes" },
-        { "type": "perf", "section": "Performance" },
+        { "type": "feat", "section": "Added", "hidden": false },
+        { "type": "fix", "section": "Fixed", "hidden": false },
+        { "type": "perf", "section": "Performance", "hidden": false },
+        { "type": "refactor", "section": "Changed", "hidden": false },
         { "type": "docs", "section": "Documentation", "hidden": false },
-        { "type": "refactor", "section": "Refactoring", "hidden": false },
-        { "type": "ci",   "section": "CI / Build", "hidden": true },
-        { "type": "chore","section": "Chores", "hidden": true },
+        { "type": "style", "section": "Style", "hidden": true },
         { "type": "test", "section": "Tests", "hidden": true },
-        { "type": "style","section": "Styling", "hidden": true }
+        { "type": "build", "section": "Build & CI", "hidden": true },
+        { "type": "ci", "section": "Build & CI", "hidden": true },
+        { "type": "chore", "section": "Chores", "hidden": true }
       ]
     }
   }

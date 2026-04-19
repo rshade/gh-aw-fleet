@@ -10,6 +10,22 @@ import (
 	"time"
 )
 
+// EngineSecretInfo holds the Actions secret name and where to obtain the key for a given engine.
+// Kept in sync with github/gh-aw pkg/constants/engine_constants.go EngineOptions.
+// Do NOT import github.com/github/gh-aw directly — its dependency tree is too large (TUI libs, SDKs, etc.).
+type EngineSecretInfo struct {
+	SecretName string
+	KeyURL     string
+}
+
+// EngineSecrets maps engine name → secret metadata.
+var EngineSecrets = map[string]EngineSecretInfo{
+	"copilot": {"COPILOT_GITHUB_TOKEN", "https://github.com/settings/personal-access-tokens/new"},
+	"claude":  {"ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys"},
+	"codex":   {"OPENAI_API_KEY", "https://platform.openai.com/api-keys"},
+	"gemini":  {"GEMINI_API_KEY", "https://aistudio.google.com/app/apikey"},
+}
+
 // DeployOpts controls deploy behavior.
 type DeployOpts struct {
 	Apply   bool // false = dry-run (default); true = commit + push + PR
@@ -21,14 +37,16 @@ type DeployOpts struct {
 
 // DeployResult aggregates what happened for a single-repo deploy.
 type DeployResult struct {
-	Repo         string
-	CloneDir     string
-	Added        []WorkflowOutcome
-	Skipped      []WorkflowOutcome
-	Failed       []WorkflowOutcome
-	InitWasRun   bool
-	BranchPushed string
-	PRURL        string
+	Repo          string
+	CloneDir      string
+	Added         []WorkflowOutcome
+	Skipped       []WorkflowOutcome
+	Failed        []WorkflowOutcome
+	InitWasRun    bool
+	BranchPushed  string
+	PRURL         string
+	MissingSecret string // non-empty if the engine secret is absent from the repo
+	SecretKeyURL  string // where to obtain the key for MissingSecret
 }
 
 // WorkflowOutcome is one workflow's fate during a deploy.
@@ -83,6 +101,9 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 		res.Added = append(res.Added, WorkflowOutcome{Name: w.Name, Spec: w.Spec()})
 	}
 
+	// Check that the engine secret exists on the target repo regardless of dry-run/apply.
+	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+
 	if !opts.Apply {
 		return res, nil
 	}
@@ -104,9 +125,14 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	if err := gitCmd(ctx, res.CloneDir, "add", ".github/"); err != nil {
 		return res, fmt.Errorf("git add: %w", err)
 	}
-	msg := commitMessage(res)
-	if err := gitCmd(ctx, res.CloneDir, "commit", "-m", msg); err != nil {
-		return res, fmt.Errorf("git commit: %w", err)
+	stagedNames, err := stagedWorkflowNames(ctx, res.CloneDir)
+	if err != nil {
+		return res, fmt.Errorf("git diff --cached: %w", err)
+	}
+	msg := commitMessage(res, stagedNames)
+	if err := gitCmdInteractive(ctx, res.CloneDir, "commit", "-m", msg); err != nil {
+		return res, fmt.Errorf("git commit: %w\n\nTo finish manually:\n  cd %s\n  git commit -m %q\n  git push -u origin %s",
+			err, res.CloneDir, msg, branch)
 	}
 	if err := gitCmd(ctx, res.CloneDir, "push", "-u", "origin", branch); err != nil {
 		return res, fmt.Errorf("git push: %w", err)
@@ -115,7 +141,11 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 
 	title := opts.PRTitle
 	if title == "" {
-		title = fmt.Sprintf("ci(workflows): add %d agentic workflows via gh-aw-fleet", len(res.Added))
+		n := len(res.Added)
+		if n == 0 {
+			n = len(stagedNames)
+		}
+		title = fmt.Sprintf("ci(workflows): add %d agentic workflows via gh-aw-fleet", n)
 	}
 	prURL, err := ghPRCreate(ctx, res.CloneDir, title, prBody(res, repo))
 	if err != nil {
@@ -180,6 +210,20 @@ func gitCmd(ctx context.Context, dir string, args ...string) error {
 	return nil
 }
 
+// gitCmdInteractive runs a git command with stdio wired to the terminal so
+// that gpg-agent's pinentry prompt can reach the user. Use for git commit.
+func gitCmdInteractive(ctx context.Context, dir string, args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return nil
+}
+
 func ghPRCreate(ctx context.Context, dir, title, body string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "pr", "create", "--title", title, "--body", body)
 	cmd.Dir = dir
@@ -195,7 +239,51 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// hasStagedOrUnstagedWorkflowChanges checks if git status has any workflow changes.
+// stagedWorkflowNames returns the names (without .md) of workflow markdown
+// files staged in the index under .github/workflows/. Used to build accurate
+// commit messages on resume, when res.Added may be empty.
+func stagedWorkflowNames(ctx context.Context, dir string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--name-only")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff --cached: %w", err)
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, ".github/workflows/") && strings.HasSuffix(line, ".md") {
+			names = append(names, strings.TrimSuffix(filepath.Base(line), ".md"))
+		}
+	}
+	return names, nil
+}
+
+// ghAPIExists returns true if `gh api <path>` returns success (exit 0).
+// Package variable so tests can stub the subprocess.
+var ghAPIExists = func(ctx context.Context, path string) bool {
+	return exec.CommandContext(ctx, "gh", "api", path).Run() == nil
+}
+
+// checkEngineSecret verifies the required engine secret exists at the repo or org level.
+// Returns (secretName, keyURL) if missing at both levels, ("", "") if present at either
+// level or the engine is unknown. A 404 from either endpoint is treated as "not found"
+// (matches the personal-account case and the org-without-secret case).
+func checkEngineSecret(ctx context.Context, repo, engine string) (string, string) {
+	info, ok := EngineSecrets[engine]
+	if !ok {
+		return "", ""
+	}
+	if ghAPIExists(ctx, fmt.Sprintf("/repos/%s/actions/secrets/%s", repo, info.SecretName)) {
+		return "", ""
+	}
+	org, _, _ := strings.Cut(repo, "/")
+	if ghAPIExists(ctx, fmt.Sprintf("/orgs/%s/actions/secrets/%s", org, info.SecretName)) {
+		return "", ""
+	}
+	return info.SecretName, info.KeyURL
+}
+
 // Returns true if .github/ has staged or unstaged modifications.
 func hasStagedOrUnstagedWorkflowChanges(ctx context.Context, dir string) (bool, error) {
 	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
@@ -225,15 +313,17 @@ func condense(out string, err error) string {
 	return strings.Join(keep, " | ")
 }
 
-// commitMessage returns a Conventional Commits-formatted message:
-// subject "ci(workflows): add N agentic workflows via gh-aw-fleet" +
-// bullet-listed body. Subject stays under 72 chars for commitlint.
-func commitMessage(res *DeployResult) string {
+// commitMessage returns a Conventional Commits-formatted message.
+// stagedFallback is used when res.Added is empty (e.g. resume after partial apply).
+func commitMessage(res *DeployResult, stagedFallback []string) string {
 	names := make([]string, len(res.Added))
 	for i, a := range res.Added {
 		names[i] = a.Name
 	}
-	subject := fmt.Sprintf("ci(workflows): add %d agentic workflows via gh-aw-fleet", len(res.Added))
+	if len(names) == 0 {
+		names = stagedFallback
+	}
+	subject := fmt.Sprintf("ci(workflows): add %d agentic workflows via gh-aw-fleet", len(names))
 	body := fmt.Sprintf("Deployed via gh-aw-fleet:\n\n- %s\n", strings.Join(names, "\n- "))
 	if len(res.Failed) > 0 {
 		fn := make([]string, len(res.Failed))

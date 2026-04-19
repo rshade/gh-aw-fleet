@@ -86,6 +86,14 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 	if res.PRURL != "" {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
+	if res.MissingSecret != "" {
+		fmt.Fprintf(w, "\n  ⚠ WARNING: Actions secret %q is not set on %s\n", res.MissingSecret, res.Repo)
+		fmt.Fprintf(w, "    Workflows will fail until you add it:\n")
+		fmt.Fprintf(w, "    gh secret set %s --repo %s\n", res.MissingSecret, res.Repo)
+		if res.SecretKeyURL != "" {
+			fmt.Fprintf(w, "    Get your key: %s\n", res.SecretKeyURL)
+		}
+	}
 	if !apply {
 		fmt.Fprintln(w, "\nRe-run with --apply to commit, push, and open the PR.")
 	}

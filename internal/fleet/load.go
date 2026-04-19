@@ -13,33 +13,45 @@ const (
 	TemplatesFile   = "templates.json"
 )
 
-// LoadConfig reads fleet.local.json if present, otherwise fleet.json from the given directory (or cwd if empty).
-// Sets LoadedFrom on the returned config to indicate which file was loaded.
+// LoadConfig reads fleet.json as the base config, then overlays fleet.local.json if present.
+// Repos and profiles from fleet.local.json are merged on top of fleet.json — local entries
+// add to or replace base entries, so you never need to duplicate shared profiles.
+// Sets LoadedFrom on the returned config to indicate which file(s) were loaded.
 func LoadConfig(dir string) (*Config, error) {
-	// Try fleet.local.json first
-	localPath := resolve(dir, LocalConfigFile)
-	data, err := os.ReadFile(localPath)
-	if err == nil {
-		var c Config
-		if err := json.Unmarshal(data, &c); err != nil {
-			return nil, fmt.Errorf("parse %s: %w", localPath, err)
-		}
-		if c.Version != SchemaVersion {
-			return nil, fmt.Errorf("%s schema version %d unsupported (expected %d)", localPath, c.Version, SchemaVersion)
-		}
-		c.LoadedFrom = localPath
-		return &c, nil
-	}
-	if !os.IsNotExist(err) {
-		// Some error other than "file not found"
-		return nil, fmt.Errorf("read %s: %w", localPath, err)
+	basePath := resolve(dir, ConfigFile)
+	base, baseErr := loadConfigFile(basePath)
+	if baseErr != nil && !os.IsNotExist(baseErr) {
+		return nil, fmt.Errorf("read %s: %w", basePath, baseErr)
 	}
 
-	// Fall back to fleet.json
-	path := resolve(dir, ConfigFile)
-	data, err = os.ReadFile(path)
+	localPath := resolve(dir, LocalConfigFile)
+	local, localErr := loadConfigFile(localPath)
+	if localErr != nil && !os.IsNotExist(localErr) {
+		return nil, fmt.Errorf("read %s: %w", localPath, localErr)
+	}
+
+	if base == nil && local == nil {
+		return nil, fmt.Errorf("no config found: tried %s and %s", basePath, localPath)
+	}
+	if base == nil {
+		local.LoadedFrom = localPath
+		return local, nil
+	}
+	if local == nil {
+		base.LoadedFrom = basePath
+		return base, nil
+	}
+
+	merged := mergeConfigs(base, local)
+	merged.LoadedFrom = fmt.Sprintf("%s + %s", basePath, localPath)
+	return merged, nil
+}
+
+// loadConfigFile reads and parses a single config file. Returns (nil, os.ErrNotExist) if missing.
+func loadConfigFile(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s or %s: %w", localPath, path, err)
+		return nil, err
 	}
 	var c Config
 	if err := json.Unmarshal(data, &c); err != nil {
@@ -48,8 +60,36 @@ func LoadConfig(dir string) (*Config, error) {
 	if c.Version != SchemaVersion {
 		return nil, fmt.Errorf("%s schema version %d unsupported (expected %d)", path, c.Version, SchemaVersion)
 	}
-	c.LoadedFrom = path
 	return &c, nil
+}
+
+// mergeConfigs overlays the local config on top of the base config.
+// Profiles and repos from local add to or replace those from base.
+// Local defaults win over base defaults when non-empty.
+func mergeConfigs(base, local *Config) *Config {
+	merged := *base
+
+	if local.Defaults.Engine != "" {
+		merged.Defaults.Engine = local.Defaults.Engine
+	}
+
+	merged.Profiles = make(map[string]Profile, len(base.Profiles)+len(local.Profiles))
+	for k, v := range base.Profiles {
+		merged.Profiles[k] = v
+	}
+	for k, v := range local.Profiles {
+		merged.Profiles[k] = v
+	}
+
+	merged.Repos = make(map[string]RepoSpec, len(base.Repos)+len(local.Repos))
+	for k, v := range base.Repos {
+		merged.Repos[k] = v
+	}
+	for k, v := range local.Repos {
+		merged.Repos[k] = v
+	}
+
+	return &merged
 }
 
 // SaveConfig writes fleet.json atomically to the given directory.
