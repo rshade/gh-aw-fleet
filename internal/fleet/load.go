@@ -54,8 +54,8 @@ func loadConfigFile(path string) (*Config, error) {
 		return nil, err
 	}
 	var c Config
-	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	if jsonErr := json.Unmarshal(data, &c); jsonErr != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, jsonErr)
 	}
 	if c.Version != SchemaVersion {
 		return nil, fmt.Errorf("%s schema version %d unsupported (expected %d)", path, c.Version, SchemaVersion)
@@ -110,8 +110,8 @@ func LoadTemplates(dir string) (*Templates, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var t Templates
-	if err := json.Unmarshal(data, &t); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	if jsonErr := json.Unmarshal(data, &t); jsonErr != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, jsonErr)
 	}
 	return &t, nil
 }
@@ -133,8 +133,8 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
-		return err
+	if writeErr := os.WriteFile(tmp, append(data, '\n'), 0o600); writeErr != nil {
+		return writeErr
 	}
 	return os.Rename(tmp, path)
 }
@@ -154,17 +154,20 @@ func (c *Config) ResolveRepoWorkflows(repo string) ([]ResolvedWorkflow, error) {
 	var out []ResolvedWorkflow
 	seen := map[string]bool{}
 	for _, profileName := range spec.Profiles {
-		p, ok := c.Profiles[profileName]
-		if !ok {
+		p, profileOK := c.Profiles[profileName]
+		if !profileOK {
 			return nil, fmt.Errorf("profile %q referenced by %q not defined", profileName, repo)
 		}
 		for _, w := range p.Workflows {
 			if excluded[w.Name] || seen[w.Name] {
 				continue
 			}
-			src, ok := p.Sources[w.Source]
-			if !ok {
-				return nil, fmt.Errorf("workflow %q references source %q with no pin in profile %q", w.Name, w.Source, profileName)
+			src, pinOK := p.Sources[w.Source]
+			if !pinOK {
+				return nil, fmt.Errorf(
+					"workflow %q references source %q with no pin in profile %q",
+					w.Name, w.Source, profileName,
+				)
 			}
 			out = append(out, ResolvedWorkflow{
 				Name:    w.Name,

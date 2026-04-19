@@ -1,12 +1,17 @@
 package fleet
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// ErrEmptyFrontmatter is returned by ParseFrontmatter when the input has no
+// YAML content. Callers typically treat this as a non-fatal skip.
+var ErrEmptyFrontmatter = errors.New("empty frontmatter")
 
 // SplitFrontmatter separates a markdown file's YAML frontmatter from its body.
 // Returns (frontmatterYAML, body) — frontmatterYAML is empty if no `---` fence.
@@ -30,9 +35,10 @@ func SplitFrontmatter(src string) (string, string) {
 }
 
 // ParseFrontmatter yaml-decodes a frontmatter chunk into a generic map.
+// Returns ErrEmptyFrontmatter when the input has no YAML content.
 func ParseFrontmatter(fm string) (map[string]any, error) {
 	if strings.TrimSpace(fm) == "" {
-		return nil, nil
+		return nil, ErrEmptyFrontmatter
 	}
 	out := map[string]any{}
 	if err := yaml.Unmarshal([]byte(fm), &out); err != nil {
@@ -50,9 +56,9 @@ func ExtractWorkflowMeta(fm map[string]any, tw *TemplateWorkflow) {
 	}
 	if v, ok := asString(fm, "engine"); ok {
 		tw.Engine = v
-	} else if eng, ok := fm["engine"].(map[string]any); ok {
-		if v, ok := asString(eng, "id"); ok {
-			tw.Engine = v
+	} else if engMap, engOK := fm["engine"].(map[string]any); engOK {
+		if idVal, idOK := asString(engMap, "id"); idOK {
+			tw.Engine = idVal
 		}
 	}
 	if v, ok := asString(fm, "stop-after"); ok {

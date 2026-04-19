@@ -3,47 +3,55 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/rshade/gh-aw-fleet/internal/fleet"
 	"github.com/spf13/cobra"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
-var (
-	flagApply   bool
-	flagForce   bool
-	flagBranch  string
-	flagPRTitle string
-	flagWorkDir string
-)
-
-func init() {
-	deployCmd.Args = cobra.ExactArgs(1)
-	deployCmd.RunE = runDeploy
-	deployCmd.Flags().BoolVar(&flagApply, "apply", false, "Actually commit + push + open PR (default is dry-run)")
-	deployCmd.Flags().BoolVar(&flagForce, "force", false, "Overwrite existing workflow files (passes --force to gh aw add)")
-	deployCmd.Flags().StringVar(&flagBranch, "branch", "", "Branch name for the deploy PR (default: fleet/deploy-<timestamp>)")
-	deployCmd.Flags().StringVar(&flagPRTitle, "pr-title", "", "PR title (default: auto-generated)")
-	deployCmd.Flags().StringVar(&flagWorkDir, "work-dir", "", "Existing clone to deploy into (skips git clone + auto-cleanup)")
-}
-
-func runDeploy(cmd *cobra.Command, args []string) error {
-	repo := args[0]
-	cfg, err := fleet.LoadConfig(flagDir)
-	if err != nil {
-		return err
+func newDeployCmd(flagDir *string) *cobra.Command {
+	var (
+		flagApply   bool
+		flagForce   bool
+		flagBranch  string
+		flagPRTitle string
+		flagWorkDir string
+	)
+	cmd := &cobra.Command{
+		Use:   "deploy <repo>",
+		Short: "Apply the declared workflow set to a repo via gh aw add + PR",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo := args[0]
+			cfg, err := fleet.LoadConfig(*flagDir)
+			if err != nil {
+				return err
+			}
+			if _, ok := cfg.Repos[repo]; !ok {
+				return fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
+			}
+			opts := fleet.DeployOpts{
+				Apply:   flagApply,
+				Force:   flagForce,
+				Branch:  flagBranch,
+				PRTitle: flagPRTitle,
+				WorkDir: flagWorkDir,
+			}
+			res, deployErr := fleet.Deploy(cmd.Context(), cfg, repo, opts)
+			printDeploy(cmd, res, flagApply)
+			return deployErr
+		},
 	}
-	if _, ok := cfg.Repos[repo]; !ok {
-		return fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
-	}
-	opts := fleet.DeployOpts{
-		Apply:   flagApply,
-		Force:   flagForce,
-		Branch:  flagBranch,
-		PRTitle: flagPRTitle,
-		WorkDir: flagWorkDir,
-	}
-	res, err := fleet.Deploy(cmd.Context(), cfg, repo, opts)
-	printDeploy(cmd, res, flagApply)
-	return err
+	cmd.Flags().BoolVar(&flagApply, "apply", false,
+		"Actually commit + push + open PR (default is dry-run)")
+	cmd.Flags().BoolVar(&flagForce, "force", false,
+		"Overwrite existing workflow files (passes --force to gh aw add)")
+	cmd.Flags().StringVar(&flagBranch, "branch", "",
+		"Branch name for the deploy PR (default: fleet/deploy-<timestamp>)")
+	cmd.Flags().StringVar(&flagPRTitle, "pr-title", "",
+		"PR title (default: auto-generated)")
+	cmd.Flags().StringVar(&flagWorkDir, "work-dir", "",
+		"Existing clone to deploy into (skips git clone + auto-cleanup)")
+	return cmd
 }
 
 func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {

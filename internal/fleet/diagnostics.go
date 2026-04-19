@@ -10,6 +10,8 @@ type Hint struct {
 }
 
 // Ordered most-specific first; only the first match per input text is emitted.
+//
+//nolint:gochecknoglobals // immutable hint table; Go has no const slice of structs
 var hints = []Hint{
 	{
 		Pattern: "Unknown property: mount-as-clis",

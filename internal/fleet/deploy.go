@@ -19,6 +19,8 @@ type EngineSecretInfo struct {
 }
 
 // EngineSecrets maps engine name → secret metadata.
+//
+//nolint:gochecknoglobals // immutable engine→secret lookup; Go has no const map
 var EngineSecrets = map[string]EngineSecretInfo{
 	"copilot": {"COPILOT_GITHUB_TOKEN", "https://github.com/settings/personal-access-tokens/new"},
 	"claude":  {"ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys"},
@@ -81,25 +83,7 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	}
 
 	engine := cfg.EffectiveEngine(repo)
-	for _, w := range resolved {
-		if w.Source == "local" {
-			continue
-		}
-		if fileExists(filepath.Join(res.CloneDir, ".github/workflows", w.Name+".md")) && !opts.Force {
-			res.Skipped = append(res.Skipped, WorkflowOutcome{Name: w.Name, Spec: w.Spec(), Reason: "already present"})
-			continue
-		}
-		out, addErr := runAdd(ctx, res.CloneDir, w.Spec(), engine, opts.Force)
-		if addErr != nil {
-			res.Failed = append(res.Failed, WorkflowOutcome{
-				Name:  w.Name,
-				Spec:  w.Spec(),
-				Error: condense(out, addErr),
-			})
-			continue
-		}
-		res.Added = append(res.Added, WorkflowOutcome{Name: w.Name, Spec: w.Spec()})
-	}
+	addResolvedWorkflows(ctx, res, resolved, opts, engine)
 
 	// Check that the engine secret exists on the target repo regardless of dry-run/apply.
 	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
@@ -114,28 +98,63 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	if len(res.Added) == 0 && !staged {
 		return res, nil
 	}
+	return createDeployPR(ctx, res, repo, opts)
+}
 
+// addResolvedWorkflows runs `gh aw add` for each resolved workflow, populating
+// res.Added / res.Skipped / res.Failed.
+func addResolvedWorkflows(
+	ctx context.Context, res *DeployResult, resolved []ResolvedWorkflow, opts DeployOpts, engine string,
+) {
+	for _, w := range resolved {
+		if w.Source == "local" {
+			continue
+		}
+		if fileExists(filepath.Join(res.CloneDir, ".github/workflows", w.Name+".md")) && !opts.Force {
+			res.Skipped = append(res.Skipped, WorkflowOutcome{
+				Name: w.Name, Spec: w.Spec(), Reason: "already present",
+			})
+			continue
+		}
+		out, addErr := runAdd(ctx, res.CloneDir, w.Spec(), engine, opts.Force)
+		if addErr != nil {
+			res.Failed = append(res.Failed, WorkflowOutcome{
+				Name:  w.Name,
+				Spec:  w.Spec(),
+				Error: condense(out, addErr),
+			})
+			continue
+		}
+		res.Added = append(res.Added, WorkflowOutcome{Name: w.Name, Spec: w.Spec()})
+	}
+}
+
+// createDeployPR branches, commits, pushes, and opens a PR for a deploy that
+// has pending workflow changes staged in res.CloneDir.
+func createDeployPR(ctx context.Context, res *DeployResult, repo string, opts DeployOpts) (*DeployResult, error) {
 	branch := opts.Branch
 	if branch == "" {
 		branch = fmt.Sprintf("fleet/deploy-%s", time.Now().UTC().Format("2006-01-02-150405"))
 	}
-	if err := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); err != nil {
-		return res, fmt.Errorf("create branch: %w", err)
+	if branchErr := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); branchErr != nil {
+		return res, fmt.Errorf("create branch: %w", branchErr)
 	}
-	if err := gitCmd(ctx, res.CloneDir, "add", ".github/"); err != nil {
-		return res, fmt.Errorf("git add: %w", err)
+	if addErr := gitCmd(ctx, res.CloneDir, "add", ".github/"); addErr != nil {
+		return res, fmt.Errorf("git add: %w", addErr)
 	}
 	stagedNames, err := stagedWorkflowNames(ctx, res.CloneDir)
 	if err != nil {
 		return res, fmt.Errorf("git diff --cached: %w", err)
 	}
 	msg := commitMessage(res, stagedNames)
-	if err := gitCmdInteractive(ctx, res.CloneDir, "commit", "-m", msg); err != nil {
-		return res, fmt.Errorf("git commit: %w\n\nTo finish manually:\n  cd %s\n  git commit -m %q\n  git push -u origin %s",
-			err, res.CloneDir, msg, branch)
+	if commitErr := gitCmdInteractive(ctx, res.CloneDir, "commit", "-m", msg); commitErr != nil {
+		return res, fmt.Errorf(
+			"git commit: %w\n\nTo finish manually:\n  cd %s\n  git commit -m %q\n  git push -u origin %s",
+			commitErr, res.CloneDir, msg, branch,
+		)
 	}
-	if err := gitCmd(ctx, res.CloneDir, "push", "-u", "origin", branch); err != nil {
-		return res, fmt.Errorf("git push: %w", err)
+	if pushErr := gitCmd(ctx, res.CloneDir, "push", "-u", "origin", branch); pushErr != nil {
+		return res, fmt.Errorf("git push: %w", pushErr)
 	}
 	res.BranchPushed = branch
 
@@ -147,9 +166,9 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 		}
 		title = fmt.Sprintf("ci(workflows): add %d agentic workflows via gh-aw-fleet", n)
 	}
-	prURL, err := ghPRCreate(ctx, res.CloneDir, title, prBody(res, repo))
-	if err != nil {
-		return res, fmt.Errorf("gh pr create: %w", err)
+	prURL, prErr := ghPRCreate(ctx, res.CloneDir, title, prBody(res, repo))
+	if prErr != nil {
+		return res, fmt.Errorf("gh pr create: %w", prErr)
 	}
 	res.PRURL = prURL
 	return res, nil
@@ -166,8 +185,8 @@ func prepareClone(ctx context.Context, repo, explicit string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "repo", "clone", repo, dir)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return dir, fmt.Errorf("gh repo clone %s: %w", repo, err)
+	if runErr := cmd.Run(); runErr != nil {
+		return dir, fmt.Errorf("gh repo clone %s: %w", repo, runErr)
 	}
 	return dir, nil
 }
@@ -261,6 +280,8 @@ func stagedWorkflowNames(ctx context.Context, dir string) ([]string, error) {
 
 // ghAPIExists returns true if `gh api <path>` returns success (exit 0).
 // Package variable so tests can stub the subprocess.
+//
+//nolint:gochecknoglobals // test seam; tests override this to stub gh api calls
 var ghAPIExists = func(ctx context.Context, path string) bool {
 	return exec.CommandContext(ctx, "gh", "api", path).Run() == nil
 }
@@ -303,7 +324,9 @@ func condense(out string, err error) string {
 		if t == "" {
 			continue
 		}
-		if strings.HasPrefix(t, "✗") || strings.HasPrefix(t, "error:") || strings.Contains(strings.ToLower(t), "failed") {
+		if strings.HasPrefix(t, "✗") ||
+			strings.HasPrefix(t, "error:") ||
+			strings.Contains(strings.ToLower(t), "failed") {
 			keep = append(keep, t)
 		}
 	}
@@ -337,7 +360,10 @@ func commitMessage(res *DeployResult, stagedFallback []string) string {
 
 func prBody(res *DeployResult, repo string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Deploys %d agentic workflows to `%s` via [gh-aw-fleet](https://github.com/rshade/gh-aw-fleet).\n\n", len(res.Added), repo)
+	fmt.Fprintf(&b,
+		"Deploys %d agentic workflows to `%s` via [gh-aw-fleet](https://github.com/rshade/gh-aw-fleet).\n\n",
+		len(res.Added), repo,
+	)
 	if res.InitWasRun {
 		b.WriteString("This repo was not yet initialized for gh-aw; `gh aw init` was run as part of this PR.\n\n")
 	}
@@ -357,6 +383,7 @@ func prBody(res *DeployResult, repo string) string {
 			fmt.Fprintf(&b, "- `%s`: %s\n", f.Name, f.Error)
 		}
 	}
-	b.WriteString("\nEach workflow is pinned via its frontmatter `source:` field. Use `gh aw update` to pull upstream changes.\n")
+	b.WriteString("\nEach workflow is pinned via its frontmatter `source:` field. " +
+		"Use `gh aw update` to pull upstream changes.\n")
 	return b.String()
 }

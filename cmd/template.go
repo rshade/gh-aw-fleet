@@ -3,20 +3,36 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/rshade/gh-aw-fleet/internal/fleet"
 	"github.com/spf13/cobra"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
-func init() {
-	templateFetchCmd.RunE = runTemplateFetch
+func newTemplateCmd(flagDir *string) *cobra.Command {
+	tpl := &cobra.Command{
+		Use:   "template",
+		Short: "Manage the upstream template catalog (templates.json)",
+	}
+	tpl.AddCommand(newTemplateFetchCmd(flagDir))
+	return tpl
 }
 
-func runTemplateFetch(cmd *cobra.Command, args []string) error {
-	cfg, err := fleet.LoadConfig(flagDir)
+func newTemplateFetchCmd(flagDir *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "fetch",
+		Short: "Refresh templates.json from gh-aw and agentics; Claude-classify new entries",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runTemplateFetch(cmd, *flagDir)
+		},
+	}
+}
+
+func runTemplateFetch(cmd *cobra.Command, dir string) error {
+	cfg, err := fleet.LoadConfig(dir)
 	if err != nil {
 		return err
 	}
-	prev, err := fleet.LoadTemplates(flagDir)
+	prev, err := fleet.LoadTemplates(dir)
 	if err != nil {
 		return err
 	}
@@ -28,8 +44,8 @@ func runTemplateFetch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := fleet.SaveTemplates(flagDir, next); err != nil {
-		return err
+	if saveErr := fleet.SaveTemplates(dir, next); saveErr != nil {
+		return saveErr
 	}
 
 	w := cmd.OutOrStdout()
@@ -38,7 +54,7 @@ func runTemplateFetch(cmd *cobra.Command, args []string) error {
 		total += len(r.Added) + len(r.Changed) + len(r.Unchanged) + len(r.Removed)
 	}
 	fmt.Fprintf(w, "Fetched %d workflows across %d sources. Catalog written to %s/%s.\n\n",
-		total, len(results), flagDir, fleet.TemplatesFile)
+		total, len(results), dir, fleet.TemplatesFile)
 	for _, r := range results {
 		fmt.Fprintf(w, "%s @ %s\n", r.Source, r.Ref)
 		fmt.Fprintf(w, "  added:     %v\n", nilAsDash(r.Added))

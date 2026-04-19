@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -12,6 +13,8 @@ import (
 
 // SourceLayout is where a source repo keeps its workflow markdown files.
 // Hardcoded for the two known sources; promote to config when a third arrives.
+//
+//nolint:gochecknoglobals // immutable source-layout lookup; Go has no const map
 var SourceLayout = map[string]string{
 	"github/gh-aw":        ".github/workflows",
 	"githubnext/agentics": "workflows",
@@ -106,8 +109,8 @@ func fetchSource(ctx context.Context, source string) (TemplateSource, FetchResul
 	res := FetchResult{Source: source, Ref: "main"}
 
 	for _, e := range entries {
-		m, ok := e.(map[string]any)
-		if !ok {
+		m, entryOK := e.(map[string]any)
+		if !entryOK {
 			continue
 		}
 		typ, _ := m["type"].(string)
@@ -117,9 +120,9 @@ func fetchSource(ctx context.Context, source string) (TemplateSource, FetchResul
 		if typ != "file" || !strings.HasSuffix(name, ".md") {
 			continue
 		}
-		raw, err := ghAPIRaw(ctx, fmt.Sprintf("/repos/%s/contents/%s?ref=main", source, path))
-		if err != nil {
-			return TemplateSource{}, res, fmt.Errorf("fetch %s/%s: %w", source, path, err)
+		raw, rawErr := ghAPIRaw(ctx, fmt.Sprintf("/repos/%s/contents/%s?ref=main", source, path))
+		if rawErr != nil {
+			return TemplateSource{}, res, fmt.Errorf("fetch %s/%s: %w", source, path, rawErr)
 		}
 		tw := TemplateWorkflow{
 			Name:  strings.TrimSuffix(name, ".md"),
@@ -129,9 +132,9 @@ func fetchSource(ctx context.Context, source string) (TemplateSource, FetchResul
 			Lines: strings.Count(raw, "\n"),
 		}
 		fmText, body := SplitFrontmatter(raw)
-		fm, err := ParseFrontmatter(fmText)
-		if err != nil {
-			return TemplateSource{}, res, fmt.Errorf("parse %s/%s: %w", source, path, err)
+		fm, parseErr := ParseFrontmatter(fmText)
+		if parseErr != nil && !errors.Is(parseErr, ErrEmptyFrontmatter) {
+			return TemplateSource{}, res, fmt.Errorf("parse %s/%s: %w", source, path, parseErr)
 		}
 		tw.Frontmatter = fm
 		tw.Body = body
@@ -182,8 +185,8 @@ func ghAPIJSON(ctx context.Context, path string) (any, error) {
 		return nil, ghErr(err)
 	}
 	var v any
-	if err := json.Unmarshal(out, &v); err != nil {
-		return nil, fmt.Errorf("decode gh api response: %w", err)
+	if decodeErr := json.Unmarshal(out, &v); decodeErr != nil {
+		return nil, fmt.Errorf("decode gh api response: %w", decodeErr)
 	}
 	return v, nil
 }
@@ -198,7 +201,8 @@ func ghAPIRaw(ctx context.Context, path string) (string, error) {
 }
 
 func ghErr(err error) error {
-	if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && len(ee.Stderr) > 0 {
 		return fmt.Errorf("gh api: %s", strings.TrimSpace(string(ee.Stderr)))
 	}
 	return fmt.Errorf("gh api: %w", err)

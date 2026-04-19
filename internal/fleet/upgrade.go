@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -35,7 +36,7 @@ type UpgradeResult struct {
 }
 
 // Upgrade runs the upgrade pipeline for a single repo.
-func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*UpgradeResult, error) {
+func Upgrade(ctx context.Context, _ *Config, repo string, opts UpgradeOpts) (*UpgradeResult, error) {
 	res := &UpgradeResult{Repo: repo}
 	var err error
 	res.CloneDir, err = prepareClone(ctx, repo, opts.WorkDir)
@@ -87,25 +88,31 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 		return res, nil
 	}
 
+	return createUpgradePR(ctx, res)
+}
+
+// createUpgradePR branches, commits, pushes, and opens a PR for an upgrade
+// that has changed files staged in res.CloneDir.
+func createUpgradePR(ctx context.Context, res *UpgradeResult) (*UpgradeResult, error) {
 	branch := fmt.Sprintf("fleet/upgrade-%s", time.Now().UTC().Format("2006-01-02-150405"))
-	if err := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); err != nil {
-		return res, fmt.Errorf("create branch: %w", err)
+	if branchErr := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); branchErr != nil {
+		return res, fmt.Errorf("create branch: %w", branchErr)
 	}
-	if err := gitCmd(ctx, res.CloneDir, "add", ".github/"); err != nil {
-		return res, fmt.Errorf("git add: %w", err)
+	if addErr := gitCmd(ctx, res.CloneDir, "add", ".github/"); addErr != nil {
+		return res, fmt.Errorf("git add: %w", addErr)
 	}
 	msg := upgradeCommitMessage(res)
-	if err := gitCmd(ctx, res.CloneDir, "commit", "-m", msg); err != nil {
-		return res, fmt.Errorf("git commit: %w", err)
+	if commitErr := gitCmd(ctx, res.CloneDir, "commit", "-m", msg); commitErr != nil {
+		return res, fmt.Errorf("git commit: %w", commitErr)
 	}
-	if err := gitCmd(ctx, res.CloneDir, "push", "-u", "origin", branch); err != nil {
-		return res, fmt.Errorf("git push: %w", err)
+	if pushErr := gitCmd(ctx, res.CloneDir, "push", "-u", "origin", branch); pushErr != nil {
+		return res, fmt.Errorf("git push: %w", pushErr)
 	}
 	res.BranchPushed = branch
 
-	prURL, err := ghPRCreate(ctx, res.CloneDir, upgradeTitle(), upgradeBody(res))
-	if err != nil {
-		return res, fmt.Errorf("gh pr create: %w", err)
+	prURL, prErr := ghPRCreate(ctx, res.CloneDir, upgradeTitle(), upgradeBody(res))
+	if prErr != nil {
+		return res, fmt.Errorf("gh pr create: %w", prErr)
 	}
 	res.PRURL = prURL
 	return res, nil
@@ -129,7 +136,8 @@ func runAudit(ctx context.Context, res *UpgradeResult) (*UpgradeResult, error) {
 	cmd.Dir = res.CloneDir
 	out, err := cmd.Output()
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			return res, fmt.Errorf("gh aw upgrade --audit: %s", strings.TrimSpace(string(ee.Stderr)))
 		}
 		return res, fmt.Errorf("gh aw upgrade --audit: %w", err)
@@ -234,7 +242,10 @@ func getChangedFiles(ctx context.Context, dir string) ([]string, error) {
 
 func upgradeCommitMessage(res *UpgradeResult) string {
 	changed := len(res.ChangedFiles)
-	return fmt.Sprintf("ci(workflows): upgrade agentic workflows (%d files changed)\n\nUpgraded via gh aw upgrade + update.\n", changed)
+	return fmt.Sprintf(
+		"ci(workflows): upgrade agentic workflows (%d files changed)\n\nUpgraded via gh aw upgrade + update.\n",
+		changed,
+	)
 }
 
 func upgradeTitle() string {
