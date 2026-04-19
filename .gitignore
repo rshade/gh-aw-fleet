@@ -1,6 +1,7 @@
 /gh-aw-fleet
 /gh-aw-fleet.exe
 /bin/
+/dist/
 *.test
 *.out
 .vscode/

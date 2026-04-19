@@ -1,9 +1,17 @@
 name: Release
 
+# GoReleaser runs after release-please creates a release.
+# release-please creates tags via the GitHub API (not git push), so we trigger
+# on the release event rather than on tag push.
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.1.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,17 +20,21 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_REF: ${{ inputs.tag || github.event.release.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ env.RELEASE_REF }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25.x'
 
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
+          distribution: goreleaser
           version: latest
           args: release --clean
         env:
