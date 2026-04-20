@@ -3,9 +3,6 @@
   "packages": {
     ".": {
       "release-type": "go",
-      "package-name": "gh-aw-fleet",
-      "include-v-in-tag": true,
-      "release-as": "0.1.0",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "changelog-path": "CHANGELOG.md",
