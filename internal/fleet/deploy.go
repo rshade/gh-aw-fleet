@@ -107,7 +107,7 @@ func addResolvedWorkflows(
 	ctx context.Context, res *DeployResult, resolved []ResolvedWorkflow, opts DeployOpts, engine string,
 ) {
 	for _, w := range resolved {
-		if w.Source == "local" {
+		if w.Source == SourceLocal {
 			continue
 		}
 		if fileExists(filepath.Join(res.CloneDir, ".github/workflows", w.Name+".md")) && !opts.Force {

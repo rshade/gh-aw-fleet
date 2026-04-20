@@ -11,6 +11,10 @@ const (
 	ConfigFile      = "fleet.json"
 	LocalConfigFile = "fleet.local.json"
 	TemplatesFile   = "templates.json"
+
+	// SourceLocal marks an ExtraWorkflow / ResolvedWorkflow as living in the
+	// target repo itself (no upstream fetch; `gh aw add` takes a local path).
+	SourceLocal = "local"
 )
 
 // LoadConfig reads fleet.json as the base config, then overlays fleet.local.json if present.
@@ -92,9 +96,10 @@ func mergeConfigs(base, local *Config) *Config {
 	return &merged
 }
 
-// SaveConfig writes fleet.json atomically to the given directory.
-func SaveConfig(dir string, c *Config) error {
-	path := resolve(dir, ConfigFile)
+// SaveLocalConfig writes fleet.local.json atomically to the given directory.
+// No symmetric SaveConfig exists: fleet.json is read-only from this package.
+func SaveLocalConfig(dir string, c *Config) error {
+	path := resolve(dir, LocalConfigFile)
 	return writeJSON(path, c)
 }
 
@@ -211,7 +216,7 @@ type ResolvedWorkflow struct {
 // 3-part form: "owner/repo/name@ref".
 // Local workflows pass through unchanged.
 func (r ResolvedWorkflow) Spec() string {
-	if r.Source == "local" {
+	if r.Source == SourceLocal {
 		if r.Path != "" {
 			return r.Path
 		}

@@ -8,7 +8,7 @@
       "description": "Baseline every tracked repo gets. Low-noise, broadly useful.",
       "sources": {
         "github/gh-aw": { "ref": "v0.68.3" },
-        "githubnext/agentics": { "ref": "main" }
+        "githubnext/agentics": { "ref": "96b9d4c39aa22359c0b38265927eadb31dcf4e2a" }
       },
       "workflows": [
         { "name": "audit-workflows",          "source": "github/gh-aw" },
@@ -28,7 +28,7 @@
     "quality-plus": {
       "description": "PR-generating quality agents. Noisier — opt in for actively-developed repos.",
       "sources": {
-        "githubnext/agentics": { "ref": "main" }
+        "githubnext/agentics": { "ref": "96b9d4c39aa22359c0b38265927eadb31dcf4e2a" }
       },
       "workflows": [
         { "name": "daily-test-improver",         "source": "githubnext/agentics" },
@@ -50,7 +50,7 @@
     "docs-plus": {
       "description": "Heavier docs maintenance. Assumes the repo has a real docs site.",
       "sources": {
-        "githubnext/agentics": { "ref": "main" }
+        "githubnext/agentics": { "ref": "96b9d4c39aa22359c0b38265927eadb31dcf4e2a" }
       },
       "workflows": [
         { "name": "glossary-maintainer",           "source": "githubnext/agentics" },
@@ -64,7 +64,7 @@
     "community-plus": {
       "description": "Contributor-facing helpers. All command-triggered or event-scoped, dormant when idle.",
       "sources": {
-        "githubnext/agentics": { "ref": "main" }
+        "githubnext/agentics": { "ref": "96b9d4c39aa22359c0b38265927eadb31dcf4e2a" }
       },
       "workflows": [
         { "name": "grumpy-reviewer",      "source": "githubnext/agentics" },

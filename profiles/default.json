@@ -2,7 +2,7 @@
   "description": "Baseline profile. Workflows pulled from agentics (the curated library) wherever an equivalent exists; gh-aw only for dogfooded items with no agentics counterpart (audit-workflows, docs-noob-tester, mergefest).",
   "sources": {
     "github/gh-aw": { "ref": "v0.68.3" },
-    "githubnext/agentics": { "ref": "main" }
+    "githubnext/agentics": { "ref": "96b9d4c39aa22359c0b38265927eadb31dcf4e2a" }
   },
   "workflows": [
     { "name": "audit-workflows",          "source": "github/gh-aw" },

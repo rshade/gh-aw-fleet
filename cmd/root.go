@@ -22,7 +22,7 @@ and calling Claude when a deploy or merge needs judgment.`,
 	root.AddCommand(
 		newListCmd(&flagDir),
 		newStatusCmd(),
-		newAddCmd(),
+		newAddCmd(&flagDir),
 		newTemplateCmd(&flagDir),
 		newDeployCmd(&flagDir),
 		newSyncCmd(&flagDir),

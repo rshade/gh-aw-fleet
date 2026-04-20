@@ -52,49 +52,33 @@ Ask the user for each of these. Propose defaults based on the repo's shape (lang
 
 Don't ask about deploy timing yet — that question makes more sense after the user has seen and approved the actual JSON diff (Step 3). Asking too early forces them to commit to a flow before they know what's being registered.
 
-### Step 3 — compose the fleet.local.json edit, confirm, then ask about deploy timing
+### Step 3 — dry-run `add` to preview the registration
 
-Read the current `fleet.local.json`:
+Run the `add` subcommand in dry-run mode (default) to see what would be registered:
 
 ```bash
-jq '.repos' fleet.local.json
+go run . add <owner>/<repo> --profile default
 ```
 
-Compose the new entry. For most repos, this is tight:
+With exclusions or other customizations:
 
-```json
-"<owner>/<repo>": {
-  "profiles": ["default"]
-}
+```bash
+go run . add <owner>/<repo> \
+    --profile default \
+    --exclude daily-doc-updater --exclude docs-noob-tester
 ```
 
-With exclusions:
-
-```json
-"<owner>/<repo>": {
-  "profiles": ["default"],
-  "exclude": ["daily-doc-updater", "docs-noob-tester"]
-}
-```
-
-Show the user the diff — either the single new entry, or the full `repos` section with the entry added. Get explicit confirmation.
-
-Once the user approves the diff, **then** ask about the follow-up:
+Dry-run prints (stderr) `would add <owner>/<repo> with profiles [default] (N workflows)` plus the workflow list on stdout. No file is written. Show the user the preview, then ask about the follow-up:
 
 > "After registering, deploy immediately via `fleet-deploy`, or just register for now?"
 
-This lets them see exactly what's being registered before committing to a next step.
-
-### Step 4 — write fleet.local.json
-
-Use `jq` for atomic edits (avoid hand-editing JSON to preserve formatting):
+### Step 4 — apply
 
 ```bash
-jq '.repos["<owner>/<repo>"] = {
-  "profiles": ["default"],
-  "exclude": ["daily-doc-updater", "docs-noob-tester"]
-}' fleet.local.json > fleet.local.json.tmp && mv fleet.local.json.tmp fleet.local.json
+go run . add <owner>/<repo> --profile default --apply --yes
 ```
+
+The command writes `fleet.local.json` atomically and never touches `fleet.json`. If `fleet.local.json` didn't exist, it's synthesized as a minimal file (only `version` + the new repo entry); profiles and defaults continue to resolve from `fleet.json`.
 
 ### Step 5 — verify
 
@@ -108,7 +92,7 @@ Confirm:
 - Engine shows the expected value.
 - `(loaded fleet.local.json)` appears at the top (not `fleet.json` — proving our edit hit the right file).
 
-If anything is off, roll back the jq edit and restart.
+If anything is off, delete the `fleet.local.json` entry (or the whole file if this was the first `add`) and restart.
 
 ### Step 6 — hand off to fleet-deploy
 
@@ -127,8 +111,8 @@ If the user said "register only":
 
 - **Never edit `fleet.json`** in this skill. That file is the committed public example. If it accidentally contains private repo names, flag that as a bug — they shouldn't be there.
 - **Never commit `fleet.local.json`**. It's in `.gitignore` by design. Don't suggest `git add fleet.local.json`.
-- **Always verify via `go run . list`** after edits. Syntactic errors in fleet.local.json would show up as parse errors — catching them before handoff saves a confused deploy run.
-- **Use `jq` for atomic writes**. Hand-editing multi-line JSON risks stray commas / trailing-comma bugs. `jq` produces valid output.
+- **Always verify via `go run . list`** after `--apply`. Syntactic errors would show up as parse errors — catching them before handoff saves a confused deploy run.
+- **Never hand-edit `fleet.local.json`** in this flow. Use `go run . add ... --apply --yes`. The tool handles atomic writes and schema correctness; hand-editing risks stray commas or drift from the `RepoSpec` schema.
 - **Don't suggest editing `profiles/` or `fleet.json` profile definitions** as part of onboarding. If a new repo needs a workflow that's not in any existing profile, that's a separate discussion (often involving `fleet-eval-templates` to check the upstream catalog first).
 - **Scope the gh repo view check** to basic info only. Don't read the target repo's code; that's noise and potential privacy leak.
 
@@ -196,8 +180,9 @@ You:
 User: looks good, deploy immediately
 
 You:
-  - jq-edit fleet.local.json. Verify with `go run . list`.
-  - Hand off to fleet-deploy flow. Dry-run rshade/finfocus-style three-turn pattern begins.
+  - Run `go run . add HavenTrack/user-service --profile default --exclude daily-doc-updater --exclude docs-noob-tester --apply --yes`.
+  - Verify with `go run . list`.
+  - Hand off to fleet-deploy flow. Dry-run three-turn pattern begins.
 ```
 
 ### Example 2 — library with docs
@@ -214,7 +199,8 @@ You:
 User: register only
 
 You:
-  - Edit fleet.local.json. Verify list. Report registered + next-step command.
+  - Run `go run . add rshade/opencommit --profile default --profile docs-plus --profile community-plus --apply --yes`.
+  - Verify with `go run . list`. Report registered + next-step command.
 ```
 
 ### Example 3 — user said "deploy to X" but X isn't tracked
