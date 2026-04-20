@@ -65,8 +65,8 @@ The `skills/` directory contains four SKILL.md files codifying recurring operato
 Committed at repo root; shared with collaborators and subagents. Allows `go build/vet/test/run`, `gh aw/api/repo/pr`, `git` read ops, and common shell tools. Denies `git add`, `git commit`, `git rebase --continue`, `git push --force`, `git reset --hard`. When adding a new developer command, add it to the allowlist so subagents don't prompt.
 
 ## Active Technologies
-- Go 1.25.8 (from `go.mod`) + `github.com/spf13/cobra` v1.10.2 (CLI (001-add-subcommand)
-- `fleet.local.json` (the private source of truth — target (001-add-subcommand)
+- Go 1.25.8 (from `go.mod`), using `github.com/spf13/cobra` v1.10.2 for CLI wiring.
+- `fleet.local.json` is the private, gitignored source of truth; `fleet.json` is the committed public example.
 
 ## Recent Changes
-- 001-add-subcommand: Added Go 1.25.8 (from `go.mod`) + `github.com/spf13/cobra` v1.10.2 (CLI
+- 001-add-subcommand: added `gh-aw-fleet add <owner/repo>` subcommand (cobra) for onboarding repos into `fleet.local.json`.

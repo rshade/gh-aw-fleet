@@ -112,7 +112,11 @@ func Add(cfg *Config, opts AddOptions) (*AddResult, error) {
 
 	// Insert the candidate transiently so ResolveRepoWorkflows sees it in
 	// the merged view. Always remove before returning — the caller's Config
-	// must not carry unpersisted state.
+	// must not carry unpersisted state. cfg.Repos may be nil when a config
+	// file omits the "repos" key; initialize defensively before writing.
+	if cfg.Repos == nil {
+		cfg.Repos = make(map[string]RepoSpec)
+	}
 	cfg.Repos[opts.Repo] = candidate
 	resolved, err := cfg.ResolveRepoWorkflows(opts.Repo)
 	delete(cfg.Repos, opts.Repo)

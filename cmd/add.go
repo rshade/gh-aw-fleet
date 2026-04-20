@@ -80,6 +80,9 @@ func newAddCmd(flagDir *string) *cobra.Command {
 
 func resolveConfirmation(cmd *cobra.Command, apply, yes bool) (bool, error) {
 	if !apply {
+		if yes {
+			fmt.Fprintln(cmd.ErrOrStderr(), "ignored: --yes has no effect without --apply")
+		}
 		return false, nil
 	}
 	if yes {
