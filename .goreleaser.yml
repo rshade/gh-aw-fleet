@@ -37,5 +37,10 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
+# release-please creates the GitHub Release first; this job runs after and
+# attaches binary artifacts + checksums to that existing release.
+release:
+  mode: append
+
 changelog:
   disable: true
