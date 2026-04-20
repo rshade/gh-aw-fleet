@@ -9,8 +9,8 @@ const SchemaVersion = 1
 // `fleet sync` and `fleet upgrade` reconcile repos toward it.
 type Config struct {
 	Version    int                 `json:"version"`
-	Defaults   Defaults            `json:"defaults"`
-	Profiles   map[string]Profile  `json:"profiles"`
+	Defaults   Defaults            `json:"defaults,omitzero"`
+	Profiles   map[string]Profile  `json:"profiles,omitempty"`
 	Repos      map[string]RepoSpec `json:"repos"`
 	LoadedFrom string              `json:"-"`
 }

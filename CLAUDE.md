@@ -12,6 +12,20 @@ go run . list         # Fastest sanity check — exercises LoadConfig end-to-end
 go run . template fetch   # ~3 min (serial); do not run in subagents with strict timeouts.
 ```
 
+### Local gate — run before claiming any code change complete
+
+`go build` / `go vet` are necessary but **not sufficient**. CI runs stricter checks (gofmt alignment, golangci-lint, full test suite) that build+vet do not. Before reporting any code change "done," run the full gate:
+
+```bash
+make fmt         # apply gofmt in place (or `make fmt-check` to verify without writing)
+make lint        # golangci-lint — can exceed 5 minutes; use extended timeout, do NOT skip
+make test        # full test suite
+# — or, in one shot: —
+make ci          # runs: fmt-check vet lint test  (this is the CI gate)
+```
+
+**Do not claim a task complete until `make ci` passes locally.** `go build` passing means nothing — prior commits have landed lint/fmt failures that CI rejected because only build+vet were run. When in doubt, run `make ci`.
+
 The CLI has two config files: `fleet.local.json` (private, gitignored, real fleet state) and `fleet.json` (public, committed, example tracking only `rshade/gh-aw-fleet`). `LoadConfig` tries `fleet.local.json` first and falls back. `go run . list` prints `(loaded fleet.local.json)` or `(loaded fleet.json)` to stderr so you know which is active.
 
 ## Architecture big-picture
@@ -49,3 +63,10 @@ The `skills/` directory contains four SKILL.md files codifying recurring operato
 ## .claude/settings.json
 
 Committed at repo root; shared with collaborators and subagents. Allows `go build/vet/test/run`, `gh aw/api/repo/pr`, `git` read ops, and common shell tools. Denies `git add`, `git commit`, `git rebase --continue`, `git push --force`, `git reset --hard`. When adding a new developer command, add it to the allowlist so subagents don't prompt.
+
+## Active Technologies
+- Go 1.25.8 (from `go.mod`) + `github.com/spf13/cobra` v1.10.2 (CLI (001-add-subcommand)
+- `fleet.local.json` (the private source of truth — target (001-add-subcommand)
+
+## Recent Changes
+- 001-add-subcommand: Added Go 1.25.8 (from `go.mod`) + `github.com/spf13/cobra` v1.10.2 (CLI

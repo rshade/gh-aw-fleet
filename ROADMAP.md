@@ -50,22 +50,16 @@ on every run.
 
 ### Deploy UX — warn before broken deploys
 
-This trio shares a theme: surface broken-deploy conditions to the operator
-*before* a PR merges, instead of letting workflows fail silently in
-production.
+This theme surfaces broken-deploy conditions to the operator *before* a PR
+merges, instead of letting workflows fail silently in production. #6 landed
+in 2026-Q2; #7 and #11 continue the work.
 
-- [ ] [#6](https://github.com/rshade/gh-aw-fleet/issues/6) Check org-level
-  secrets to avoid false-positive missing-secret warnings `[S]`
-  *Today `checkEngineSecret` only queries repo secrets. Org-managed
-  installations get spurious warnings on every deploy. Mirror upstream
-  `add-wizard` behavior: check repo, then fall back to org. Patch is
-  drafted in the issue body. Prerequisite for #7 to be accurate.*
 - [ ] [#7](https://github.com/rshade/gh-aw-fleet/issues/7) Surface
   missing-secret warning in PR body `[S]`
   *CLI prints the warning to the operator's terminal but the PR body is
   silent. Reviewers merging hours later land broken workflows. Append a
   `⚠ Setup Required` section to `prBody()` when `MissingSecret` is set.
-  Implement after or alongside #6.*
+  Now unblocked since #6 shipped accurate org-level checks.*
 - [ ] [#11](https://github.com/rshade/gh-aw-fleet/issues/11) Preflight
   check for Actions enabled and workflow write permissions `[M]`
   *Two repo-level settings (Actions toggle, workflow token permissions)
@@ -83,8 +77,24 @@ production.
 ## Near-Term Vision (v0.3 — operator quality of life)
 
 Once the CLI is complete, the next layer is making it pleasant under load —
-preflight before destructive ops, faster sanity checks, packaging.
+preflight before destructive ops, faster sanity checks, packaging, and
+making the tool legible to LLM agents piping its output.
 
+- [ ] [#24](https://github.com/rshade/gh-aw-fleet/issues/24) Introduce
+  zerolog for errors, warnings, and diagnostics `[M]`
+  *Foundational: add a thin `internal/log` package over zerolog. Configure
+  once from cobra `PersistentPreRunE` with `--log-level` / `--log-format`.
+  User-facing tabwriter output stays; errors, warnings, and subprocess
+  diagnostics become structured. Prerequisite for #25's stderr warning
+  emission.*
+- [ ] [#25](https://github.com/rshade/gh-aw-fleet/issues/25) Add
+  `--output json` to `list`/`deploy`/`sync`/`upgrade` for LLM consumption
+  `[M]`
+  *No new data — just marshal the existing `DeployResult` / `SyncResult` /
+  `UpgradeResult` structs as a versioned JSON envelope
+  (`schema_version: 1`) when `-o json` is set. Unlocks agentic consumers
+  without regex-scraping tabwriter tables. Depends on #24 for stderr
+  warning emission.*
 - [ ] `sync --dry-run` runs deploy preflight `[M]`
   *Today `sync --dry-run` computes the diff but doesn't validate that the
   resolved workflows would actually `gh aw add` cleanly (404s on bad pins,
@@ -214,6 +224,12 @@ ideas close the loop without becoming a daemon.
 
 ### 2026-Q2
 
+- [x] [#6](https://github.com/rshade/gh-aw-fleet/issues/6) Check org-level
+  secrets to avoid false-positive missing-secret warnings `[S]`
+  *`checkEngineSecret` now queries repo secrets first, then falls back to
+  org secrets — mirroring upstream `add-wizard`. Eliminates spurious
+  warnings on org-managed installations. Unblocks #7 (PR-body warning
+  accuracy).*
 - [x] Bootstrap CLI, profiles, and operator skills (commit `8543956`)
   *Initial scaffolding: `cmd/`, `internal/fleet/`, `profiles/default.json`,
   four Claude skills, CI + release tooling, commitlint, golangci-lint.*
@@ -238,6 +254,7 @@ Any roadmap item that violates these is rejected, not negotiated.
 - **Effort labels**: `effort/small`, `effort/medium`, `effort/large`
 - **Contribution flags**: `community`, `cross-repo`, `spec-first`
 
-> Immediate Focus items (#8, #9, #10) are tracked as GitHub issues. The
+> Immediate Focus items (#7, #8, #9, #10, #11, #12) and the two Near-Term
+> infrastructure items (#24, #25) are tracked as GitHub issues. The remaining
 > Near-Term and Future items don't have issues yet — open them as work picks
 > up, then run `/roadmap sync` to keep this file aligned.

@@ -4,7 +4,7 @@ Declarative fleet manager for GitHub Agentic Workflows.
 
 ## Status
 
-Early work-in-progress. The core reconcile loop (`deploy`, `sync`, `upgrade`) is functional. Commands `add` and `status` are stubs; `template fetch` works but is incomplete. Architecture and APIs are actively evolving.
+Early work-in-progress. The core reconcile loop (`deploy`, `sync`, `upgrade`) is functional, along with `add` for onboarding repos into `fleet.local.json`. The `status` command is still a stub; `template fetch` works but is incomplete. Architecture and APIs are actively evolving.
 
 ## Why
 
@@ -48,6 +48,13 @@ Fetch the upstream catalog (templates.json) so you can review new workflows:
 ./gh-aw-fleet template fetch
 ```
 
+Onboard a new repo into `fleet.local.json` with a profile (dry-run first, then `--apply`):
+
+```bash
+./gh-aw-fleet add acme/widgets --profile default
+./gh-aw-fleet add acme/widgets --profile default --apply --yes
+```
+
 Dry-run a deploy to one repo (shows what would be added, no changes made):
 
 ```bash
@@ -77,12 +84,12 @@ Upgrade all repos to the latest gh-aw and agentics versions:
 | Command | Description |
 |---------|-------------|
 | `list` | List tracked repos and their resolved workflow sets |
+| `add <owner/repo>` | Register a repo in `fleet.local.json` with a profile (dry-run by default) |
 | `deploy <repo>` | Apply the declared workflow set to a repo via `gh aw add` + PR |
 | `sync <repo>` | Reconcile a repo to match its declared profile (add missing, flag drift) |
 | `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade` + update across repos |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
 | `status [repo]` | Diff desired (fleet.json) vs actual state (not yet implemented) |
-| `add <owner/repo>` | Register a repo in fleet.json with a profile (not yet implemented) |
 
 ## Configuration
 
@@ -186,7 +193,7 @@ When a command fails (e.g., `gh aw add` returns an error), the tool scans output
 - **No `--work-dir` persistence.** The `--work-dir` flag exists but doesn't resume from a previous state. A full retry re-clones and re-starts.
 - **Sync dry-run doesn't do deploy preflight.** `sync --dry-run` computes the diff but doesn't pre-validate that the workflows would deploy successfully.
 - **No GitHub extension packaging yet.** `gh-aw-fleet` is not yet installable as a `gh` extension. Build and invoke directly for now.
-- **`add` and `status` are stubs.** These commands are planned but not yet implemented.
+- **`status` is still a stub.** Planned but not yet implemented.
 
 ## Contributing & Development
 
