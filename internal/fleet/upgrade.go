@@ -155,7 +155,7 @@ func runUpgrade(ctx context.Context, dir string) (string, error) {
 	var buf strings.Builder
 	cmd.Stdout = io.MultiWriter(os.Stderr, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
-	err := cmd.Run()
+	err := runLogged(cmd, "gh", "aw upgrade", map[string]string{"clone_dir": dir})
 	return buf.String(), err
 }
 
@@ -172,7 +172,7 @@ func runUpdate(ctx context.Context, dir string, major, force bool) (string, erro
 	var buf strings.Builder
 	cmd.Stdout = io.MultiWriter(os.Stderr, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
-	err := cmd.Run()
+	err := runLogged(cmd, "gh", "aw update", map[string]string{"clone_dir": dir})
 	return buf.String(), err
 }
 

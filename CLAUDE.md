@@ -12,6 +12,8 @@ go run . list         # Fastest sanity check — exercises LoadConfig end-to-end
 go run . template fetch   # ~3 min (serial); do not run in subagents with strict timeouts.
 ```
 
+For third-party API shape or documentation questions (e.g. zerolog field-writer signatures, cobra persistent-flag ordering), prefer `go doc <pkg>` / `go doc <pkg>.<Symbol>` over web search — it returns the exact API surface for the pinned version in `go.mod`. When editing, `gopls` (running via the IDE or `gopls definition`/`gopls symbols`) resolves identifiers against the current module state, which catches rename drift faster than grep.
+
 ### Local gate — run before claiming any code change complete
 
 `go build` / `go vet` are necessary but **not sufficient**. CI runs stricter checks (gofmt alignment, golangci-lint, full test suite) that build+vet do not. Before reporting any code change "done," run the full gate:
@@ -65,8 +67,10 @@ The `skills/` directory contains four SKILL.md files codifying recurring operato
 Committed at repo root; shared with collaborators and subagents. Allows `go build/vet/test/run`, `gh aw/api/repo/pr`, `git` read ops, and common shell tools. Denies `git add`, `git commit`, `git rebase --continue`, `git push --force`, `git reset --hard`. When adding a new developer command, add it to the allowlist so subagents don't prompt.
 
 ## Active Technologies
-- Go 1.25.8 (from `go.mod`), using `github.com/spf13/cobra` v1.10.2 for CLI wiring.
+- Go 1.25.8 (from `go.mod`), using `github.com/spf13/cobra` v1.10.2 for CLI wiring and `github.com/rs/zerolog` v1.x for structured logging on stderr.
 - `fleet.local.json` is the private, gitignored source of truth; `fleet.json` is the committed public example.
+- Structured logging: `internal/log.Configure(level, format)` wires a zerolog global logger in root's `PersistentPreRunE`; warnings/errors/subprocess summaries emit on stderr, tabwriter status stays on stdout.
 
 ## Recent Changes
+- 002-add-zerolog-logging: added `--log-level` / `--log-format` persistent flags; `⚠ WARNING:` lines in `deploy`/`sync` moved to stderr as structured `warn` events; subprocess summaries at `debug`.
 - 001-add-subcommand: added `gh-aw-fleet add <owner/repo>` subcommand (cobra) for onboarding repos into `fleet.local.json`.

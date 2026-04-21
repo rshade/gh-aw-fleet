@@ -185,7 +185,7 @@ func prepareClone(ctx context.Context, repo, explicit string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "repo", "clone", repo, dir)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	if runErr := cmd.Run(); runErr != nil {
+	if runErr := runLogged(cmd, "gh", "repo clone", map[string]string{"repo": repo, "clone_dir": dir}); runErr != nil {
 		return dir, fmt.Errorf("gh repo clone %s: %w", repo, runErr)
 	}
 	return dir, nil
@@ -199,7 +199,7 @@ func ensureInit(ctx context.Context, dir string) (bool, error) {
 	cmd.Dir = dir
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runLogged(cmd, "gh", "aw init", map[string]string{"clone_dir": dir}); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -215,14 +215,14 @@ func runAdd(ctx context.Context, dir, spec, engine string, force bool) (string, 
 	}
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
+	out, err := runLoggedCombined(cmd, "gh", "aw add", map[string]string{"clone_dir": dir})
 	return string(out), err
 }
 
 func gitCmd(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
+	out, err := runLoggedCombined(cmd, "git", subcommandLabel(args), map[string]string{"clone_dir": dir})
 	if err != nil {
 		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
@@ -237,7 +237,7 @@ func gitCmdInteractive(ctx context.Context, dir string, args ...string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runLogged(cmd, "git", subcommandLabel(args), map[string]string{"clone_dir": dir}); err != nil {
 		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return nil
@@ -246,7 +246,7 @@ func gitCmdInteractive(ctx context.Context, dir string, args ...string) error {
 func ghPRCreate(ctx context.Context, dir, title, body string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "pr", "create", "--title", title, "--body", body)
 	cmd.Dir = dir
-	out, err := cmd.Output()
+	out, err := runLoggedOutput(cmd, "gh", "pr create", map[string]string{"clone_dir": dir})
 	if err != nil {
 		return "", ghErr(err)
 	}
