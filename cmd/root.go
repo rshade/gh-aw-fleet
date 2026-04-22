@@ -18,7 +18,8 @@ func NewRootCmd() *cobra.Command {
 Workflows (gh-aw). It reconciles each repo toward the desired state
 declared in fleet.json, using gh aw add/update/upgrade under the hood
 and calling Claude when a deploy or merge needs judgment.`,
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			level, _ := cmd.Flags().GetString("log-level")
 			format, _ := cmd.Flags().GetString("log-format")

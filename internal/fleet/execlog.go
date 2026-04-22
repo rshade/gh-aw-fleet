@@ -8,9 +8,10 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
-// Tool and subcommand labels are passed by callers as string literals, never
-// derived from cmd.Args — keeping argv (which can carry credentials) out of
-// log events at the type level.
+// Tool labels are passed by callers as stable string literals rather than
+// full argv. Subcommand labels are likewise caller-provided, except they may
+// be derived from only the first token of an args slice via subcommandLabel.
+// This keeps full argv values (which can carry credentials) out of log events.
 
 // runLogged runs cmd.Run() and emits a debug-level "subprocess exited" event.
 func runLogged(cmd *exec.Cmd, toolLabel, subcommand string, extraFields map[string]string) error {

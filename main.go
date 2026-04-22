@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	zlog "github.com/rs/zerolog/log"
@@ -15,10 +16,13 @@ func main() {
 	if err == nil {
 		return
 	}
-	// Logger-config errors predate logger initialization; cobra surfaces
-	// them as plain-text stderr rather than routing them through a logger
-	// that never came up.
-	if !errors.Is(err, logpkg.ErrInvalidLevel) && !errors.Is(err, logpkg.ErrInvalidFormat) {
+	// Logger-config errors predate logger initialization, so they're printed
+	// as plain text rather than routed through a logger that never came up.
+	// Cobra's SilenceErrors is true on the root, so main is the single place
+	// that surfaces runtime errors to the user.
+	if errors.Is(err, logpkg.ErrInvalidLevel) || errors.Is(err, logpkg.ErrInvalidFormat) {
+		fmt.Fprintln(os.Stderr, err)
+	} else {
 		zlog.Error().Err(err).Msgf("fatal: %s", err)
 	}
 	os.Exit(1)
