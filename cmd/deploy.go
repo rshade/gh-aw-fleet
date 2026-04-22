@@ -5,6 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	zlog "github.com/rs/zerolog/log"
+
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
@@ -84,9 +86,11 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 			fmt.Fprintf(w, "    ! %s\n      %s\n", f.Name, f.Error)
 			errs = append(errs, f.Error)
 		}
-		for _, h := range fleet.CollectHints(errs...) {
+		hints := fleet.CollectHints(errs...)
+		for _, h := range hints {
 			fmt.Fprintf(w, "  hint: %s\n", h)
 		}
+		emitHints(res.Repo, hints)
 	}
 	if res.BranchPushed != "" {
 		fmt.Fprintf(w, "  pushed:  %s\n", res.BranchPushed)
@@ -94,15 +98,27 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 	if res.PRURL != "" {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
-	if res.MissingSecret != "" {
-		fmt.Fprintf(w, "\n  ⚠ WARNING: Actions secret %q is not set on %s\n", res.MissingSecret, res.Repo)
-		fmt.Fprintf(w, "    Workflows will fail until you add it:\n")
-		fmt.Fprintf(w, "    gh secret set %s --repo %s\n", res.MissingSecret, res.Repo)
-		if res.SecretKeyURL != "" {
-			fmt.Fprintf(w, "    Get your key: %s\n", res.SecretKeyURL)
-		}
-	}
+	emitDeployWarnings(res)
 	if !apply {
 		fmt.Fprintln(w, "\nRe-run with --apply to commit, push, and open the PR.")
 	}
+}
+
+// emitDeployWarnings: the secret-key URL goes in the message text, not a
+// structured field — URL fields would defeat log-greppable secret-hygiene.
+func emitDeployWarnings(res *fleet.DeployResult) {
+	if res == nil || res.MissingSecret == "" {
+		return
+	}
+	msg := fmt.Sprintf(
+		"Actions secret %q is not set on %s; workflows will fail until added (gh secret set %s --repo %s)",
+		res.MissingSecret, res.Repo, res.MissingSecret, res.Repo,
+	)
+	if res.SecretKeyURL != "" {
+		msg = fmt.Sprintf("%s — obtain the key at %s", msg, res.SecretKeyURL)
+	}
+	zlog.Warn().
+		Str("repo", res.Repo).
+		Str("secret", res.MissingSecret).
+		Msg(msg)
 }

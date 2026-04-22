@@ -107,9 +107,11 @@ func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult) {
 		fmt.Fprintf(w, "    ~ %s\n", f)
 	}
 
-	for _, h := range fleet.CollectHints(res.OutputLog) {
+	hints := fleet.CollectHints(res.OutputLog)
+	for _, h := range hints {
 		fmt.Fprintf(w, "  hint: %s\n", h)
 	}
+	emitHints(res.Repo, hints)
 
 	if res.BranchPushed != "" {
 		fmt.Fprintf(w, "  pushed:  %s\n", res.BranchPushed)

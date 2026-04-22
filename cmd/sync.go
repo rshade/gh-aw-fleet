@@ -7,6 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	zlog "github.com/rs/zerolog/log"
+
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
@@ -73,16 +75,24 @@ func printSync(cmd *cobra.Command, res *fleet.SyncResult, apply, prune bool) {
 	printSyncDeploy(w, res)
 	printSyncPreflight(w, res)
 
-	if len(res.Drift) > 0 {
-		fmt.Fprintln(w, "\n⚠️  WARNING: Drift detected. Workflows on disk not declared in fleet.json.")
-		if !prune {
-			fmt.Fprintln(w, "  Run with --prune --apply to remove drift workflows (this is destructive).")
-		}
+	emitSyncWarnings(res)
+	if len(res.Drift) > 0 && !prune {
+		fmt.Fprintln(w, "\n  Run with --prune --apply to remove drift workflows (this is destructive).")
 	}
 
 	if !apply {
 		fmt.Fprintln(w, "\nRe-run with --apply to add missing workflows and (with --prune) remove drift.")
 	}
+}
+
+func emitSyncWarnings(res *fleet.SyncResult) {
+	if res == nil || len(res.Drift) == 0 {
+		return
+	}
+	zlog.Warn().
+		Str("repo", res.Repo).
+		Strs("drift", res.Drift).
+		Msg("Drift detected: workflows on disk not declared in fleet.json")
 }
 
 func printSyncDrift(w io.Writer, res *fleet.SyncResult) {
@@ -137,7 +147,9 @@ func printSyncPreflight(w io.Writer, res *fleet.SyncResult) {
 		fmt.Fprintf(w, "    ! %s\n      %s\n", f.Name, f.Error)
 		errs = append(errs, f.Error)
 	}
-	for _, h := range fleet.CollectHints(errs...) {
+	hints := fleet.CollectHints(errs...)
+	for _, h := range hints {
 		fmt.Fprintf(w, "  hint: %s\n", h)
 	}
+	emitHints(res.Repo, hints)
 }
