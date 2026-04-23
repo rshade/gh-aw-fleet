@@ -7,10 +7,14 @@ import (
 	"path/filepath"
 )
 
+// Filenames the fleet reads/writes relative to the working directory.
 const (
-	ConfigFile      = "fleet.json"
+	// ConfigFile is the committed, public declarative config (example fleet).
+	ConfigFile = "fleet.json"
+	// LocalConfigFile is the private, gitignored overlay merged on top of ConfigFile at load time.
 	LocalConfigFile = "fleet.local.json"
-	TemplatesFile   = "templates.json"
+	// TemplatesFile is the upstream-catalog cache written by `fleet template fetch`.
+	TemplatesFile = "templates.json"
 
 	// SourceLocal marks an ExtraWorkflow / ResolvedWorkflow as living in the
 	// target repo itself (no upstream fetch; `gh aw add` takes a local path).
@@ -121,6 +125,7 @@ func LoadTemplates(dir string) (*Templates, error) {
 	return &t, nil
 }
 
+// SaveTemplates writes the upstream-catalog cache to dir/TemplatesFile as indented JSON.
 func SaveTemplates(dir string, t *Templates) error {
 	return writeJSON(resolve(dir, TemplatesFile), t)
 }

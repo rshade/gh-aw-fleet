@@ -17,11 +17,26 @@ func newListCmd(flagDir *string) *cobra.Command {
 		Use:   "list",
 		Short: "List tracked repos and their resolved workflow sets",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			jsonMode := outputMode(cmd) == outputJSON
 			cfg, err := fleet.LoadConfig(*flagDir)
 			if err != nil {
+				if jsonMode {
+					return preResultFailureEnvelope(cmd, "list", "", false, err)
+				}
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStderr(), "  (loaded %s)\n", cfg.LoadedFrom)
+			// Breadcrumb stays on stderr in both modes — text consumers expect it,
+			// JSON consumers redirect stderr.
+			fmt.Fprintf(cmd.ErrOrStderr(), "  (loaded %s)\n", cfg.LoadedFrom)
+
+			if jsonMode {
+				res, buildErr := fleet.BuildListResult(cfg)
+				if buildErr != nil {
+					return preResultFailureEnvelope(cmd, "list", "", false, buildErr)
+				}
+				return writeEnvelope(cmd, "list", "", false, res, nil, nil)
+			}
+
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tabPadding, ' ', 0)
 			fmt.Fprintln(tw, "REPO\tPROFILES\tENGINE\tWORKFLOWS\tEXCLUDED\tEXTRA")
 			repos := make([]string, 0, len(cfg.Repos))

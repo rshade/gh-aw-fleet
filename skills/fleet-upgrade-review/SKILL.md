@@ -217,3 +217,7 @@ You:
   - Say: "Resolve in the clone, then re-run `go run . upgrade HavenTrack/goa-service-shared --apply --work-dir /tmp/gh-aw-fleet-...`. I'll wait."
   - Do NOT attempt --apply.
 ```
+
+## Extended usage
+
+For machine-readable output, pass `-o json` on `list`/`deploy`/`sync`/`upgrade`. See `specs/003-cli-output-json/quickstart.md`.

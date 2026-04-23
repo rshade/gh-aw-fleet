@@ -1,3 +1,6 @@
+// Package cmd wires the cobra command tree for gh-aw-fleet. Each subcommand
+// is a small shell that parses flags, calls into internal/fleet for the
+// actual work, and formats the result in text or JSON (see output.go).
 package cmd
 
 import (
@@ -23,12 +26,17 @@ and calling Claude when a deploy or merge needs judgment.`,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			level, _ := cmd.Flags().GetString("log-level")
 			format, _ := cmd.Flags().GetString("log-format")
-			return logpkg.Configure(level, format)
+			if err := logpkg.Configure(level, format); err != nil {
+				return err
+			}
+			out, _ := cmd.Flags().GetString("output")
+			return validateOutputMode(out)
 		},
 	}
 	root.PersistentFlags().StringVar(&flagDir, "dir", ".", "Directory containing fleet.json")
 	root.PersistentFlags().String("log-level", "info", "Log verbosity: trace|debug|info|warn|error")
 	root.PersistentFlags().String("log-format", "console", "Log format: console|json")
+	root.PersistentFlags().StringP("output", "o", "text", "Output format: text|json")
 	root.AddCommand(
 		newListCmd(&flagDir),
 		newStatusCmd(),

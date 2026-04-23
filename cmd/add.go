@@ -28,6 +28,9 @@ func newAddCmd(flagDir *string) *cobra.Command {
 		Short: "Register a repo in fleet.local.json with a profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := rejectJSONMode(cmd, "add"); err != nil {
+				return err
+			}
 			slug, err := fleet.ValidateSlug(args[0])
 			if err != nil {
 				return err

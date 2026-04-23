@@ -2,6 +2,10 @@ package fleet
 
 import "time"
 
+// SchemaVersion is the fleet config-file (fleet.json / fleet.local.json) format
+// version written into Config.Version. Bumped only on breaking changes to the
+// on-disk structure; additive changes (new optional fields) do not bump.
+// Distinct from cmd.SchemaVersion, which versions the JSON output envelope.
 const SchemaVersion = 1
 
 // Config is the declarative desired state for the fleet.

@@ -24,12 +24,20 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo := args[0]
+			jsonMode := outputMode(cmd) == outputJSON
 			cfg, err := fleet.LoadConfig(*flagDir)
 			if err != nil {
+				if jsonMode {
+					return preResultFailureEnvelope(cmd, "deploy", repo, flagApply, err)
+				}
 				return err
 			}
 			if _, ok := cfg.Repos[repo]; !ok {
-				return fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
+				notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
+				if jsonMode {
+					return preResultFailureEnvelope(cmd, "deploy", repo, flagApply, notTrackedErr)
+				}
+				return notTrackedErr
 			}
 			opts := fleet.DeployOpts{
 				Apply:   flagApply,
@@ -39,6 +47,9 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 				WorkDir: flagWorkDir,
 			}
 			res, deployErr := fleet.Deploy(cmd.Context(), cfg, repo, opts)
+			if jsonMode {
+				return emitDeployEnvelope(cmd, repo, flagApply, res, deployErr)
+			}
 			printDeploy(cmd, res, flagApply)
 			return deployErr
 		},
@@ -110,6 +121,17 @@ func emitDeployWarnings(res *fleet.DeployResult) {
 	if res == nil || res.MissingSecret == "" {
 		return
 	}
+	msg := buildMissingSecretMessage(res)
+	zlog.Warn().
+		Str("repo", res.Repo).
+		Str("secret", res.MissingSecret).
+		Msg(msg)
+}
+
+// buildMissingSecretMessage produces the same human-readable text for both
+// the stderr zerolog warning and the JSON envelope's warnings[] entry.
+// Factored out so the two emission paths can never drift apart.
+func buildMissingSecretMessage(res *fleet.DeployResult) string {
 	msg := fmt.Sprintf(
 		"Actions secret %q is not set on %s; workflows will fail until added (gh secret set %s --repo %s)",
 		res.MissingSecret, res.Repo, res.MissingSecret, res.Repo,
@@ -117,8 +139,42 @@ func emitDeployWarnings(res *fleet.DeployResult) {
 	if res.SecretKeyURL != "" {
 		msg = fmt.Sprintf("%s — obtain the key at %s", msg, res.SecretKeyURL)
 	}
-	zlog.Warn().
-		Str("repo", res.Repo).
-		Str("secret", res.MissingSecret).
-		Msg(msg)
+	return msg
+}
+
+// emitDeployEnvelope writes the JSON envelope for a deploy invocation,
+// dual-emitting warnings/hints to stderr (zerolog) per FR-011/FR-012 and
+// embedding the structured equivalents in the envelope per FR-006/FR-009.
+func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.DeployResult, deployErr error) error {
+	var warnings []fleet.Diagnostic
+	var hints []fleet.Diagnostic
+
+	if res != nil && res.MissingSecret != "" {
+		emitDeployWarnings(res)
+		warnings = append(warnings, fleet.Diagnostic{
+			Code:    fleet.DiagMissingSecret,
+			Message: buildMissingSecretMessage(res),
+			Fields: map[string]any{
+				"secret": res.MissingSecret,
+				"url":    res.SecretKeyURL,
+			},
+		})
+	}
+	if res != nil && len(res.Failed) > 0 {
+		errs := make([]string, 0, len(res.Failed))
+		for _, f := range res.Failed {
+			errs = append(errs, f.Error)
+		}
+		emitHints(res.Repo, fleet.CollectHints(errs...))
+		hints = fleet.CollectHintDiagnostics(errs...)
+	}
+
+	if res == nil && deployErr != nil {
+		hints = []fleet.Diagnostic{fleet.HintFromError(deployErr)}
+	}
+
+	if writeErr := writeEnvelope(cmd, "deploy", repo, apply, res, warnings, hints); writeErr != nil {
+		return writeErr
+	}
+	return deployErr
 }

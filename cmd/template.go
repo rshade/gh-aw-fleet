@@ -22,6 +22,9 @@ func newTemplateFetchCmd(flagDir *string) *cobra.Command {
 		Use:   "fetch",
 		Short: "Refresh templates.json from gh-aw and agentics; Claude-classify new entries",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := rejectJSONMode(cmd, "template fetch"); err != nil {
+				return err
+			}
 			return runTemplateFetch(cmd, *flagDir)
 		},
 	}

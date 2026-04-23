@@ -214,3 +214,7 @@ You:
   - Proceed with fleet-onboard-repo flow.
   - After registration, chain into fleet-deploy.
 ```
+
+## Extended usage
+
+For machine-readable output, pass `-o json` on `list`/`deploy`/`sync`/`upgrade`. See `specs/003-cli-output-json/quickstart.md`.

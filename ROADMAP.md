@@ -20,11 +20,11 @@ The project is at **v0.1** — initial bootstrap landed in commit `8543956`
 
 ## Immediate Focus (v0.2 — CLI completeness + deploy UX)
 
-The CLI surface advertises seven subcommands but two are stubs (#9, #10).
-Closing that gap removes user surprise and unblocks the `fleet-onboard-repo`
-skill from leaning on manual `fleet.local.json` edits. Bundled in this
-milestone: a small set of deploy-time UX fixes (#6, #7) that operators feel
-on every run.
+The CLI surface advertises seven subcommands but one remains a stub (#10) —
+`add` (#9) shipped in 2026-Q2. Closing the remaining gap removes user
+surprise. Bundled in this milestone: a set of deploy-time UX fixes
+(#7, #11, #12) operators feel on every run, plus three recently-discovered
+correctness bugs (#30, #31, #32) that affect CLI error UX.
 
 ### CLI completeness
 
@@ -35,12 +35,6 @@ on every run.
   clone/init/add when staged changes exist, and re-enter at the commit gate
   (the `hasStagedOrUnstagedWorkflowChanges` check is already there). Tested
   by interrupting `--apply` after gpg failure.*
-- [ ] [#9](https://github.com/rshade/gh-aw-fleet/issues/9) Implement
-  `add <owner/repo>` subcommand `[M]`
-  *Register a repo in `fleet.local.json` with profile selection, optional
-  exclusions, and post-add validation. Dry-run by default; only `--apply`
-  writes the file. Replaces the manual JSON-edit step in the
-  `fleet-onboard-repo` skill.*
 - [ ] [#10](https://github.com/rshade/gh-aw-fleet/issues/10) Implement
   `status [repo]` subcommand `[M]`
   *Diff desired (`fleet.json`) vs actual (per-repo workflow set + pins)
@@ -74,27 +68,53 @@ in 2026-Q2; #7 and #11 continue the work.
   issue lays out three options (SHA pin, push upstream for tags, document
   exception) and requires an explicit decision before a fix lands.*
 
+### Correctness fixes
+
+Post-release bugs surfaced by real use of `v0.1.0`. All `[S]`; can be
+batched into a single `fix:` PR series.
+
+- [ ] [#30](https://github.com/rshade/gh-aw-fleet/issues/30) Errors
+  double-print to stderr (cobra + `main` both print) `[S]`
+  *Cobra's default error rendering and `main`'s zerolog `fatal:` handler
+  both fire on the same error. Silence one — likely `RootCmd.SilenceErrors`
+  is already true but one error path writes directly.*
+- [ ] [#31](https://github.com/rshade/gh-aw-fleet/issues/31) `not tracked
+  in fleet.json` error ignores `fleet.local.json` `[S]`
+  *Error message lies: the lookup goes through `LoadConfig` which merges
+  both files, but the error string only names `fleet.json`. Fix the message
+  to reflect merged-config semantics.*
+- [ ] [#32](https://github.com/rshade/gh-aw-fleet/issues/32) `upgrade`
+  first changed-file missing leading dot (TrimSpace eats porcelain status
+  char) `[S]`
+  *`git status --porcelain` emits a fixed-width status column followed by
+  the path starting at column 4. The parser `TrimSpace`s the line, which
+  eats the leading status char and then eats the first char of the path
+  when it's a dot (e.g. `.github/workflows/...`). Parse by column offset,
+  not by trim.*
+
 ## Near-Term Vision (v0.3 — operator quality of life)
 
 Once the CLI is complete, the next layer is making it pleasant under load —
 preflight before destructive ops, faster sanity checks, packaging, and
-making the tool legible to LLM agents piping its output.
+making the tool legible to LLM agents piping its output. The zerolog
+foundation (#24) shipped in 2026-Q2 and unblocks #25.
 
-- [ ] [#24](https://github.com/rshade/gh-aw-fleet/issues/24) Introduce
-  zerolog for errors, warnings, and diagnostics `[M]`
-  *Foundational: add a thin `internal/log` package over zerolog. Configure
-  once from cobra `PersistentPreRunE` with `--log-level` / `--log-format`.
-  User-facing tabwriter output stays; errors, warnings, and subprocess
-  diagnostics become structured. Prerequisite for #25's stderr warning
-  emission.*
 - [ ] [#25](https://github.com/rshade/gh-aw-fleet/issues/25) Add
   `--output json` to `list`/`deploy`/`sync`/`upgrade` for LLM consumption
   `[M]`
   *No new data — just marshal the existing `DeployResult` / `SyncResult` /
   `UpgradeResult` structs as a versioned JSON envelope
   (`schema_version: 1`) when `-o json` is set. Unlocks agentic consumers
-  without regex-scraping tabwriter tables. Depends on #24 for stderr
-  warning emission.*
+  without regex-scraping tabwriter tables. Spec lives in
+  `specs/003-cli-output-json/`; foundation (#24) is in place.*
+- [ ] [#43](https://github.com/rshade/gh-aw-fleet/issues/43) Add
+  `install.sh` and `install.ps1` one-liner installers `[M]` `community`
+  *Replace the four-step manual `gh release download` flow with curl/iwr
+  one-liners. Ship both scripts as release assets (via
+  `.goreleaser.yml` `extra_files`) and on `main` for a fallback URL.
+  Acceptance: checksum-verified install of `v0.1.0` on
+  ubuntu/macos/windows CI runners. Complements, does not replace, the
+  `gh extension` packaging item below.*
 - [ ] `sync --dry-run` runs deploy preflight `[M]`
   *Today `sync --dry-run` computes the diff but doesn't validate that the
   resolved workflows would actually `gh aw add` cleanly (404s on bad pins,
@@ -104,7 +124,8 @@ making the tool legible to LLM agents piping its output.
   *Move from `go run .` / built binary to `gh extension install rshade/gh-aw-fleet`.
   Requires renaming the binary (`gh-aw-fleet`), adding the extension manifest,
   and updating `goreleaser` to publish the right artifact shape. Lowers install
-  friction for external contributors significantly.*
+  friction for external contributors significantly. Related to #43 but a
+  distinct distribution channel.*
 - [ ] Expand `CollectHints` diagnostic catalog `[S]`
   *`internal/fleet/diagnostics.go` already scans for unknown-property, HTTP 404,
   and gpg failures. Add hints for: rate-limit (HTTP 403/429), unsigned-commit
@@ -130,12 +151,28 @@ at machine speed (prt-scan campaign, April 2026). `gh-aw-fleet` sits at the
 chokepoint where every workflow is pinned and deployed — it's the natural
 layer to enforce fleet-wide policy that per-repo tools cannot.
 
+- [ ] [#36](https://github.com/rshade/gh-aw-fleet/issues/36) **[EPIC]**
+  Add security scanning to `upgrade`/`sync`/`deploy` pipeline `[L]`
+  *Umbrella: insert a scanner layer that catches secrets, dangerous
+  compiled-YAML patterns, and fleet-structural violations before PRs merge.
+  Scoped into four sub-issues (#37–#40) that ship independently; promote
+  to Near-Term once #37 has a landing PR.*
+  - [ ] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
+    scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
+  - [ ] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict`
+    flag: promote HIGH Layer 1 findings from advisory to blocking `[S]`
+  - [ ] [#39](https://github.com/rshade/gh-aw-fleet/issues/39)
+    `--deep-scan` flag: prompt-injection regex signatures + optional
+    classifier `[L]`
+  - [ ] [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
+    Defense-in-depth UX: stderr + interactive prompt + PR body Security
+    Findings section `[M]`
 - [ ] Pin hygiene validator `[S]`
   *New `fleet validate` command: scan `fleet.json` and every resolved
   `SourceRef` for floating refs (`main`, `latest`, branch names) and fail on
   violations. Configurable severity per source so exceptions get documented
   explicitly instead of living silently in profiles. Pure parse, no
-  subprocess.*
+  subprocess. Complements #37's rule set; could ship as a Layer 0 scanner.*
 - [ ] Source attestation check `[M]` `spec-first`
   *When GitHub's 2026 workflow-dep SHA-locking API ships, cross-check each
   fleet pin against the published attestation. Warn on mismatch. Blocked on
@@ -144,8 +181,8 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   *Scan installed workflows for known-risky trigger shapes
   (`pull_request_target` without fork guards, `issue_comment` without
   `author_association` filter). Zero-clone via `gh api`; shares plumbing with
-  the proposed `status` subcommand (#10). Direct operator-facing response to
-  prt-scan-class attacks.*
+  the proposed `status` subcommand (#10). Natural Layer 2 rule for #37's
+  scanner framework once that lands.*
 
 ### Community / ecosystem
 
@@ -224,6 +261,18 @@ ideas close the loop without becoming a daemon.
 
 ### 2026-Q2
 
+- [x] [#24](https://github.com/rshade/gh-aw-fleet/issues/24) Introduce
+  zerolog for errors, warnings, and diagnostics `[M]`
+  *Added `internal/log` over zerolog, wired via cobra `PersistentPreRunE`
+  with `--log-level` / `--log-format`. Warnings and subprocess summaries
+  now emit as structured events on stderr; user-facing tabwriter output
+  stays on stdout. Unblocks #25.*
+- [x] [#9](https://github.com/rshade/gh-aw-fleet/issues/9) Implement
+  `add <owner/repo>` subcommand for fleet onboarding `[M]`
+  *New `gh-aw-fleet add <owner/repo>` cobra subcommand onboards repos into
+  `fleet.local.json` with profile selection and post-add validation.
+  Dry-run by default; `--apply` is the explicit gate. Replaces the manual
+  JSON-edit step in the `fleet-onboard-repo` skill.*
 - [x] [#6](https://github.com/rshade/gh-aw-fleet/issues/6) Check org-level
   secrets to avoid false-positive missing-secret warnings `[S]`
   *`checkEngineSecret` now queries repo secrets first, then falls back to
@@ -254,7 +303,8 @@ Any roadmap item that violates these is rejected, not negotiated.
 - **Effort labels**: `effort/small`, `effort/medium`, `effort/large`
 - **Contribution flags**: `community`, `cross-repo`, `spec-first`
 
-> Immediate Focus items (#7, #8, #9, #10, #11, #12) and the two Near-Term
-> infrastructure items (#24, #25) are tracked as GitHub issues. The remaining
-> Near-Term and Future items don't have issues yet — open them as work picks
-> up, then run `/roadmap sync` to keep this file aligned.
+> Immediate Focus items (#7, #8, #10, #11, #12, #30, #31, #32), Near-Term
+> items (#25, #43), and the Future Vision security epic (#36 with children
+> #37–#40) are tracked as GitHub issues. The remaining Near-Term and Future
+> items don't have issues yet — open them as work picks up, then run
+> `/roadmap sync` to keep this file aligned.

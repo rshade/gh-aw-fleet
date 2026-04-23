@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/spf13/cobra"
 
@@ -24,24 +25,21 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 		Use:   "upgrade [repo|--all]",
 		Short: "Bump profile pin + run gh aw upgrade + update across repos",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 1 {
-				return errors.New("upgrade: at most one positional argument (repo name)")
-			}
-			if flagAll && len(args) > 0 {
-				return errors.New("upgrade: cannot specify both --all and a repo name")
-			}
-			if !flagAll && len(args) == 0 {
-				return errors.New("upgrade: specify either a repo name or --all")
-			}
-			if flagWorkDir != "" && flagAll {
-				return errors.New("upgrade: --work-dir cannot be used with --all")
-			}
-
-			cfg, err := fleet.LoadConfig(*flagDir)
-			if err != nil {
+			if err := validateUpgradeArgs(args, flagAll, flagWorkDir); err != nil {
 				return err
 			}
-
+			jsonMode := outputMode(cmd) == outputJSON
+			cfg, err := fleet.LoadConfig(*flagDir)
+			if err != nil {
+				if jsonMode {
+					repo := ""
+					if len(args) > 0 {
+						repo = args[0]
+					}
+					return preResultFailureEnvelope(cmd, "upgrade", repo, flagApply, err)
+				}
+				return err
+			}
 			opts := fleet.UpgradeOpts{
 				Apply:   flagApply,
 				Audit:   flagAudit,
@@ -49,21 +47,10 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 				Force:   flagForce,
 				WorkDir: flagWorkDir,
 			}
-
 			if flagAll {
-				results, allErr := fleet.UpgradeAll(cmd.Context(), cfg, opts)
-				printUpgradeAll(cmd, results, flagAudit)
-				return allErr
+				return runUpgradeAll(cmd, cfg, opts, flagApply, flagAudit, jsonMode)
 			}
-
-			repo := args[0]
-			if _, ok := cfg.Repos[repo]; !ok {
-				return fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
-			}
-
-			res, upErr := fleet.Upgrade(cmd.Context(), cfg, repo, opts)
-			printUpgrade(cmd, res)
-			return upErr
+			return runUpgradeSingle(cmd, cfg, args[0], opts, flagApply, jsonMode)
 		},
 	}
 	cmd.Flags().BoolVar(&flagApply, "apply", false,
@@ -165,6 +152,100 @@ func printUpgradeSummary(w io.Writer, results []*fleet.UpgradeResult) {
 		}
 		fmt.Fprintf(w, "  %s: %s\n", res.Repo, upgradeStatus(res))
 	}
+}
+
+// validateUpgradeArgs enforces the --all/positional arg contract. Extracted
+// to keep the cobra RunE under the gocognit threshold.
+func validateUpgradeArgs(args []string, all bool, workDir string) error {
+	if len(args) > 1 {
+		return errors.New("upgrade: at most one positional argument (repo name)")
+	}
+	if all && len(args) > 0 {
+		return errors.New("upgrade: cannot specify both --all and a repo name")
+	}
+	if !all && len(args) == 0 {
+		return errors.New("upgrade: specify either a repo name or --all")
+	}
+	if workDir != "" && all {
+		return errors.New("upgrade: --work-dir cannot be used with --all")
+	}
+	return nil
+}
+
+// runUpgradeAll routes the --all path between text-mode (UpgradeAll batch +
+// summary print) and JSON-mode (per-repo NDJSON via runUpgradeAllJSON).
+func runUpgradeAll(
+	cmd *cobra.Command, cfg *fleet.Config, opts fleet.UpgradeOpts, apply, audit, jsonMode bool,
+) error {
+	if jsonMode {
+		return runUpgradeAllJSON(cmd, cfg, opts, apply)
+	}
+	results, allErr := fleet.UpgradeAll(cmd.Context(), cfg, opts)
+	printUpgradeAll(cmd, results, audit)
+	return allErr
+}
+
+// runUpgradeSingle routes the single-repo path. Validates the repo is tracked
+// before invoking Upgrade; both modes get a structured rejection on miss.
+func runUpgradeSingle(
+	cmd *cobra.Command, cfg *fleet.Config, repo string, opts fleet.UpgradeOpts, apply, jsonMode bool,
+) error {
+	if _, ok := cfg.Repos[repo]; !ok {
+		notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
+		if jsonMode {
+			return preResultFailureEnvelope(cmd, "upgrade", repo, apply, notTrackedErr)
+		}
+		return notTrackedErr
+	}
+	res, upErr := fleet.Upgrade(cmd.Context(), cfg, repo, opts)
+	if jsonMode {
+		return emitUpgradeEnvelope(cmd, repo, apply, res, upErr)
+	}
+	printUpgrade(cmd, res)
+	return upErr
+}
+
+// emitUpgradeEnvelope writes a single-repo upgrade envelope. Hints come from
+// res.OutputLog (the captured combined stdout+stderr of gh aw upgrade/update),
+// matching the text-mode hint source at cmd/upgrade.go:110.
+func emitUpgradeEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.UpgradeResult, upErr error) error {
+	var hints []fleet.Diagnostic
+	if res != nil && res.OutputLog != "" {
+		emitHints(res.Repo, fleet.CollectHints(res.OutputLog))
+		hints = fleet.CollectHintDiagnostics(res.OutputLog)
+	}
+	if res == nil && upErr != nil {
+		hints = []fleet.Diagnostic{fleet.HintFromError(upErr)}
+	}
+	if writeErr := writeEnvelope(cmd, "upgrade", repo, apply, res, nil, hints); writeErr != nil {
+		return writeErr
+	}
+	return upErr
+}
+
+// runUpgradeAllJSON emits one envelope per repo as each upgrade completes.
+// Diverges from text-mode `UpgradeAll` (which short-circuits on first error)
+// because the NDJSON contract requires every repo to surface.
+//
+// Future parallelization MUST serialize the writeEnvelope calls behind a
+// mutex to prevent interleaved partial lines (contracts/ndjson.md).
+func runUpgradeAllJSON(cmd *cobra.Command, cfg *fleet.Config, opts fleet.UpgradeOpts, apply bool) error {
+	var firstErr error
+	repos := make([]string, 0, len(cfg.Repos))
+	for r := range cfg.Repos {
+		repos = append(repos, r)
+	}
+	sort.Strings(repos)
+	for _, repo := range repos {
+		res, upErr := fleet.Upgrade(cmd.Context(), cfg, repo, opts)
+		if writeErr := emitUpgradeEnvelope(cmd, repo, apply, res, upErr); writeErr != nil && firstErr == nil {
+			firstErr = writeErr
+		}
+		if upErr != nil && firstErr == nil {
+			firstErr = upErr
+		}
+	}
+	return firstErr
 }
 
 func upgradeStatus(res *fleet.UpgradeResult) string {
