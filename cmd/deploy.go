@@ -33,7 +33,7 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 				return err
 			}
 			if _, ok := cfg.Repos[repo]; !ok {
-				notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, cfg.LoadedFrom)
+				notTrackedErr := fleet.ErrRepoNotTracked(repo, cfg.LoadedFrom)
 				if jsonMode {
 					return preResultFailureEnvelope(cmd, "deploy", repo, flagApply, notTrackedErr)
 				}
