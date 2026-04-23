@@ -198,7 +198,7 @@ func runUpgradeSingle(
 	cmd *cobra.Command, cfg *fleet.Config, repo string, opts fleet.UpgradeOpts, apply, jsonMode bool,
 ) error {
 	if _, ok := cfg.Repos[repo]; !ok {
-		notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, cfg.LoadedFrom)
+		notTrackedErr := fleet.ErrRepoNotTracked(repo, cfg.LoadedFrom)
 		if jsonMode {
 			return preResultFailureEnvelope(cmd, "upgrade", repo, apply, notTrackedErr)
 		}
