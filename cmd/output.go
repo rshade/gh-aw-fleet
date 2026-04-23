@@ -85,6 +85,15 @@ func writeEnvelopeTo(
 	return enc.Encode(env)
 }
 
+// ensureFailureHint preserves a machine-readable failure reason on stdout when
+// a command returns a partial result but the diagnostics layer finds no hint.
+func ensureFailureHint(hints []fleet.Diagnostic, err error) []fleet.Diagnostic {
+	if err == nil || len(hints) > 0 {
+		return hints
+	}
+	return append(hints, fleet.HintFromError(err))
+}
+
 // outputMode reads the resolved --output value. PersistentPreRunE has already
 // validated, so this is a defensive read; empty resolves to outputText.
 func outputMode(cmd *cobra.Command) string {
@@ -131,7 +140,7 @@ func preResultFailureEnvelope(
 	apply bool,
 	err error,
 ) error {
-	hints := []fleet.Diagnostic{fleet.HintFromError(err)}
+	hints := ensureFailureHint(nil, err)
 	if writeErr := writeEnvelope(cmd, command, repo, apply, nil, nil, hints); writeErr != nil {
 		return writeErr
 	}

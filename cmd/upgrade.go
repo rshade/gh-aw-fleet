@@ -25,10 +25,17 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 		Use:   "upgrade [repo|--all]",
 		Short: "Bump profile pin + run gh aw upgrade + update across repos",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			jsonMode := outputMode(cmd) == outputJSON
 			if err := validateUpgradeArgs(args, flagAll, flagWorkDir); err != nil {
+				if jsonMode {
+					repo := ""
+					if len(args) > 0 {
+						repo = args[0]
+					}
+					return preResultFailureEnvelope(cmd, "upgrade", repo, flagApply, err)
+				}
 				return err
 			}
-			jsonMode := outputMode(cmd) == outputJSON
 			cfg, err := fleet.LoadConfig(*flagDir)
 			if err != nil {
 				if jsonMode {
@@ -191,7 +198,7 @@ func runUpgradeSingle(
 	cmd *cobra.Command, cfg *fleet.Config, repo string, opts fleet.UpgradeOpts, apply, jsonMode bool,
 ) error {
 	if _, ok := cfg.Repos[repo]; !ok {
-		notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
+		notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, cfg.LoadedFrom)
 		if jsonMode {
 			return preResultFailureEnvelope(cmd, "upgrade", repo, apply, notTrackedErr)
 		}
@@ -214,9 +221,7 @@ func emitUpgradeEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet
 		emitHints(res.Repo, fleet.CollectHints(res.OutputLog))
 		hints = fleet.CollectHintDiagnostics(res.OutputLog)
 	}
-	if res == nil && upErr != nil {
-		hints = []fleet.Diagnostic{fleet.HintFromError(upErr)}
-	}
+	hints = ensureFailureHint(hints, upErr)
 	if writeErr := writeEnvelope(cmd, "upgrade", repo, apply, res, nil, hints); writeErr != nil {
 		return writeErr
 	}

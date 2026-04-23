@@ -177,7 +177,7 @@ All commands accept these persistent flags:
 | `--dir <path>` | `.` | Directory containing `fleet.json` / `fleet.local.json`. |
 | `--log-level <level>` | `info` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`. Use `debug` to see every subprocess invocation, timing, and exit code. |
 | `--log-format <format>` | `console` | Log format: `console` (human-readable on stderr) or `json` (structured logs for `jq` / aggregators). |
-| `-o`, `--output <format>` | `text` | Output format for list/status commands: `text` (tabular human view) or `json` (machine-readable envelopes for scripting). Currently being rolled out command by command — check `gh-aw-fleet <command> --help`. |
+| `-o`, `--output <format>` | `text` | Output format: `text` (tabular human view, default) or `json` (machine-readable envelopes for scripting). Supported on `list`, `deploy`, `sync`, and `upgrade` (`upgrade --all` emits NDJSON). Rejected with a clear error on `template fetch`, `add`, and `status`. |
 
 For multi-repo failure debugging, [`skills/fleet-deploy/SKILL.md`](skills/fleet-deploy/SKILL.md) recommends `--log-level=debug --log-format=json 2>/tmp/log.json` and traversing subprocess events with `jq`.
 

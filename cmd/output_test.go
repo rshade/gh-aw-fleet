@@ -279,6 +279,91 @@ func writeFile(t *testing.T, path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
+func envelopeCommand(buf *bytes.Buffer) *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.SetOut(buf)
+	cmd.SetErr(io.Discard)
+	return cmd
+}
+
+func TestUpgradeCmd_JSONArgErrorsEmitEnvelope(t *testing.T) {
+	cases := []struct {
+		name     string
+		args     []string
+		wantRepo string
+		wantHint string
+	}{
+		{
+			name:     "missing repo and all",
+			args:     []string{"upgrade", "-o", "json"},
+			wantRepo: "",
+			wantHint: "upgrade: specify either a repo name or --all",
+		},
+		{
+			name:     "repo with all",
+			args:     []string{"upgrade", "x/y", "--all", "-o", "json"},
+			wantRepo: "x/y",
+			wantHint: "upgrade: cannot specify both --all and a repo name",
+		},
+		{
+			name:     "work dir with all",
+			args:     []string{"upgrade", "--all", "--work-dir", "/tmp/worktree", "-o", "json"},
+			wantRepo: "",
+			wantHint: "upgrade: --work-dir cannot be used with --all",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := NewRootCmd()
+			var stdout bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(io.Discard)
+			root.SetArgs(tc.args)
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("Execute = nil; want validation error")
+			}
+			if err.Error() != tc.wantHint {
+				t.Fatalf("error = %q; want %q", err.Error(), tc.wantHint)
+			}
+
+			var env struct {
+				Command string             `json:"command"`
+				Repo    string             `json:"repo"`
+				Apply   bool               `json:"apply"`
+				Result  any                `json:"result"`
+				Hints   []fleet.Diagnostic `json:"hints"`
+			}
+			if unmarshalErr := json.Unmarshal(stdout.Bytes(), &env); unmarshalErr != nil {
+				t.Fatalf("unmarshal: %v; raw=%s", unmarshalErr, stdout.String())
+			}
+			if env.Command != "upgrade" {
+				t.Errorf("command = %q; want upgrade", env.Command)
+			}
+			if env.Repo != tc.wantRepo {
+				t.Errorf("repo = %q; want %q", env.Repo, tc.wantRepo)
+			}
+			if env.Apply {
+				t.Error("apply = true; want false")
+			}
+			if env.Result != nil {
+				t.Errorf("result = %#v; want nil", env.Result)
+			}
+			if len(env.Hints) != 1 {
+				t.Fatalf("len(hints) = %d; want 1", len(env.Hints))
+			}
+			if env.Hints[0].Code != fleet.DiagHint {
+				t.Errorf("hint code = %q; want %q", env.Hints[0].Code, fleet.DiagHint)
+			}
+			if env.Hints[0].Message != tc.wantHint {
+				t.Errorf("hint message = %q; want %q", env.Hints[0].Message, tc.wantHint)
+			}
+		})
+	}
+}
+
 func TestDeployEnvelope_EmptyArrays(t *testing.T) {
 	res := &fleet.DeployResult{Repo: "x/y"}
 	var buf bytes.Buffer
@@ -354,6 +439,34 @@ func TestDeployEnvelope_ApplyFlag(t *testing.T) {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("apply=%v: missing %s in %s", apply, want, buf.String())
 		}
+	}
+}
+
+func TestDeployEnvelope_PartialFailureFallsBackToErrorHint(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := envelopeCommand(&buf)
+	res := &fleet.DeployResult{Repo: "x/y"}
+	deployErr := errors.New("gh repo clone x/y: exit status 1")
+
+	if err := emitDeployEnvelope(cmd, "x/y", false, res, deployErr); !errors.Is(err, deployErr) {
+		t.Fatalf("emitDeployEnvelope error = %v; want %v", err, deployErr)
+	}
+
+	var env struct {
+		Result fleet.DeployResult `json:"result"`
+		Hints  []fleet.Diagnostic `json:"hints"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal: %v; raw=%s", err, buf.String())
+	}
+	if env.Result.Repo != "x/y" {
+		t.Errorf("result.repo = %q; want x/y", env.Result.Repo)
+	}
+	if len(env.Hints) != 1 {
+		t.Fatalf("len(hints) = %d; want 1", len(env.Hints))
+	}
+	if env.Hints[0].Message != deployErr.Error() {
+		t.Errorf("hint message = %q; want %q", env.Hints[0].Message, deployErr.Error())
 	}
 }
 
@@ -442,6 +555,34 @@ func TestSyncEnvelope_DriftDiagnostic(t *testing.T) {
 	}
 }
 
+func TestSyncEnvelope_PartialFailureFallsBackToErrorHint(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := envelopeCommand(&buf)
+	res := &fleet.SyncResult{Repo: "x/y"}
+	syncErr := errors.New("git push: exit status 1")
+
+	if err := emitSyncEnvelope(cmd, "x/y", true, res, syncErr); !errors.Is(err, syncErr) {
+		t.Fatalf("emitSyncEnvelope error = %v; want %v", err, syncErr)
+	}
+
+	var env struct {
+		Result fleet.SyncResult   `json:"result"`
+		Hints  []fleet.Diagnostic `json:"hints"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal: %v; raw=%s", err, buf.String())
+	}
+	if env.Result.Repo != "x/y" {
+		t.Errorf("result.repo = %q; want x/y", env.Result.Repo)
+	}
+	if len(env.Hints) != 1 {
+		t.Fatalf("len(hints) = %d; want 1", len(env.Hints))
+	}
+	if env.Hints[0].Message != syncErr.Error() {
+		t.Errorf("hint message = %q; want %q", env.Hints[0].Message, syncErr.Error())
+	}
+}
+
 func TestUpgradeEnvelope_EmptyArrays(t *testing.T) {
 	res := &fleet.UpgradeResult{Repo: "x/y"}
 	var buf bytes.Buffer
@@ -494,6 +635,34 @@ func TestUpgradeEnvelope_AuditJSONNil(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), `"audit_json":null`) {
 		t.Errorf("audit_json not null when AuditJSON is nil: %s", buf.String())
+	}
+}
+
+func TestUpgradeEnvelope_PartialFailureFallsBackToErrorHint(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := envelopeCommand(&buf)
+	res := &fleet.UpgradeResult{Repo: "x/y"}
+	upgradeErr := errors.New("gh aw update: exit status 1")
+
+	if err := emitUpgradeEnvelope(cmd, "x/y", false, res, upgradeErr); !errors.Is(err, upgradeErr) {
+		t.Fatalf("emitUpgradeEnvelope error = %v; want %v", err, upgradeErr)
+	}
+
+	var env struct {
+		Result fleet.UpgradeResult `json:"result"`
+		Hints  []fleet.Diagnostic  `json:"hints"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal: %v; raw=%s", err, buf.String())
+	}
+	if env.Result.Repo != "x/y" {
+		t.Errorf("result.repo = %q; want x/y", env.Result.Repo)
+	}
+	if len(env.Hints) != 1 {
+		t.Fatalf("len(hints) = %d; want 1", len(env.Hints))
+	}
+	if env.Hints[0].Message != upgradeErr.Error() {
+		t.Errorf("hint message = %q; want %q", env.Hints[0].Message, upgradeErr.Error())
 	}
 }
 

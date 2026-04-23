@@ -48,7 +48,7 @@ type Envelope struct {
 
 **Purpose**: Shared shape for entries in `warnings[]` and `hints[]`. A single row that a downstream consumer can machine-parse (`code`) or render to a human (`message`) with structured context for downstream automation (`fields`).
 
-**Location**: Defined in `cmd/output.go`. Constructed at warning sites in command code; constructed by `fleet.CollectHintDiagnostics` for hints.
+**Location**: Defined in `internal/fleet/diagnostics.go` (alongside `CollectHintDiagnostics` and `HintFromError`). Constructed at warning sites in command code and by `fleet.CollectHintDiagnostics` for hints; consumed by the envelope writer in `cmd/output.go`.
 
 | Field | JSON key | Type | Presence | Notes |
 |---|---|---|---|---|
@@ -78,9 +78,9 @@ type Diagnostic struct {
 | `gpg_failure` | hint classifier | (no additional fields — message is self-explanatory) |
 
 Adding a new diagnostic code:
-1. Define a package-level constant in `cmd/output.go` (e.g., `DiagMissingSecret = "missing_secret"`).
-2. At the warning site, build `Diagnostic{Code: DiagMissingSecret, Message: "...", Fields: map[string]any{...}}`.
-3. Append to the local `[]Diagnostic` slice that the command threads into the envelope.
+1. Define a package-level constant in `internal/fleet/diagnostics.go` (e.g., `DiagMissingSecret = "missing_secret"`).
+2. At the warning site, build `fleet.Diagnostic{Code: fleet.DiagMissingSecret, Message: "...", Fields: map[string]any{...}}`.
+3. Append to the local `[]fleet.Diagnostic` slice that the command threads into the envelope.
 
 ---
 

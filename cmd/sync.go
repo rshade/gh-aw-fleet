@@ -41,7 +41,7 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 				return err
 			}
 			if _, ok := cfg.Repos[repo]; !ok {
-				notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
+				notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, cfg.LoadedFrom)
 				if jsonMode {
 					return preResultFailureEnvelope(cmd, "sync", repo, flagApply, notTrackedErr)
 				}
@@ -138,10 +138,7 @@ func emitSyncEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.Sy
 		emitHints(res.Repo, fleet.CollectHints(errs...))
 		hints = fleet.CollectHintDiagnostics(errs...)
 	}
-
-	if res == nil && syncErr != nil {
-		hints = []fleet.Diagnostic{fleet.HintFromError(syncErr)}
-	}
+	hints = ensureFailureHint(hints, syncErr)
 
 	if writeErr := writeEnvelope(cmd, "sync", repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr

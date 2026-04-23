@@ -100,7 +100,7 @@ specs/003-cli-output-json/
 ```text
 cmd/
 ├── root.go              # +PersistentFlag "output", +validateOutputMode()
-├── output.go            # NEW: Diagnostic, Envelope, writeEnvelope, writeNDJSON, outputMode()
+├── output.go            # NEW: Envelope, writeEnvelope, writeNDJSON, outputMode()
 ├── output_test.go       # NEW: envelope shape, flag validator, empty-[], NDJSON, pre-result failure
 ├── list.go              # branch on outputMode(); text-mode path unchanged; json-mode path calls writeEnvelope
 ├── deploy.go            # branch on outputMode(); collect []Diagnostic from existing warning sites
@@ -116,7 +116,7 @@ internal/fleet/
 ├── deploy.go            # +json:"..." tags on DeployResult, WorkflowOutcome; ensure-[] helpers
 ├── sync.go              # +json:"..." tags on SyncResult; ensure-[] helpers
 ├── upgrade.go           # +json:"..." tags on UpgradeResult
-├── diagnostics.go       # +Code field on Hint; +CollectHintDiagnostics() []Diagnostic
+├── diagnostics.go       # NEW: Diagnostic type + stable code constants; +Code field on Hint; +CollectHintDiagnostics() []Diagnostic
 ├── fetch.go             # confirm AuditJSON json.RawMessage nests inline (no code change expected)
 ├── schema.go            # unchanged (reference style for json tags)
 ├── load.go              # unchanged
@@ -126,7 +126,7 @@ internal/fleet/
 └── *_test.go            # unchanged (existing tests continue to pass)
 ```
 
-**Structure Decision**: Single-project CLI layout (same as features 001 and 002). The `cmd/` package owns CLI wiring and serialization; `internal/fleet/` owns business types and their JSON contract. The `Diagnostic` type lives in `cmd/output.go` (not `internal/fleet/`) because it is a CLI-surface concern — it has no role in the core fleet business logic — and because importing `internal/fleet` from `cmd/` is the established direction (keeping it one-way avoids a cycle).
+**Structure Decision**: Single-project CLI layout (same as features 001 and 002). The `cmd/` package owns CLI wiring and serialization; `internal/fleet/` owns business types and their JSON contract. The `Diagnostic` type (and its code constants) lives in `internal/fleet/diagnostics.go` alongside `CollectHintDiagnostics` and `HintFromError` — the diagnostics layer already classifies gh-aw CLI output and is the natural producer of `Diagnostic` values, so co-locating the type with its producers keeps the one-way `cmd/ → internal/fleet/` import direction without forcing `cmd/` to own a type that `internal/fleet/` returns. `cmd/output.go` consumes `fleet.Diagnostic` via the envelope writer.
 
 ## Complexity Tracking
 

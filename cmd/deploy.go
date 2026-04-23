@@ -33,7 +33,7 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 				return err
 			}
 			if _, ok := cfg.Repos[repo]; !ok {
-				notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, fleet.ConfigFile)
+				notTrackedErr := fmt.Errorf("repo %q not tracked in %s", repo, cfg.LoadedFrom)
 				if jsonMode {
 					return preResultFailureEnvelope(cmd, "deploy", repo, flagApply, notTrackedErr)
 				}
@@ -168,10 +168,7 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 		emitHints(res.Repo, fleet.CollectHints(errs...))
 		hints = fleet.CollectHintDiagnostics(errs...)
 	}
-
-	if res == nil && deployErr != nil {
-		hints = []fleet.Diagnostic{fleet.HintFromError(deployErr)}
-	}
+	hints = ensureFailureHint(hints, deployErr)
 
 	if writeErr := writeEnvelope(cmd, "deploy", repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr
