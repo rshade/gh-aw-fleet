@@ -15,6 +15,9 @@ const (
 	extraSpecShortParts = 3
 )
 
+// AddOptions controls the `fleet add` onboarding call. Apply=false is dry-run;
+// Apply=true writes fleet.local.json and requires Confirmed=true to guard
+// against non-interactive misuse.
 type AddOptions struct {
 	Repo           string
 	Profiles       []string
@@ -26,6 +29,9 @@ type AddOptions struct {
 	Dir            string
 }
 
+// AddResult aggregates what an Add call resolved and persisted. SynthesizedLocal
+// is true when Add had to create fleet.local.json from scratch (no prior
+// private overlay existed); WroteLocal is true only after --apply succeeded.
 type AddResult struct {
 	Repo             string
 	Profiles         []string
@@ -73,6 +79,9 @@ func ValidateSlug(s string) (string, error) {
 	return owner + "/" + repo, nil
 }
 
+// Add onboards a new repo into the fleet. Validates profiles/engine/extras,
+// resolves the candidate's workflows for preview, and — when Apply=true —
+// persists a minimal fleet.local.json overlay for the new repo.
 func Add(cfg *Config, opts AddOptions) (*AddResult, error) {
 	if opts.Apply && !opts.Confirmed {
 		return nil, errors.New("--apply requires --yes or interactive confirmation")

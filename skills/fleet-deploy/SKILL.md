@@ -146,6 +146,8 @@ Stop. Wait for the user to report the PR URL or the merge. Don't try to run git 
 
 When a `--apply` fails across several repos (rare, but the failure modes are varied: secret drift, upstream changes, transient network), run the failing invocation with `--log-level=debug --log-format=json 2>/tmp/log.json` and inspect `/tmp/log.json` with `jq`. Subprocess summary events carry `tool`, `subcommand`, `exit_code`, `duration`, and `clone_dir`; warning events carry `repo` and the relevant detail field (`secret`, `drift`, `hint`). This gives a greppable, per-subprocess record of what the tool did without wading through interleaved live output. The three-turn pattern above is unchanged — this is an optional debugging aid for Turn 3 retrospectives.
 
+For machine-readable output, pass `-o json` on `list`/`deploy`/`sync`/`upgrade`. See `specs/003-cli-output-json/quickstart.md`.
+
 ## Invariants (non-negotiable)
 
 These apply regardless of how the user phrases the request:

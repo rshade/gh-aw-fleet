@@ -19,14 +19,14 @@ type SyncOpts struct {
 
 // SyncResult aggregates what happened for a single-repo sync.
 type SyncResult struct {
-	Repo            string        // repo owner/name
-	CloneDir        string        // where the clone lives
-	Missing         []string      // workflow names not yet deployed
-	Drift           []string      // workflow files present but not declared
-	Expected        []string      // workflow names matching fleet.json (informational)
-	Deploy          *DeployResult // set iff Apply==true and Missing/Prune required action
-	Pruned          []string      // files removed when --prune --apply
-	DeployPreflight *DeployResult // set iff Apply==false to surface compilation failures
+	Repo            string        `json:"repo"`             // repo owner/name
+	CloneDir        string        `json:"clone_dir"`        // where the clone lives
+	Missing         []string      `json:"missing"`          // workflow names not yet deployed
+	Drift           []string      `json:"drift"`            // workflow files present but not declared
+	Expected        []string      `json:"expected"`         // workflow names matching fleet.json (informational)
+	Deploy          *DeployResult `json:"deploy"`           // set iff Apply==true and Missing/Prune required action
+	Pruned          []string      `json:"pruned"`           // files removed when --prune --apply
+	DeployPreflight *DeployResult `json:"deploy_preflight"` // set iff Apply==false to surface compilation failures
 }
 
 // Sync reconciles one repo's .github/workflows/ to match its declared profile(s).

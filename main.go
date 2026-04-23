@@ -1,3 +1,6 @@
+// Command gh-aw-fleet is the declarative fleet manager for GitHub Agentic
+// Workflows. It reconciles target repos toward the desired state declared in
+// fleet.json, delegating to `gh aw`, `gh`, and `git` under the hood.
 package main
 
 import (

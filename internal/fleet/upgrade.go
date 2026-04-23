@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// UpgradeOpts controls upgrade behavior. Apply=false is dry-run; Audit=true
+// runs `gh aw audit` instead of the upgrade pipeline; Major=true permits
+// major-version source bumps; Force=true passes through to `gh aw upgrade`.
 type UpgradeOpts struct {
 	Apply   bool
 	Audit   bool
@@ -21,18 +24,21 @@ type UpgradeOpts struct {
 	WorkDir string
 }
 
+// UpgradeResult aggregates what happened for a single-repo upgrade. OutputLog
+// captures combined stdout+stderr from gh aw upgrade/update so the diagnostics
+// layer can extract actionable hints on failure.
 type UpgradeResult struct {
-	Repo         string
-	CloneDir     string
-	UpgradeOK    bool
-	UpdateOK     bool
-	ChangedFiles []string
-	Conflicts    []string
-	NoChanges    bool
-	BranchPushed string
-	PRURL        string
-	AuditJSON    json.RawMessage
-	OutputLog    string // combined stdout+stderr from gh aw upgrade/update; used for hint extraction
+	Repo         string          `json:"repo"`
+	CloneDir     string          `json:"clone_dir"`
+	UpgradeOK    bool            `json:"upgrade_ok"`
+	UpdateOK     bool            `json:"update_ok"`
+	ChangedFiles []string        `json:"changed_files"`
+	Conflicts    []string        `json:"conflicts"`
+	NoChanges    bool            `json:"no_changes"`
+	BranchPushed string          `json:"branch_pushed"`
+	PRURL        string          `json:"pr_url"`
+	AuditJSON    json.RawMessage `json:"audit_json"`
+	OutputLog    string          `json:"output_log"` // combined stdout+stderr from gh aw upgrade/update; used for hint extraction
 }
 
 // Upgrade runs the upgrade pipeline for a single repo.

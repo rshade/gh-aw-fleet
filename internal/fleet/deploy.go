@@ -39,24 +39,24 @@ type DeployOpts struct {
 
 // DeployResult aggregates what happened for a single-repo deploy.
 type DeployResult struct {
-	Repo          string
-	CloneDir      string
-	Added         []WorkflowOutcome
-	Skipped       []WorkflowOutcome
-	Failed        []WorkflowOutcome
-	InitWasRun    bool
-	BranchPushed  string
-	PRURL         string
-	MissingSecret string // non-empty if the engine secret is absent from the repo
-	SecretKeyURL  string // where to obtain the key for MissingSecret
+	Repo          string            `json:"repo"`
+	CloneDir      string            `json:"clone_dir"`
+	Added         []WorkflowOutcome `json:"added"`
+	Skipped       []WorkflowOutcome `json:"skipped"`
+	Failed        []WorkflowOutcome `json:"failed"`
+	InitWasRun    bool              `json:"init_was_run"`
+	BranchPushed  string            `json:"branch_pushed"`
+	PRURL         string            `json:"pr_url"`
+	MissingSecret string            `json:"missing_secret"` // non-empty if the engine secret is absent from the repo
+	SecretKeyURL  string            `json:"secret_key_url"` // where to obtain the key for MissingSecret
 }
 
 // WorkflowOutcome is one workflow's fate during a deploy.
 type WorkflowOutcome struct {
-	Name   string
-	Spec   string
-	Reason string
-	Error  string
+	Name   string `json:"name"`
+	Spec   string `json:"spec"`
+	Reason string `json:"reason"`
+	Error  string `json:"error"`
 }
 
 // Deploy runs the deploy pipeline for a single repo.

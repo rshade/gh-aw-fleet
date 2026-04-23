@@ -28,7 +28,7 @@ make ci          # runs: fmt-check vet lint test  (this is the CI gate)
 
 **Do not claim a task complete until `make ci` passes locally.** `go build` passing means nothing — prior commits have landed lint/fmt failures that CI rejected because only build+vet were run. When in doubt, run `make ci`.
 
-The CLI has two config files: `fleet.local.json` (private, gitignored, real fleet state) and `fleet.json` (public, committed, example tracking only `rshade/gh-aw-fleet`). `LoadConfig` tries `fleet.local.json` first and falls back. `go run . list` prints `(loaded fleet.local.json)` or `(loaded fleet.json)` to stderr so you know which is active.
+The CLI has two config files: `fleet.json` (public, committed, example tracking only `rshade/gh-aw-fleet`) and `fleet.local.json` (private, gitignored, real fleet state). `LoadConfig` reads `fleet.json` as the **base** and overlays `fleet.local.json` on top — when both exist they are merged (local profiles/repos/defaults add to or override base entries); when only one exists it is used directly. `go run . list` prints `(loaded fleet.json + fleet.local.json)`, `(loaded fleet.json)`, or `(loaded fleet.local.json)` to stderr so you know which mode is active.
 
 ## Architecture big-picture
 
@@ -51,8 +51,17 @@ The CLI has two config files: `fleet.local.json` (private, gitignored, real flee
 - **Never bypass gpg signing.** Don't add `--no-gpg-sign`, `-c commit.gpgsign=false`, or `git config commit.gpgsign false` to any command. The tool lets gpg fail; the user finishes manually in their shell. `.claude/settings.json` denies these at the allowlist level.
 - **Never run `git add`, `git commit`, `git push` from the Bash tool.** The Go tool invokes these via `exec.Command` inside `Deploy`/`Upgrade`/`Sync` — that's the one legitimate path. Claude never invokes git directly. `.claude/settings.json` deny list enforces this.
 - **Commit messages and PR titles use Conventional Commits with `ci(workflows)` scope.** See `commitMessage()` / `upgradeTitle()` in `internal/fleet/`. Subject ≤72 chars, no trailing period, type is always `ci` (these ARE CI configuration changes).
+- **Never hand-edit `CHANGELOG.md`.** Release-please manages it: on every push to `main`, the action in `.github/workflows/release-please.yml` opens a release PR that prepends a `## [version]` section generated from conventional commits. The type→section map lives in `release-please-config.json` (`feat:` → Added, `fix:` → Fixed, `refactor:` → Changed, `perf:` → Performance, `docs:` → Documentation; `chore:`/`ci:`/`build:`/`test:`/`style:` are hidden). The **commit message IS the changelog entry** — write the subject accordingly. Manual edits to version sections will be overwritten. This overrides the global CLAUDE.md rule "always update CHANGELOG.md." (The stale `## Unreleased` block at the top is a pre-automation artifact, not a pattern to extend.)
 - **Clone dirs at `/tmp/gh-aw-fleet-*` are breadcrumbs after failure** — the tool preserves them when `--apply` fails mid-pipeline. Don't delete them; the user inspects / resumes from them.
 - **`--work-dir` resumes a prior run.** Deploy's commit gate checks `hasStagedOrUnstagedWorkflowChanges` so a previously-interrupted `--apply` completes correctly when re-invoked with `--work-dir <clone>`.
+
+## Code self-documentation
+
+- **Every exported identifier gets a godoc comment.** Package, type, function, method, const, var, and exported struct field. Format: one complete sentence starting with the identifier name and ending with a period (`// Config is the declarative desired state for the fleet.`). For `Opts` / `Result` structs, document field meaning inline (`Force bool // pass --force to gh aw add`) — mirror the `DeployOpts` / `DeployResult` pattern in `internal/fleet/deploy.go`.
+- **One `// Package foo` comment per package** on any file. Keep it short (1–3 sentences describing scope, not a feature tour).
+- **Prefer expressive names over comments for unexported code.** If an internal helper needs a comment to explain *what* it does, rename it. Comments on unexported code should explain *why* — constraints, invariants, non-obvious tradeoffs — not restate the code.
+- **`make lint` enforces this** via `revive` and `staticcheck`. Do **not** re-add the `should have a package comment` / `exported X should have comment` suppressions to `.golangci.yml` — they were removed deliberately. If a check fires against a legitimate exception, narrow the suppression to that path, don't blanket-disable the rule.
+- **Two `SchemaVersion` constants live in this codebase.** `cmd.SchemaVersion` versions the JSON output envelope (wire contract); `fleet.SchemaVersion` versions the on-disk fleet.json format. They bump independently. Godoc on both must state which they are — the linter won't catch that they mean different things.
 
 ## Testing deploys requires care
 
@@ -60,7 +69,7 @@ The CLI has two config files: `fleet.local.json` (private, gitignored, real flee
 
 ## Skills
 
-The `skills/` directory contains four SKILL.md files codifying recurring operator workflows: `fleet-deploy`, `fleet-eval-templates`, `fleet-upgrade-review`, `fleet-onboard-repo`. Each skill encodes the three-turn pattern (dry-run → user approval → apply) and the gpg-failure manual-finish paste template. When adding features that affect these flows, update the relevant SKILL.md alongside the code.
+The `skills/` directory contains five SKILL.md files codifying recurring operator workflows: `fleet-deploy`, `fleet-eval-templates`, `fleet-upgrade-review`, `fleet-onboard-repo`, and `fleet-build-profile`. Each skill encodes the three-turn pattern (dry-run → user approval → apply) and the gpg-failure manual-finish paste template. `fleet-build-profile` picks up where `fleet-eval-templates` stops — the latter evaluates which upstream workflows deserve inclusion, the former materializes a chosen set as a `profiles.<name>` entry in `fleet.json` (and, for the `default` profile, the mirrored `profiles/default.json`). When adding features that affect these flows, update the relevant SKILL.md alongside the code.
 
 ## .claude/settings.json
 
@@ -70,6 +79,8 @@ Committed at repo root; shared with collaborators and subagents. Allows `go buil
 - Go 1.25.8 (from `go.mod`), using `github.com/spf13/cobra` v1.10.2 for CLI wiring and `github.com/rs/zerolog` v1.x for structured logging on stderr.
 - `fleet.local.json` is the private, gitignored source of truth; `fleet.json` is the committed public example.
 - Structured logging: `internal/log.Configure(level, format)` wires a zerolog global logger in root's `PersistentPreRunE`; warnings/errors/subprocess summaries emit on stderr, tabwriter status stays on stdout.
+- Go 1.25.8 (from `go.mod`). + `encoding/json` (stdlib, new usage site); `github.com/spf13/cobra` v1.10.2 (existing); `github.com/rs/zerolog` v1.35.1 (existing, landed in #34). No new third-party dependencies — constitution Principle I. (main)
+- N/A (no persistent state; envelope writes are transient to stdout). (main)
 
 ## Recent Changes
 - 002-add-zerolog-logging: added `--log-level` / `--log-format` persistent flags; `⚠ WARNING:` lines in `deploy`/`sync` moved to stderr as structured `warn` events; subprocess summaries at `debug`.

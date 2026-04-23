@@ -184,3 +184,7 @@ You:
   - Verdict: worth pin-bumping the agentics source in `default`. Flag that `threat-detection` is a new safe-output that might require opt-in at the gh-aw level.
   - Recommend: test on one repo first (finfocus) before bumping for all.
 ```
+
+## Extended usage
+
+For machine-readable output, pass `-o json` on `list`/`deploy`/`sync`/`upgrade`. See `specs/003-cli-output-json/quickstart.md`.
