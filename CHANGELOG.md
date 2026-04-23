@@ -10,6 +10,14 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.1.1](https://github.com/rshade/gh-aw-fleet/compare/v0.1.0...v0.1.1) (2026-04-23)
+
+
+### Added
+
+* **cli:** add --output json mode for list/deploy/sync/upgrade ([#44](https://github.com/rshade/gh-aw-fleet/issues/44)) ([e4fbe91](https://github.com/rshade/gh-aw-fleet/commit/e4fbe91b189b331465625654fbf12b047ae2eeb6)), closes [#25](https://github.com/rshade/gh-aw-fleet/issues/25)
+* **logging:** introduce zerolog for errors, warnings, and diagnostics ([#34](https://github.com/rshade/gh-aw-fleet/issues/34)) ([b6ab3b8](https://github.com/rshade/gh-aw-fleet/commit/b6ab3b870c6b3b7f47732e709b94b2f62a46637f)), closes [#24](https://github.com/rshade/gh-aw-fleet/issues/24)
+
 ## [0.1.0](https://github.com/rshade/gh-aw-fleet/compare/v1.0.0...v0.1.0) (2026-04-21)
 
 
