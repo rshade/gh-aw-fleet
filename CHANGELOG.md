@@ -10,6 +10,18 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.1.2](https://github.com/rshade/gh-aw-fleet/compare/v0.1.1...v0.1.2) (2026-04-28)
+
+
+### Added
+
+* **deploy:** resume --work-dir at commit or push gate ([#50](https://github.com/rshade/gh-aw-fleet/issues/50)) ([f904148](https://github.com/rshade/gh-aw-fleet/commit/f90414875c742f21b806279605eafa91cb940a5b)), closes [#8](https://github.com/rshade/gh-aw-fleet/issues/8) [#32](https://github.com/rshade/gh-aw-fleet/issues/32)
+
+
+### Fixed
+
+* **cli:** name both config files in untracked-repo error ([#45](https://github.com/rshade/gh-aw-fleet/issues/45)) ([891377d](https://github.com/rshade/gh-aw-fleet/commit/891377de0e917753556b01d2bdef262078f453b2)), closes [#31](https://github.com/rshade/gh-aw-fleet/issues/31) [#30](https://github.com/rshade/gh-aw-fleet/issues/30)
+
 ## [0.1.1](https://github.com/rshade/gh-aw-fleet/compare/v0.1.0...v0.1.1) (2026-04-23)
 
 
