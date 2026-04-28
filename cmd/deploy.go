@@ -117,29 +117,17 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 
 // emitDeployWarnings: the secret-key URL goes in the message text, not a
 // structured field — URL fields would defeat log-greppable secret-hygiene.
+// The stderr warning and the JSON envelope's warnings[] entry both render
+// from fleet.BuildMissingSecretMessage; the PR body's setup-required
+// section renders separately from the same DeployResult fields.
 func emitDeployWarnings(res *fleet.DeployResult) {
 	if res == nil || res.MissingSecret == "" {
 		return
 	}
-	msg := buildMissingSecretMessage(res)
 	zlog.Warn().
 		Str("repo", res.Repo).
 		Str("secret", res.MissingSecret).
-		Msg(msg)
-}
-
-// buildMissingSecretMessage produces the same human-readable text for both
-// the stderr zerolog warning and the JSON envelope's warnings[] entry.
-// Factored out so the two emission paths can never drift apart.
-func buildMissingSecretMessage(res *fleet.DeployResult) string {
-	msg := fmt.Sprintf(
-		"Actions secret %q is not set on %s; workflows will fail until added (gh secret set %s --repo %s)",
-		res.MissingSecret, res.Repo, res.MissingSecret, res.Repo,
-	)
-	if res.SecretKeyURL != "" {
-		msg = fmt.Sprintf("%s — obtain the key at %s", msg, res.SecretKeyURL)
-	}
-	return msg
+		Msg(fleet.BuildMissingSecretMessage(res))
 }
 
 // emitDeployEnvelope writes the JSON envelope for a deploy invocation,
@@ -153,7 +141,7 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 		emitDeployWarnings(res)
 		warnings = append(warnings, fleet.Diagnostic{
 			Code:    fleet.DiagMissingSecret,
-			Message: buildMissingSecretMessage(res),
+			Message: fleet.BuildMissingSecretMessage(res),
 			Fields: map[string]any{
 				"secret": res.MissingSecret,
 				"url":    res.SecretKeyURL,

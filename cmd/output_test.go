@@ -804,18 +804,3 @@ func TestEnvelope_NoNullSlices_AllResultTypes(t *testing.T) {
 		})
 	}
 }
-
-func TestBuildMissingSecretMessage(t *testing.T) {
-	res := &fleet.DeployResult{
-		Repo:          "x/y",
-		MissingSecret: "FOO",
-		SecretKeyURL:  "https://example.com",
-	}
-	got := buildMissingSecretMessage(res)
-	if !strings.Contains(got, "FOO") || !strings.Contains(got, "x/y") {
-		t.Errorf("message %q missing secret/repo", got)
-	}
-	if !strings.Contains(got, "https://example.com") {
-		t.Errorf("message %q missing key URL", got)
-	}
-}

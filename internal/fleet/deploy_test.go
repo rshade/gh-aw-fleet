@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -332,5 +333,153 @@ func TestGitHasUnpushedCommits(t *testing.T) {
 	}
 	if !has {
 		t.Error("expected true for repo with no remotes")
+	}
+}
+
+func TestBuildMissingSecretMessage(t *testing.T) {
+	tests := []struct {
+		name        string
+		res         *DeployResult
+		wantContain []string
+		wantAbsent  []string
+	}{
+		{
+			name: "with key URL",
+			res: &DeployResult{
+				Repo:          "acme/widgets",
+				MissingSecret: "ANTHROPIC_API_KEY",
+				SecretKeyURL:  "https://console.anthropic.com/settings/keys",
+			},
+			wantContain: []string{
+				`"ANTHROPIC_API_KEY"`,
+				"acme/widgets",
+				"gh secret set ANTHROPIC_API_KEY --repo acme/widgets",
+				"obtain the key at https://console.anthropic.com/settings/keys",
+			},
+		},
+		{
+			name: "without key URL omits the obtain-the-key clause",
+			res: &DeployResult{
+				Repo:          "acme/widgets",
+				MissingSecret: "COPILOT_GITHUB_TOKEN",
+				SecretKeyURL:  "",
+			},
+			wantContain: []string{
+				`"COPILOT_GITHUB_TOKEN"`,
+				"gh secret set COPILOT_GITHUB_TOKEN --repo acme/widgets",
+			},
+			wantAbsent: []string{"obtain the key at"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BuildMissingSecretMessage(tt.res)
+			for _, want := range tt.wantContain {
+				if !strings.Contains(got, want) {
+					t.Errorf("message missing %q\nfull message: %s", want, got)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("message unexpectedly contains %q\nfull message: %s", absent, got)
+				}
+			}
+		})
+	}
+}
+
+func TestPRBody_MissingSecret(t *testing.T) {
+	const heading = "## ⚠ Setup required — Actions secret missing"
+	const addedHeading = "## Added"
+
+	tests := []struct {
+		name        string
+		res         *DeployResult
+		wantContain []string
+		wantAbsent  []string
+		// orderedBefore asserts each pair {a, b} appears with a's index < b's index.
+		orderedBefore [][2]string
+	}{
+		{
+			name: "no missing secret omits the section entirely",
+			res: &DeployResult{
+				Repo: "acme/widgets",
+				Added: []WorkflowOutcome{
+					{Name: "ci-doctor", Spec: "githubnext/agentics/ci-doctor@main"},
+				},
+			},
+			wantAbsent: []string{
+				heading,
+				"gh secret set",
+				"Setup required",
+			},
+		},
+		{
+			name: "missing secret with URL surfaces section above ## Added",
+			res: &DeployResult{
+				Repo:          "acme/widgets",
+				MissingSecret: "ANTHROPIC_API_KEY",
+				SecretKeyURL:  "https://console.anthropic.com/settings/keys",
+				Added: []WorkflowOutcome{
+					{Name: "ci-doctor", Spec: "githubnext/agentics/ci-doctor@main"},
+				},
+			},
+			wantContain: []string{
+				heading,
+				"`ANTHROPIC_API_KEY`",
+				"`acme/widgets`",
+				"```sh\ngh secret set ANTHROPIC_API_KEY --repo acme/widgets\n```",
+				"Obtain the key at: https://console.anthropic.com/settings/keys",
+			},
+			orderedBefore: [][2]string{
+				{heading, addedHeading},
+			},
+		},
+		{
+			name: "missing secret without URL omits the obtain-the-key line",
+			res: &DeployResult{
+				Repo:          "acme/widgets",
+				MissingSecret: "OPENAI_API_KEY",
+				SecretKeyURL:  "",
+				Added: []WorkflowOutcome{
+					{Name: "ci-doctor", Spec: "githubnext/agentics/ci-doctor@main"},
+				},
+			},
+			wantContain: []string{
+				heading,
+				"```sh\ngh secret set OPENAI_API_KEY --repo acme/widgets\n```",
+			},
+			wantAbsent: []string{
+				"Obtain the key at:",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := prBody(tt.res, tt.res.Repo, len(tt.res.Added))
+			for _, want := range tt.wantContain {
+				if !strings.Contains(got, want) {
+					t.Errorf("body missing %q\nfull body:\n%s", want, got)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("body unexpectedly contains %q\nfull body:\n%s", absent, got)
+				}
+			}
+			for _, pair := range tt.orderedBefore {
+				ai := strings.Index(got, pair[0])
+				bi := strings.Index(got, pair[1])
+				if ai < 0 || bi < 0 {
+					t.Errorf("ordering check missing substrings: %q@%d, %q@%d", pair[0], ai, pair[1], bi)
+					continue
+				}
+				if ai >= bi {
+					t.Errorf("expected %q to appear before %q (got indices %d, %d)", pair[0], pair[1], ai, bi)
+				}
+			}
+		})
 	}
 }

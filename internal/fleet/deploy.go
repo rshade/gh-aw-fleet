@@ -59,6 +59,44 @@ type WorkflowOutcome struct {
 	Error  string `json:"error"`
 }
 
+// BuildMissingSecretMessage returns the single-line, human-readable warning
+// shown when the engine secret is absent on the deploy target. Shared by
+// the stderr (zerolog) emission and the JSON envelope's warnings[] entry.
+// The PR body's setup-required section is rendered separately by
+// missingSecretPRSection from the same DeployResult fields, so all three
+// surfaces describe the same failure with the same fix.
+func BuildMissingSecretMessage(res *DeployResult) string {
+	msg := fmt.Sprintf(
+		"Actions secret %q is not set on %s; workflows will fail until added (gh secret set %s --repo %s)",
+		res.MissingSecret, res.Repo, res.MissingSecret, res.Repo,
+	)
+	if res.SecretKeyURL != "" {
+		msg = fmt.Sprintf("%s — obtain the key at %s", msg, res.SecretKeyURL)
+	}
+	return msg
+}
+
+// missingSecretPRSection renders the markdown block surfaced near the top
+// of a deploy PR body when DeployResult.MissingSecret is non-empty. Composes
+// from the same DeployResult fields as BuildMissingSecretMessage so the PR
+// body, stderr warning, and JSON envelope all describe the same failure
+// with the same fix.
+func missingSecretPRSection(res *DeployResult) string {
+	var b strings.Builder
+	b.WriteString("## ⚠ Setup required — Actions secret missing\n\n")
+	fmt.Fprintf(&b,
+		"The `%s` secret is not set on `%s`. "+
+			"Workflows added in this PR will fail until it is configured.\n\n",
+		res.MissingSecret, res.Repo,
+	)
+	b.WriteString("**To fix before or after merging:**\n\n")
+	fmt.Fprintf(&b, "```sh\ngh secret set %s --repo %s\n```\n", res.MissingSecret, res.Repo)
+	if res.SecretKeyURL != "" {
+		fmt.Fprintf(&b, "\nObtain the key at: %s\n", res.SecretKeyURL)
+	}
+	return b.String()
+}
+
 // Deploy runs the deploy pipeline for a single repo.
 // Dry-run (Apply=false) stops after pre-flight and returns the plan.
 // --apply extends through branch/commit/push/PR.
@@ -571,6 +609,10 @@ func prBody(res *DeployResult, repo string, addedCount int) string {
 		"Deploys %d agentic workflows to `%s` via [gh-aw-fleet](https://github.com/rshade/gh-aw-fleet).\n\n",
 		addedCount, repo,
 	)
+	if res.MissingSecret != "" {
+		b.WriteString(missingSecretPRSection(res))
+		b.WriteString("\n")
+	}
 	if res.InitWasRun {
 		b.WriteString("This repo was not yet initialized for gh-aw; `gh aw init` was run as part of this PR.\n\n")
 	}
