@@ -77,6 +77,10 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 		defer os.RemoveAll(res.CloneDir)
 	}
 
+	if opts.WorkDir != "" {
+		return handleWorkDirResume(ctx, cfg, repo, res, opts)
+	}
+
 	res.InitWasRun, err = ensureInit(ctx, res.CloneDir)
 	if err != nil {
 		return res, fmt.Errorf("gh aw init: %w", err)
@@ -98,7 +102,69 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	if len(res.Added) == 0 && !staged {
 		return res, nil
 	}
-	return createDeployPR(ctx, res, repo, opts)
+	return createDeployPR(ctx, res, repo, opts, "")
+}
+
+// handleWorkDirResume processes the --work-dir resume flow: validate the clone,
+// then resume at the commit gate (staged changes) or push gate (unpushed
+// commits). Always returns a final result; never falls through to a fresh
+// deploy.
+func handleWorkDirResume(
+	ctx context.Context, cfg *Config, repo string, res *DeployResult, opts DeployOpts,
+) (*DeployResult, error) {
+	branch, err := gitCurrentBranch(ctx, res.CloneDir)
+	if err != nil {
+		return res, fmt.Errorf("work-dir %q is not a valid git repository: %w", opts.WorkDir, err)
+	}
+	if isDefaultBranch(branch) {
+		return res, fmt.Errorf(
+			"work-dir is on default branch %q; refusing to resume on a protected branch. "+
+				"Switch to the deploy branch or omit --work-dir for a fresh clone",
+			branch,
+		)
+	}
+	if opts.Branch != "" && opts.Branch != branch {
+		return res, fmt.Errorf(
+			"--branch %q conflicts with current branch %q in work-dir; "+
+				"omit --branch to resume on the existing branch",
+			opts.Branch, branch,
+		)
+	}
+
+	staged, err := hasStagedOrUnstagedWorkflowChanges(ctx, res.CloneDir)
+	if err != nil {
+		return res, err
+	}
+	if staged {
+		fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at commit gate)\n", opts.WorkDir)
+		engine := cfg.EffectiveEngine(repo)
+		res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+		if !opts.Apply {
+			return res, nil
+		}
+		return createDeployPR(ctx, res, repo, opts, branch)
+	}
+
+	hasCommits, err := gitHasUnpushedCommits(ctx, res.CloneDir)
+	if err != nil {
+		return res, err
+	}
+	if hasCommits {
+		fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at push gate)\n", opts.WorkDir)
+		engine := cfg.EffectiveEngine(repo)
+		res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+		if !opts.Apply {
+			return res, nil
+		}
+		return pushAndCreatePR(ctx, res, repo, opts, branch, nil)
+	}
+
+	return res, fmt.Errorf(
+		"work-dir %s has no staged/unstaged workflow changes and no unpushed commits; "+
+			"nothing to resume. Run without --work-dir for a fresh deploy, or verify "+
+			"the prior run left changes in this directory",
+		opts.WorkDir,
+	)
 }
 
 // addResolvedWorkflows runs `gh aw add` for each resolved workflow, populating
@@ -131,17 +197,28 @@ func addResolvedWorkflows(
 
 // createDeployPR branches, commits, pushes, and opens a PR for a deploy that
 // has pending workflow changes staged in res.CloneDir.
-func createDeployPR(ctx context.Context, res *DeployResult, repo string, opts DeployOpts) (*DeployResult, error) {
+// If resumeBranch is non-empty, the branch already exists and changes are staged.
+func createDeployPR(
+	ctx context.Context, res *DeployResult, repo string, opts DeployOpts, resumeBranch string,
+) (*DeployResult, error) {
 	branch := opts.Branch
 	if branch == "" {
-		branch = fmt.Sprintf("fleet/deploy-%s", time.Now().UTC().Format("2006-01-02-150405"))
+		if resumeBranch != "" {
+			branch = resumeBranch
+		} else {
+			branch = fmt.Sprintf("fleet/deploy-%s", time.Now().UTC().Format("2006-01-02-150405"))
+		}
 	}
-	if branchErr := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); branchErr != nil {
-		return res, fmt.Errorf("create branch: %w", branchErr)
+
+	if resumeBranch == "" {
+		if branchErr := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); branchErr != nil {
+			return res, fmt.Errorf("create branch: %w", branchErr)
+		}
+		if addErr := gitCmd(ctx, res.CloneDir, "add", ".github/"); addErr != nil {
+			return res, fmt.Errorf("git add: %w", addErr)
+		}
 	}
-	if addErr := gitCmd(ctx, res.CloneDir, "add", ".github/"); addErr != nil {
-		return res, fmt.Errorf("git add: %w", addErr)
-	}
+
 	stagedNames, err := stagedWorkflowNames(ctx, res.CloneDir)
 	if err != nil {
 		return res, fmt.Errorf("git diff --cached: %w", err)
@@ -149,24 +226,40 @@ func createDeployPR(ctx context.Context, res *DeployResult, repo string, opts De
 	msg := commitMessage(res, stagedNames)
 	if commitErr := gitCmdInteractive(ctx, res.CloneDir, "commit", "-m", msg); commitErr != nil {
 		return res, fmt.Errorf(
-			"git commit: %w\n\nTo finish manually:\n  cd %s\n  git commit -m %q\n  git push -u origin %s",
+			"git commit: %w\n\nTo finish manually:\n  cd %s\n"+
+				"  git commit -m \"$(cat <<'EOF'\n%s\nEOF\n)\"\n"+
+				"  git push -u origin %s",
 			commitErr, res.CloneDir, msg, branch,
 		)
 	}
+
+	return pushAndCreatePR(ctx, res, repo, opts, branch, stagedNames)
+}
+
+// pushAndCreatePR pushes the current branch to origin and opens a PR.
+func pushAndCreatePR(
+	ctx context.Context, res *DeployResult, repo string, opts DeployOpts,
+	branch string, stagedNames []string,
+) (*DeployResult, error) {
 	if pushErr := gitCmd(ctx, res.CloneDir, "push", "-u", "origin", branch); pushErr != nil {
 		return res, fmt.Errorf("git push: %w", pushErr)
 	}
 	res.BranchPushed = branch
 
+	addedCount := len(res.Added)
+	if addedCount == 0 {
+		addedCount = len(stagedNames)
+	}
+	if addedCount == 0 {
+		committed, _ := committedWorkflowNames(ctx, res.CloneDir)
+		addedCount = len(committed)
+	}
+
 	title := opts.PRTitle
 	if title == "" {
-		n := len(res.Added)
-		if n == 0 {
-			n = len(stagedNames)
-		}
-		title = fmt.Sprintf("ci(workflows): add %d agentic workflows via gh-aw-fleet", n)
+		title = fmt.Sprintf("ci(workflows): add %d agentic workflows via gh-aw-fleet", addedCount)
 	}
-	prURL, prErr := ghPRCreate(ctx, res.CloneDir, title, prBody(res, repo))
+	prURL, prErr := ghPRCreate(ctx, res.CloneDir, title, prBody(res, repo, addedCount))
 	if prErr != nil {
 		return res, fmt.Errorf("gh pr create: %w", prErr)
 	}
@@ -268,14 +361,61 @@ func stagedWorkflowNames(ctx context.Context, dir string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("git diff --cached: %w", err)
 	}
+	return filterWorkflowMarkdownNames(out), nil
+}
+
+// committedWorkflowNames returns the names (without .md) of workflow markdown
+// files in the most recent commit. Used as a fallback for PR title/body when
+// resuming after a manual commit.
+func committedWorkflowNames(ctx context.Context, dir string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff-tree: %w", err)
+	}
+	return filterWorkflowMarkdownNames(out), nil
+}
+
+// filterWorkflowMarkdownNames extracts basenames (without .md) of paths under
+// .github/workflows/ from newline-delimited git output (one path per line).
+func filterWorkflowMarkdownNames(out []byte) []string {
 	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, ".github/workflows/") && strings.HasSuffix(line, ".md") {
 			names = append(names, strings.TrimSuffix(filepath.Base(line), ".md"))
 		}
 	}
-	return names, nil
+	return names
+}
+
+// gitCurrentBranch returns the name of the current branch in dir.
+func gitCurrentBranch(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "branch", "--show-current")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// isDefaultBranch reports whether branch is a protected default branch name.
+func isDefaultBranch(branch string) bool {
+	return branch == "main" || branch == "master"
+}
+
+// gitHasUnpushedCommits reports whether the current HEAD has commits that are
+// not present on any remote branch.
+func gitHasUnpushedCommits(ctx context.Context, dir string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "branch", "-r", "--contains", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git branch -r --contains HEAD: %w", err)
+	}
+	return len(strings.TrimSpace(string(out))) == 0, nil
 }
 
 // ghAPIExists returns true if `gh api <path>` returns success (exit 0).
@@ -358,11 +498,11 @@ func commitMessage(res *DeployResult, stagedFallback []string) string {
 	return fmt.Sprintf("%s\n\n%s", subject, body)
 }
 
-func prBody(res *DeployResult, repo string) string {
+func prBody(res *DeployResult, repo string, addedCount int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b,
 		"Deploys %d agentic workflows to `%s` via [gh-aw-fleet](https://github.com/rshade/gh-aw-fleet).\n\n",
-		len(res.Added), repo,
+		addedCount, repo,
 	)
 	if res.InitWasRun {
 		b.WriteString("This repo was not yet initialized for gh-aw; `gh aw init` was run as part of this PR.\n\n")

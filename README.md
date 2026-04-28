@@ -312,12 +312,13 @@ A workflow uses a feature that is in upstream `gh-aw` `main` but not yet in your
 
 ### Resuming after a partial failure
 
-The `--work-dir <path>` flag points `deploy` / `upgrade` / `sync` at an existing clone instead of cloning fresh. Use it with the `/tmp/gh-aw-fleet-*` directory preserved from a failed run to re-attempt without re-cloning. Note: `--work-dir` does not yet *resume* mid-pipeline state (see Known Limitations).
+The `--work-dir <path>` flag points `deploy` / `upgrade` / `sync` at an existing clone instead of cloning fresh. Use it with the `/tmp/gh-aw-fleet-*` directory preserved from a failed run to re-attempt without re-cloning.
+
+When `deploy --apply --work-dir <path>` is run against a preserved clone that has staged workflow changes, the tool resumes at the commit gate (skipping clone, `gh aw init`, and `gh aw add`). If the user manually committed after a GPG failure, the tool detects the unpushed commits and resumes at the push gate, proceeding directly to `git push` and `gh pr create`.
 
 ## Known Limitations & Roadmap
 
 - **`status` command not yet implemented.** Planned. Will diff desired (`fleet.json`) vs actual repo state.
-- **No `--work-dir` mid-pipeline resume.** The `--work-dir` flag re-uses an existing clone but doesn't resume from arbitrary mid-pipeline state. A full retry re-runs the pipeline from the start.
 - **Sync dry-run doesn't do deploy preflight.** `sync --dry-run` computes the diff but doesn't pre-validate that the workflows would deploy successfully.
 - **No GitHub extension packaging yet.** `gh-aw-fleet` is distributed as a standalone CLI (release binary, `go install`, or build from source — see [Install](#install)), not as a `gh` extension. Extension packaging is planned.
 

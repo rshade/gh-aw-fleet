@@ -69,14 +69,16 @@ go run . deploy <owner>/<repo> --apply
 Expected outcomes:
 
 - **Clean success**: output ends with `PR: https://github.com/...`. Report the URL to the user; declare the deploy complete.
-- **gpg signing failure**: exit status 1, output contains `gpg failed to sign the data` or `gpg: signing failed`. The tool preserves the clone dir (`/tmp/gh-aw-fleet-<owner>-<repo>-<timestamp>`) with all files staged on the deploy branch. Compose a manual-finish paste (next section).
+- **gpg signing failure**: exit status 1, output contains `gpg failed to sign the data` or `gpg: signing failed`. The tool preserves the clone dir (`/tmp/gh-aw-fleet-<owner>-<repo>-<timestamp>`) with all files staged on the deploy branch. Two recovery options exist:
+  1. **Resume via `--work-dir`** (preferred): re-run `go run . deploy <owner>/<repo> --apply --work-dir <clone-dir>`. The tool detects the staged changes, skips clone/init/add, and re-enters at the commit gate.
+  2. **Manual-finish paste**: compose the shell paste below for the user to run in their own terminal where gpg-agent can prompt. Use this when the user explicitly asks for manual steps or when `--work-dir` resume is not desired.
 - **Other failures**: report honestly — don't auto-retry.
 
 ## The gpg-failure manual-finish paste
 
 When `--apply` fails on gpg signing, the deploy has already done the hard work: cloned the target, run `gh aw init` (if needed), run `gh aw add` for each workflow, created the deploy branch, staged all changes. Only the commit is blocked, because the git signing operation couldn't prompt for a passphrase.
 
-The fix is to hand the user a copy-paste block they run in their own shell, where gpg-agent can prompt them interactively. **Never** add `--no-gpg-sign` or `-c commit.gpgsign=false` to any git invocation — CLAUDE.md forbids it, and the rule exists because signing bypasses can mask real security incidents.
+If the user chooses manual finish (or `--work-dir` resume fails with the same gpg issue), hand them a copy-paste block they run in their own shell, where gpg-agent can prompt them interactively. **Never** add `--no-gpg-sign` or `-c commit.gpgsign=false` to any git invocation — CLAUDE.md forbids it, and the rule exists because signing bypasses can mask real security incidents.
 
 ### How to compose the paste
 
@@ -138,9 +140,11 @@ ci(workflows): add <N> agentic workflows via gh-aw-fleet
 
 No scope abbreviations. No trailing period. Under 72 chars (this template is 54 chars + `<N>` digits). `ci` is the type (GH Actions workflows live in `.github/workflows/`); `workflows` is the scope.
 
-### After handing the paste
+### After handing the paste (or after `--work-dir` resume)
 
 Stop. Wait for the user to report the PR URL or the merge. Don't try to run git commands yourself — the user's shell is where gpg-agent lives.
+
+If the user used `--work-dir` resume and it succeeded, the output ends with `PR: https://github.com/...` just like a clean deploy. Report the URL and mark complete.
 
 ## When deploys fail across many repos — structured logs as a debugging aid
 
