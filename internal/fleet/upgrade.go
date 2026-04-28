@@ -234,16 +234,23 @@ func getChangedFiles(ctx context.Context, dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseGitStatusPorcelain(string(out)), nil
+}
 
+func parseGitStatusPorcelain(out string) []string {
+	const porcelainPrefixLen = 3 // XY + space status prefix
 	var files []string
-	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if line == "" {
 			continue
 		}
-		file := strings.TrimSpace(line[3:])
+		if len(line) <= porcelainPrefixLen {
+			continue
+		}
+		file := strings.TrimSpace(line[porcelainPrefixLen:])
 		files = append(files, file)
 	}
-	return files, nil
+	return files
 }
 
 func upgradeCommitMessage(res *UpgradeResult) string {

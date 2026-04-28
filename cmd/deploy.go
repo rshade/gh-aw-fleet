@@ -63,7 +63,7 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 	cmd.Flags().StringVar(&flagPRTitle, "pr-title", "",
 		"PR title (default: auto-generated)")
 	cmd.Flags().StringVar(&flagWorkDir, "work-dir", "",
-		"Existing clone to deploy into (skips git clone + auto-cleanup)")
+		"Existing clone to deploy into (skips git clone + auto-cleanup; resumes at commit/push gate if staged changes or unpushed commits exist)")
 	return cmd
 }
 
