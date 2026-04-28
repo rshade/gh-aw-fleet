@@ -117,9 +117,9 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 
 // emitDeployWarnings: the secret-key URL goes in the message text, not a
 // structured field — URL fields would defeat log-greppable secret-hygiene.
-// The message itself comes from fleet.BuildMissingSecretMessage so the
-// stderr warning, the JSON envelope's warnings[] entry, and the PR body's
-// setup-required section never drift.
+// The stderr warning and the JSON envelope's warnings[] entry both render
+// from fleet.BuildMissingSecretMessage; the PR body's setup-required
+// section renders separately from the same DeployResult fields.
 func emitDeployWarnings(res *fleet.DeployResult) {
 	if res == nil || res.MissingSecret == "" {
 		return

@@ -61,8 +61,10 @@ type WorkflowOutcome struct {
 
 // BuildMissingSecretMessage returns the single-line, human-readable warning
 // shown when the engine secret is absent on the deploy target. Shared by
-// the stderr (zerolog) emission, the JSON envelope's warnings[] entry, and
-// the PR body section so the three surfaces never drift.
+// the stderr (zerolog) emission and the JSON envelope's warnings[] entry.
+// The PR body's setup-required section is rendered separately by
+// missingSecretPRSection from the same DeployResult fields, so all three
+// surfaces describe the same failure with the same fix.
 func BuildMissingSecretMessage(res *DeployResult) string {
 	msg := fmt.Sprintf(
 		"Actions secret %q is not set on %s; workflows will fail until added (gh secret set %s --repo %s)",
