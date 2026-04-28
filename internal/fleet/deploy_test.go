@@ -176,7 +176,7 @@ func TestHasStagedOrUnstagedWorkflowChanges(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "staged non-workflow file",
+			name: "staged non-workflow file is ignored",
 			setup: func(dir string) {
 				p := filepath.Join(dir, "foo.txt")
 				if err := os.WriteFile(p, []byte("foo\n"), 0o644); err != nil {
@@ -188,13 +188,32 @@ func TestHasStagedOrUnstagedWorkflowChanges(t *testing.T) {
 					t.Fatalf("git add: %v", err)
 				}
 			},
+			want: false,
+		},
+		{
+			name: "non-workflow change alongside .github change still detects",
+			setup: func(dir string) {
+				if err := os.WriteFile(filepath.Join(dir, "foo.txt"), []byte("foo\n"), 0o644); err != nil {
+					t.Fatalf("write foo: %v", err)
+				}
+				wp := filepath.Join(dir, ".github", "workflows", "test.md")
+				if err := os.MkdirAll(filepath.Dir(wp), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(wp, []byte("workflow\n"), 0o644); err != nil {
+					t.Fatalf("write workflow: %v", err)
+				}
+			},
 			want: true,
 		},
 		{
-			name: "mixed staged and unstaged",
+			name: "mixed staged and unstaged workflow",
 			setup: func(dir string) {
-				p := filepath.Join(dir, "foo.txt")
-				if err := os.WriteFile(p, []byte("foo\n"), 0o644); err != nil {
+				p := filepath.Join(dir, ".github", "workflows", "mix.md")
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(p, []byte("v1\n"), 0o644); err != nil {
 					t.Fatalf("write: %v", err)
 				}
 				cmd := exec.Command("git", "add", p)
@@ -202,8 +221,8 @@ func TestHasStagedOrUnstagedWorkflowChanges(t *testing.T) {
 				if err := cmd.Run(); err != nil {
 					t.Fatalf("git add: %v", err)
 				}
-				if err := os.WriteFile(p, []byte("bar\n"), 0o644); err != nil {
-					t.Fatalf("write: %v", err)
+				if err := os.WriteFile(p, []byte("v2\n"), 0o644); err != nil {
+					t.Fatalf("rewrite: %v", err)
 				}
 			},
 			want: true,

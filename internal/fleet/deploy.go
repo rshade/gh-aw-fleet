@@ -78,7 +78,12 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	}
 
 	if opts.WorkDir != "" {
-		return handleWorkDirResume(ctx, cfg, repo, res, opts)
+		resumed, handled, resumeErr := handleWorkDirResume(ctx, cfg, repo, res, opts)
+		if handled {
+			return resumed, resumeErr
+		}
+		fmt.Fprintf(os.Stderr,
+			"(--work-dir %s has no resume signals; running fresh pipeline)\n", opts.WorkDir)
 	}
 
 	res.InitWasRun, err = ensureInit(ctx, res.CloneDir)
@@ -105,66 +110,69 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	return createDeployPR(ctx, res, repo, opts, "")
 }
 
-// handleWorkDirResume processes the --work-dir resume flow: validate the clone,
-// then resume at the commit gate (staged changes) or push gate (unpushed
-// commits). Always returns a final result; never falls through to a fresh
-// deploy.
+// handleWorkDirResume tries to resume a prior --work-dir run at the commit
+// gate (staged .github/ changes) or push gate (unpushed commits). Returns
+// (result, handled, err): handled=true means the caller should return
+// immediately with (result, err); handled=false means no resume signals
+// were found and the caller should fall through to a fresh-pipeline deploy.
+// Resume-only safety checks (refuse-on-default-branch, conflicting --branch)
+// fire only when a resume action is about to occur, so a clean work-dir on
+// main can still be used as a fresh-clone target.
 func handleWorkDirResume(
 	ctx context.Context, cfg *Config, repo string, res *DeployResult, opts DeployOpts,
-) (*DeployResult, error) {
+) (*DeployResult, bool, error) {
 	branch, err := gitCurrentBranch(ctx, res.CloneDir)
 	if err != nil {
-		return res, fmt.Errorf("work-dir %q is not a valid git repository: %w", opts.WorkDir, err)
+		return res, true, fmt.Errorf("work-dir %q is not a valid git repository: %w", opts.WorkDir, err)
 	}
+
+	staged, err := hasStagedOrUnstagedWorkflowChanges(ctx, res.CloneDir)
+	if err != nil {
+		return res, true, err
+	}
+	hasCommits, err := gitHasUnpushedCommits(ctx, res.CloneDir)
+	if err != nil {
+		return res, true, err
+	}
+
+	if !staged && !hasCommits {
+		return res, false, nil
+	}
+
 	if isDefaultBranch(branch) {
-		return res, fmt.Errorf(
-			"work-dir is on default branch %q; refusing to resume on a protected branch. "+
-				"Switch to the deploy branch or omit --work-dir for a fresh clone",
+		return res, true, fmt.Errorf(
+			"work-dir is on default branch %q with pending changes; refusing to resume on a "+
+				"protected branch. Switch to the deploy branch or omit --work-dir for a fresh clone",
 			branch,
 		)
 	}
 	if opts.Branch != "" && opts.Branch != branch {
-		return res, fmt.Errorf(
+		return res, true, fmt.Errorf(
 			"--branch %q conflicts with current branch %q in work-dir; "+
 				"omit --branch to resume on the existing branch",
 			opts.Branch, branch,
 		)
 	}
 
-	staged, err := hasStagedOrUnstagedWorkflowChanges(ctx, res.CloneDir)
-	if err != nil {
-		return res, err
-	}
 	if staged {
 		fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at commit gate)\n", opts.WorkDir)
 		engine := cfg.EffectiveEngine(repo)
 		res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
 		if !opts.Apply {
-			return res, nil
+			return res, true, nil
 		}
-		return createDeployPR(ctx, res, repo, opts, branch)
+		out, prErr := createDeployPR(ctx, res, repo, opts, branch)
+		return out, true, prErr
 	}
 
-	hasCommits, err := gitHasUnpushedCommits(ctx, res.CloneDir)
-	if err != nil {
-		return res, err
+	fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at push gate)\n", opts.WorkDir)
+	engine := cfg.EffectiveEngine(repo)
+	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+	if !opts.Apply {
+		return res, true, nil
 	}
-	if hasCommits {
-		fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at push gate)\n", opts.WorkDir)
-		engine := cfg.EffectiveEngine(repo)
-		res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
-		if !opts.Apply {
-			return res, nil
-		}
-		return pushAndCreatePR(ctx, res, repo, opts, branch, nil)
-	}
-
-	return res, fmt.Errorf(
-		"work-dir %s has no staged/unstaged workflow changes and no unpushed commits; "+
-			"nothing to resume. Run without --work-dir for a fresh deploy, or verify "+
-			"the prior run left changes in this directory",
-		opts.WorkDir,
-	)
+	out, prErr := pushAndCreatePR(ctx, res, repo, opts, branch, nil)
+	return out, true, prErr
 }
 
 // addResolvedWorkflows runs `gh aw add` for each resolved workflow, populating
@@ -211,12 +219,11 @@ func createDeployPR(
 	}
 
 	if resumeBranch == "" {
-		if branchErr := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); branchErr != nil {
-			return res, fmt.Errorf("create branch: %w", branchErr)
+		if err := branchAndStageGithub(ctx, res.CloneDir, branch); err != nil {
+			return res, err
 		}
-		if addErr := gitCmd(ctx, res.CloneDir, "add", ".github/"); addErr != nil {
-			return res, fmt.Errorf("git add: %w", addErr)
-		}
+	} else if err := assertResumeStagedScopedToGithub(ctx, res.CloneDir); err != nil {
+		return res, err
 	}
 
 	stagedNames, err := stagedWorkflowNames(ctx, res.CloneDir)
@@ -251,7 +258,10 @@ func pushAndCreatePR(
 		addedCount = len(stagedNames)
 	}
 	if addedCount == 0 {
-		committed, _ := committedWorkflowNames(ctx, res.CloneDir)
+		committed, committedErr := committedWorkflowNames(ctx, res.CloneDir)
+		if committedErr != nil {
+			return res, fmt.Errorf("git diff-tree HEAD: %w", committedErr)
+		}
 		addedCount = len(committed)
 	}
 
@@ -364,6 +374,59 @@ func stagedWorkflowNames(ctx context.Context, dir string) ([]string, error) {
 	return filterWorkflowMarkdownNames(out), nil
 }
 
+// branchAndStageGithub creates the deploy branch and stages everything under
+// .github/. Used on the fresh-deploy path of createDeployPR.
+func branchAndStageGithub(ctx context.Context, dir, branch string) error {
+	if err := gitCmd(ctx, dir, "checkout", "-b", branch); err != nil {
+		return fmt.Errorf("create branch: %w", err)
+	}
+	if err := gitCmd(ctx, dir, "add", ".github/"); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+	return nil
+}
+
+// assertResumeStagedScopedToGithub returns an error if the index in dir has
+// any staged path outside .github/. Used at the resume commit gate to refuse
+// committing unrelated edits a preserved work-dir might still hold.
+func assertResumeStagedScopedToGithub(ctx context.Context, dir string) error {
+	extras, err := stagedNonGithubPaths(ctx, dir)
+	if err != nil {
+		return err
+	}
+	if len(extras) > 0 {
+		return fmt.Errorf(
+			"refusing to resume: %d staged path(s) outside .github/ would be committed: %s. "+
+				"Unstage them with `git restore --staged <path>` before retrying",
+			len(extras), strings.Join(extras, ", "),
+		)
+	}
+	return nil
+}
+
+// stagedNonGithubPaths returns paths in the index that are NOT under
+// .github/. Used at the resume commit gate to refuse committing unrelated
+// staged edits that may have been left in a preserved work-dir.
+func stagedNonGithubPaths(ctx context.Context, dir string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--name-only")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff --cached: %w", err)
+	}
+	var paths []string
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, ".github/") {
+			paths = append(paths, line)
+		}
+	}
+	return paths, nil
+}
+
 // committedWorkflowNames returns the names (without .md) of workflow markdown
 // files in the most recent commit. Used as a fallback for PR title/body when
 // resuming after a manual commit.
@@ -445,9 +508,13 @@ func checkEngineSecret(ctx context.Context, repo, engine string) (string, string
 	return info.SecretName, info.KeyURL
 }
 
-// Returns true if .github/ has staged or unstaged modifications.
+// hasStagedOrUnstagedWorkflowChanges reports whether dir has staged or
+// unstaged modifications under .github/. The pathspec scope matches the
+// helper's name and the resume-gate semantics: only changes the deploy
+// pipeline would commit (workflow markdown, agentic infrastructure) should
+// trigger a resume. Unrelated edits in the work-dir do not.
 func hasStagedOrUnstagedWorkflowChanges(ctx context.Context, dir string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain", "--", ".github/")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
