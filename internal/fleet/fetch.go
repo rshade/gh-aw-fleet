@@ -179,7 +179,8 @@ func diffSource(prev, next TemplateSource, res *FetchResult) {
 	sort.Strings(res.Unchanged)
 }
 
-func ghAPIJSON(ctx context.Context, path string) (any, error) {
+//nolint:gochecknoglobals // test-injection seam for gh API JSON binding
+var ghAPIJSON = func(ctx context.Context, path string) (any, error) {
 	out, err := exec.CommandContext(ctx, "gh", "api", path).Output()
 	if err != nil {
 		return nil, ghErr(err)

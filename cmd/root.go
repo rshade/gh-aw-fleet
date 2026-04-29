@@ -39,7 +39,7 @@ and calling Claude when a deploy or merge needs judgment.`,
 	root.PersistentFlags().StringP("output", "o", "text", "Output format: text|json")
 	root.AddCommand(
 		newListCmd(&flagDir),
-		newStatusCmd(),
+		newStatusCmd(&flagDir),
 		newAddCmd(&flagDir),
 		newTemplateCmd(&flagDir),
 		newDeployCmd(&flagDir),

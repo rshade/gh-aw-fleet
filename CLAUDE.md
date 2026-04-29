@@ -81,6 +81,8 @@ Committed at repo root; shared with collaborators and subagents. Allows `go buil
 - Structured logging: `internal/log.Configure(level, format)` wires a zerolog global logger in root's `PersistentPreRunE`; warnings/errors/subprocess summaries emit on stderr, tabwriter status stays on stdout.
 - Go 1.25.8 (from `go.mod`). + `encoding/json` (stdlib, new usage site); `github.com/spf13/cobra` v1.10.2 (existing); `github.com/rs/zerolog` v1.35.1 (existing, landed in #34). No new third-party dependencies — constitution Principle I. (main)
 - N/A (no persistent state; envelope writes are transient to stdout). (main)
+- Go 1.25.8 (per `go.mod`). + `github.com/spf13/cobra` v1.10.2 (CLI), `github.com/rs/zerolog` v1.x (stderr structured logging), `gopkg.in/yaml.v3` (frontmatter parsing — already in use), `encoding/json` (stdlib, JSON envelope). **No new third-party dependencies** (SC-006 / Constitution Principle I). (004-status-drift-detection)
+- N/A — pure read command, no on-disk state, no cache. Output is transient to stdout. (004-status-drift-detection)
 
 ## Recent Changes
 - 002-add-zerolog-logging: added `--log-level` / `--log-format` persistent flags; `⚠ WARNING:` lines in `deploy`/`sync` moved to stderr as structured `warn` events; subprocess summaries at `debug`.
