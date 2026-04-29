@@ -19,12 +19,16 @@ type Diagnostic struct {
 // Stable diagnostic codes. Snake_case identifiers consumed by downstream
 // agents to gate on classes of warning/hint without parsing free-form text.
 const (
-	DiagMissingSecret   = "missing_secret"
-	DiagDriftDetected   = "drift_detected"
-	DiagHint            = "hint"
-	DiagUnknownProperty = "unknown_property"
-	DiagHTTP404         = "http_404"
-	DiagGPGFailure      = "gpg_failure"
+	DiagMissingSecret      = "missing_secret"
+	DiagDriftDetected      = "drift_detected"
+	DiagHint               = "hint"
+	DiagUnknownProperty    = "unknown_property"
+	DiagHTTP404            = "http_404"
+	DiagGPGFailure         = "gpg_failure"
+	DiagRateLimited        = "rate_limited"
+	DiagRepoInaccessible   = "repo_inaccessible"
+	DiagNetworkUnreachable = "network_unreachable"
+	DiagEmptyFleet         = "empty_fleet"
 )
 
 // Hint is a remediation suggestion keyed by a substring match against
@@ -58,6 +62,16 @@ var hints = []Hint{
 		Message: "Source path not found. Check the spec — `github/gh-aw` workflows live under `.github/workflows/`; " +
 			"`githubnext/agentics` workflows live under `workflows/`.",
 		Code: DiagHTTP404,
+	},
+	{
+		Pattern: "API rate limit exceeded",
+		Message: "GitHub API rate limit exceeded. Wait until the limit resets, or rotate to a different token.",
+		Code:    DiagRateLimited,
+	},
+	{
+		Pattern: "Could not resolve host",
+		Message: "Network unreachable: GitHub API host did not resolve. Check connectivity, VPN, or DNS.",
+		Code:    DiagNetworkUnreachable,
 	},
 	{
 		Pattern: "gpg failed to sign",

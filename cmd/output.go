@@ -117,7 +117,7 @@ func validateOutputMode(mode string) error {
 }
 
 // rejectJSONMode is invoked at the top of subcommand RunE for commands that
-// don't honor --output json (template fetch, add, status). Returns nil when
+// don't honor --output json (template fetch, add). Returns nil when
 // the active mode is text; returns an explicit error when json is requested
 // (FR-013 — silent fallback would surprise jq consumers).
 func rejectJSONMode(cmd *cobra.Command, subcommand string) error {

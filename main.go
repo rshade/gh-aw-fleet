@@ -19,6 +19,13 @@ func main() {
 	if err == nil {
 		return
 	}
+	exitCode := 1
+	if code, ok := cmd.ExitCodeForError(err); ok {
+		exitCode = code
+	}
+	if cmd.SuppressErrorLog(err) {
+		os.Exit(exitCode)
+	}
 	// Logger-config errors predate logger initialization, so they're printed
 	// as plain text rather than routed through a logger that never came up.
 	// Cobra's SilenceErrors is true on the root, so main is the single place
@@ -28,5 +35,5 @@ func main() {
 	} else {
 		zlog.Error().Err(err).Msgf("fatal: %s", err)
 	}
-	os.Exit(1)
+	os.Exit(exitCode)
 }
