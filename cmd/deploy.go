@@ -115,38 +115,78 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 	}
 }
 
-// emitDeployWarnings: the secret-key URL goes in the message text, not a
-// structured field — URL fields would defeat log-greppable secret-hygiene.
-// The stderr warning and the JSON envelope's warnings[] entry both render
-// from fleet.BuildMissingSecretMessage; the PR body's setup-required
-// section renders separately from the same DeployResult fields.
+// emitDeployWarnings emits one stderr Warn line per active preflight
+// finding in fixed order: ActionsDisabled → WorkflowTokenReadOnly →
+// MissingSecret. The order matches the JSON envelope's warnings[] order
+// and the PR-body sub-block order so all three surfaces describe the same
+// findings in the same sequence.
+//
+// Secret URLs go in the message text rather than a structured field —
+// URL fields would defeat log-greppable secret-hygiene. The stderr Warn
+// and the JSON envelope's warnings[].message both render from the same
+// fleet.Build*Message helpers, while the PR body's setup-required section
+// renders independently from the same DeployResult fields.
 func emitDeployWarnings(res *fleet.DeployResult) {
-	if res == nil || res.MissingSecret == "" {
+	if res == nil {
 		return
 	}
-	zlog.Warn().
-		Str("repo", res.Repo).
-		Str("secret", res.MissingSecret).
-		Msg(fleet.BuildMissingSecretMessage(res))
+	if res.ActionsDisabled {
+		zlog.Warn().
+			Str("repo", res.Repo).
+			Str("url", fleet.ActionsSettingsURL(res.Repo)).
+			Msg(fleet.BuildActionsDisabledMessage(res.Repo))
+	}
+	if res.WorkflowTokenReadOnly {
+		zlog.Warn().
+			Str("repo", res.Repo).
+			Str("url", fleet.ActionsSettingsURL(res.Repo)).
+			Msg(fleet.BuildWorkflowTokenReadOnlyMessage(res.Repo))
+	}
+	if res.MissingSecret != "" {
+		zlog.Warn().
+			Str("repo", res.Repo).
+			Str("secret", res.MissingSecret).
+			Msg(fleet.BuildMissingSecretMessage(res))
+	}
 }
 
 // emitDeployEnvelope writes the JSON envelope for a deploy invocation,
-// dual-emitting warnings/hints to stderr (zerolog) per FR-011/FR-012 and
-// embedding the structured equivalents in the envelope per FR-006/FR-009.
+// dual-emitting warnings/hints to stderr (zerolog) and embedding the
+// structured equivalents in the envelope.
 func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.DeployResult, deployErr error) error {
 	var warnings []fleet.Diagnostic
 	var hints []fleet.Diagnostic
 
-	if res != nil && res.MissingSecret != "" {
-		emitDeployWarnings(res)
-		warnings = append(warnings, fleet.Diagnostic{
-			Code:    fleet.DiagMissingSecret,
-			Message: fleet.BuildMissingSecretMessage(res),
-			Fields: map[string]any{
-				"secret": res.MissingSecret,
-				"url":    res.SecretKeyURL,
-			},
-		})
+	emitDeployWarnings(res)
+	if res != nil {
+		if res.ActionsDisabled {
+			warnings = append(warnings, fleet.Diagnostic{
+				Code:    fleet.DiagActionsDisabled,
+				Message: fleet.BuildActionsDisabledMessage(res.Repo),
+				Fields: map[string]any{
+					"url": fleet.ActionsSettingsURL(res.Repo),
+				},
+			})
+		}
+		if res.WorkflowTokenReadOnly {
+			warnings = append(warnings, fleet.Diagnostic{
+				Code:    fleet.DiagWorkflowTokenReadOnly,
+				Message: fleet.BuildWorkflowTokenReadOnlyMessage(res.Repo),
+				Fields: map[string]any{
+					"url": fleet.ActionsSettingsURL(res.Repo),
+				},
+			})
+		}
+		if res.MissingSecret != "" {
+			warnings = append(warnings, fleet.Diagnostic{
+				Code:    fleet.DiagMissingSecret,
+				Message: fleet.BuildMissingSecretMessage(res),
+				Fields: map[string]any{
+					"secret": res.MissingSecret,
+					"url":    res.SecretKeyURL,
+				},
+			})
+		}
 	}
 	if res != nil && len(res.Failed) > 0 {
 		errs := make([]string, 0, len(res.Failed))

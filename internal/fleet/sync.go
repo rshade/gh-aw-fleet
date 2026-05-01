@@ -125,9 +125,10 @@ func applyDeployOrPrune(
 
 	if len(res.Missing) > 0 {
 		deployOpts := DeployOpts{
-			Apply:   true,
-			Force:   opts.Force,
-			WorkDir: res.CloneDir,
+			Apply:         true,
+			Force:         opts.Force,
+			WorkDir:       res.CloneDir,
+			InternalClone: opts.WorkDir == "",
 		}
 		var deployErr error
 		res.Deploy, deployErr = Deploy(ctx, cfg, repo, deployOpts)
@@ -172,9 +173,10 @@ func commitAndPushPrune(ctx context.Context, res *SyncResult) error {
 // for missing workflows during a dry-run sync.
 func runPreflight(ctx context.Context, cfg *Config, repo string, res *SyncResult, opts SyncOpts) error {
 	deployOpts := DeployOpts{
-		Apply:   false,
-		Force:   opts.Force,
-		WorkDir: res.CloneDir,
+		Apply:         false,
+		Force:         opts.Force,
+		WorkDir:       res.CloneDir,
+		InternalClone: opts.WorkDir == "",
 	}
 	var err error
 	res.DeployPreflight, err = Deploy(ctx, cfg, repo, deployOpts)
