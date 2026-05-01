@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 // EngineSecretInfo holds the Actions secret name and where to obtain the key for a given engine.
@@ -30,11 +32,12 @@ var EngineSecrets = map[string]EngineSecretInfo{
 
 // DeployOpts controls deploy behavior.
 type DeployOpts struct {
-	Apply   bool // false = dry-run (default); true = commit + push + PR
-	Force   bool // pass --force to gh aw add
-	Branch  string
-	PRTitle string
-	WorkDir string // if set, use this clone path; otherwise tmp.
+	Apply         bool // false = dry-run (default); true = commit + push + PR
+	Force         bool // pass --force to gh aw add
+	Branch        string
+	PRTitle       string
+	WorkDir       string // if set, use this clone path; otherwise tmp.
+	InternalClone bool   // WorkDir was prepared by this process; not a user resume request.
 }
 
 // DeployResult aggregates what happened for a single-repo deploy.
@@ -49,6 +52,18 @@ type DeployResult struct {
 	PRURL         string            `json:"pr_url"`
 	MissingSecret string            `json:"missing_secret"` // non-empty if the engine secret is absent from the repo
 	SecretKeyURL  string            `json:"secret_key_url"` // where to obtain the key for MissingSecret
+
+	// ActionsDisabled is true only when GitHub Actions is observably disabled
+	// on the target repo (positive evidence: 200 OK + enabled=false). It
+	// remains false for every indeterminate response (403/5xx/missing field/
+	// network error) per the fail-open contract — false means "no warning,"
+	// not "Actions is enabled."
+	ActionsDisabled bool `json:"actions_disabled"`
+
+	// WorkflowTokenReadOnly is true only on positive evidence: 200 OK +
+	// default_workflow_permissions=="read". Same fail-open semantics as
+	// ActionsDisabled — indeterminate responses leave it false.
+	WorkflowTokenReadOnly bool `json:"workflow_token_read_only"`
 }
 
 // WorkflowOutcome is one workflow's fate during a deploy.
@@ -59,11 +74,49 @@ type WorkflowOutcome struct {
 	Error  string `json:"error"`
 }
 
+// ActionsSettingsURL returns the GitHub web URL where the operator can
+// toggle "Actions permissions" and "Workflow permissions" for the given
+// repo. Both preflight findings (Actions-disabled, workflow-token-read-only)
+// share this URL because GitHub renders both controls on a single page.
+// Embedded in stderr warnings, JSON envelope fields["url"], and PR-body
+// sub-blocks so all three surfaces send the operator to the same place.
+func ActionsSettingsURL(repo string) string {
+	return fmt.Sprintf("https://github.com/%s/settings/actions", repo)
+}
+
+// BuildActionsDisabledMessage returns the single-line warning shown when
+// the deploy target has GitHub Actions disabled. The trailing "enable at
+// <URL>" suffix is part of the message contract — both the stderr warning
+// and the JSON envelope's warnings[].message reuse this string so the
+// operator sees the same actionable URL in every channel.
+func BuildActionsDisabledMessage(repo string) string {
+	return fmt.Sprintf(
+		"GitHub Actions is disabled on %s — enable at %s",
+		repo, ActionsSettingsURL(repo),
+	)
+}
+
+// BuildWorkflowTokenReadOnlyMessage returns the single-line warning shown
+// when the repo's default workflow token permission is "read." The
+// consequence sentence ("workflows that push commits or create reviews
+// will fail") is included in the message because operators may not
+// understand why their write workflows fail until they see the concrete
+// consequence spelled out. The settings control text is also part of the
+// contract surface so stderr and JSON users know exactly which setting to
+// change after following the URL.
+func BuildWorkflowTokenReadOnlyMessage(repo string) string {
+	return fmt.Sprintf(
+		"GITHUB_TOKEN is read-only on %s — workflows that push commits or create reviews will fail; set \"Workflow permissions\" → \"Read and write permissions\" at %s",
+		repo,
+		ActionsSettingsURL(repo),
+	)
+}
+
 // BuildMissingSecretMessage returns the single-line, human-readable warning
 // shown when the engine secret is absent on the deploy target. Shared by
 // the stderr (zerolog) emission and the JSON envelope's warnings[] entry.
 // The PR body's setup-required section is rendered separately by
-// missingSecretPRSection from the same DeployResult fields, so all three
+// setupRequiredSection from the same DeployResult fields, so all three
 // surfaces describe the same failure with the same fix.
 func BuildMissingSecretMessage(res *DeployResult) string {
 	msg := fmt.Sprintf(
@@ -76,23 +129,46 @@ func BuildMissingSecretMessage(res *DeployResult) string {
 	return msg
 }
 
-// missingSecretPRSection renders the markdown block surfaced near the top
-// of a deploy PR body when DeployResult.MissingSecret is non-empty. Composes
-// from the same DeployResult fields as BuildMissingSecretMessage so the PR
-// body, stderr warning, and JSON envelope all describe the same failure
-// with the same fix.
-func missingSecretPRSection(res *DeployResult) string {
+// setupRequiredSection renders the umbrella "## ⚠ Setup required" markdown
+// block for the deploy PR body, with one sub-block per active preflight
+// finding in fixed order: ActionsDisabled → WorkflowTokenReadOnly →
+// MissingSecret. Returns the empty string when no findings are active so
+// the caller suppresses the heading entirely. The fixed order matches the
+// stderr warning order and the JSON envelope's warnings[] order, so all
+// three surfaces describe the same findings in the same sequence.
+func setupRequiredSection(res *DeployResult) string {
+	if !res.ActionsDisabled && !res.WorkflowTokenReadOnly && res.MissingSecret == "" {
+		return ""
+	}
 	var b strings.Builder
-	b.WriteString("## ⚠ Setup required — Actions secret missing\n\n")
-	fmt.Fprintf(&b,
-		"The `%s` secret is not set on `%s`. "+
-			"Workflows added in this PR will fail until it is configured.\n\n",
-		res.MissingSecret, res.Repo,
-	)
-	b.WriteString("**To fix before or after merging:**\n\n")
-	fmt.Fprintf(&b, "```sh\ngh secret set %s --repo %s\n```\n", res.MissingSecret, res.Repo)
-	if res.SecretKeyURL != "" {
-		fmt.Fprintf(&b, "\nObtain the key at: %s\n", res.SecretKeyURL)
+	b.WriteString("## ⚠ Setup required\n\n")
+	if res.ActionsDisabled {
+		fmt.Fprintf(&b,
+			"**GitHub Actions is disabled on `%s`.** "+
+				"Workflows added in this PR will not run until Actions is enabled.\n\n",
+			res.Repo,
+		)
+		fmt.Fprintf(&b, "Enable at: %s\n\n", ActionsSettingsURL(res.Repo))
+	}
+	if res.WorkflowTokenReadOnly {
+		fmt.Fprintf(&b,
+			"**Workflow token is read-only on `%s`.** "+
+				"Agentic workflows that push commits or create reviews will fail.\n\n",
+			res.Repo,
+		)
+		fmt.Fprintf(&b, "Fix at: %s\n\n", ActionsSettingsURL(res.Repo))
+		b.WriteString("Set \"Workflow permissions\" → \"Read and write permissions\"\n\n")
+	}
+	if res.MissingSecret != "" {
+		fmt.Fprintf(&b,
+			"**Engine secret missing on `%s`.** The `%s` secret is not set. "+
+				"Workflows added in this PR will fail until it is configured.\n\n",
+			res.Repo, res.MissingSecret,
+		)
+		fmt.Fprintf(&b, "```sh\ngh secret set %s --repo %s\n```\n", res.MissingSecret, res.Repo)
+		if res.SecretKeyURL != "" {
+			fmt.Fprintf(&b, "\nObtain the key at: %s\n", res.SecretKeyURL)
+		}
 	}
 	return b.String()
 }
@@ -115,7 +191,7 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 		defer os.RemoveAll(res.CloneDir)
 	}
 
-	if opts.WorkDir != "" {
+	if opts.WorkDir != "" && !opts.InternalClone {
 		resumed, handled, resumeErr := handleWorkDirResume(ctx, cfg, repo, res, opts)
 		if handled {
 			return resumed, resumeErr
@@ -134,6 +210,7 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 
 	// Check that the engine secret exists on the target repo regardless of dry-run/apply.
 	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+	res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
 
 	if !opts.Apply {
 		return res, nil
@@ -196,6 +273,7 @@ func handleWorkDirResume(
 		fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at commit gate)\n", opts.WorkDir)
 		engine := cfg.EffectiveEngine(repo)
 		res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+		res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
 		if !opts.Apply {
 			return res, true, nil
 		}
@@ -206,6 +284,7 @@ func handleWorkDirResume(
 	fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at push gate)\n", opts.WorkDir)
 	engine := cfg.EffectiveEngine(repo)
 	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+	res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
 	if !opts.Apply {
 		return res, true, nil
 	}
@@ -527,6 +606,135 @@ var ghAPIExists = func(ctx context.Context, path string) bool {
 	return exec.CommandContext(ctx, "gh", "api", path).Run() == nil
 }
 
+// checkActionsSettings queries the GitHub Actions repo-level permission
+// endpoints and returns (actionsDisabled, workflowTokenReadOnly).
+//
+// Both booleans are true ONLY in response to positive evidence: a 200 OK
+// with the disqualifying value present and well-typed. Every other path
+// (HTTP 401/403/404/5xx, transport error, malformed JSON, missing field,
+// wrong type, unknown enum value) is treated as indeterminate and returns
+// false for the affected boolean — never an error to the caller. Fail-open
+// is deliberate: a deploy run from a CI environment with a narrow-scoped
+// token must complete cleanly with no Actions-settings warnings rather
+// than failing or guessing.
+//
+// Each indeterminate path emits a single zlog.Debug() entry naming the
+// repo, endpoint, and reason — invisible at the default --log-level info
+// and useful only when an operator is debugging why an expected warning
+// did not fire.
+//
+// The two endpoints are queried independently — neither short-circuits
+// the other. The token endpoint's can_approve_pull_request_reviews field
+// is intentionally ignored: a write token with PR-review approval disabled
+// is still write-permitted for the purposes of this preflight; those two
+// repo settings are orthogonal.
+func checkActionsSettings(ctx context.Context, repo string) (bool, bool) {
+	actionsDisabled := readActionsDisabled(ctx, repo)
+	tokenReadOnly := readWorkflowTokenReadOnly(ctx, repo)
+	return actionsDisabled, tokenReadOnly
+}
+
+// readActionsDisabled reads /repos/<repo>/actions/permissions and returns
+// true only when the response carries a positively-typed enabled=false.
+func readActionsDisabled(ctx context.Context, repo string) bool {
+	path := fmt.Sprintf("/repos/%s/actions/permissions", repo)
+	raw, err := ghAPIJSON(ctx, path)
+	if err != nil {
+		logActionsSettingsSkip(repo, path, classifyAPIError(err))
+		return false
+	}
+	body, ok := raw.(map[string]any)
+	if !ok {
+		logActionsSettingsSkip(repo, path, "non_object_response")
+		return false
+	}
+	v, ok := body["enabled"]
+	if !ok {
+		logActionsSettingsSkip(repo, path, "missing_field:enabled")
+		return false
+	}
+	enabled, ok := v.(bool)
+	if !ok {
+		logActionsSettingsSkip(repo, path, "type_mismatch:enabled")
+		return false
+	}
+	return !enabled
+}
+
+// readWorkflowTokenReadOnly reads /repos/<repo>/actions/permissions/workflow
+// and returns true only when default_workflow_permissions is observably
+// "read". The "write" value returns false; any future GitHub-introduced
+// value (e.g., "none") is treated as indeterminate to preserve fail-open
+// semantics — we only flag what we positively recognize as read-only.
+func readWorkflowTokenReadOnly(ctx context.Context, repo string) bool {
+	path := fmt.Sprintf("/repos/%s/actions/permissions/workflow", repo)
+	raw, err := ghAPIJSON(ctx, path)
+	if err != nil {
+		logActionsSettingsSkip(repo, path, classifyAPIError(err))
+		return false
+	}
+	body, ok := raw.(map[string]any)
+	if !ok {
+		logActionsSettingsSkip(repo, path, "non_object_response")
+		return false
+	}
+	v, ok := body["default_workflow_permissions"]
+	if !ok {
+		logActionsSettingsSkip(repo, path, "missing_field:default_workflow_permissions")
+		return false
+	}
+	perm, ok := v.(string)
+	if !ok {
+		logActionsSettingsSkip(repo, path, "type_mismatch:default_workflow_permissions")
+		return false
+	}
+	switch perm {
+	case "read":
+		return true
+	case "write":
+		return false
+	default:
+		logActionsSettingsSkip(repo, path, "unknown_value:"+perm)
+		return false
+	}
+}
+
+// logActionsSettingsSkip records a single Debug entry naming why a
+// settings-endpoint read was treated as indeterminate. Hidden at default
+// --log-level info; visible at debug.
+func logActionsSettingsSkip(repo, endpoint, reason string) {
+	zlog.Debug().
+		Str("repo", repo).
+		Str("endpoint", endpoint).
+		Str("reason", reason).
+		Msg("actions-settings preflight skipped")
+}
+
+// classifyAPIError maps a ghAPIJSON error into a stable, low-cardinality
+// reason string for the debug log. The categories are coarse on purpose:
+// debug consumers grep on these tokens to gate alerts, so the set must be
+// small and stable across releases.
+func classifyAPIError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "HTTP 401"):
+		return "http_401"
+	case strings.Contains(msg, "HTTP 403"):
+		return "http_403"
+	case strings.Contains(msg, "HTTP 404"):
+		return "http_404"
+	case strings.Contains(msg, "HTTP 5"):
+		return "http_5xx"
+	case strings.Contains(msg, "decode gh api response"):
+		return "malformed_json"
+	default:
+		return "transport_error"
+	}
+}
+
 // checkEngineSecret verifies the required engine secret exists at the repo or org level.
 // Returns (secretName, keyURL) if missing at both levels, ("", "") if present at either
 // level or the engine is unknown. A 404 from either endpoint is treated as "not found"
@@ -609,8 +817,8 @@ func prBody(res *DeployResult, repo string, addedCount int) string {
 		"Deploys %d agentic workflows to `%s` via [gh-aw-fleet](https://github.com/rshade/gh-aw-fleet).\n\n",
 		addedCount, repo,
 	)
-	if res.MissingSecret != "" {
-		b.WriteString(missingSecretPRSection(res))
+	if section := setupRequiredSection(res); section != "" {
+		b.WriteString(section)
 		b.WriteString("\n")
 	}
 	if res.InitWasRun {
