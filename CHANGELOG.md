@@ -10,6 +10,15 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.1.3](https://github.com/rshade/gh-aw-fleet/compare/v0.1.2...v0.1.3) (2026-05-01)
+
+
+### Added
+
+* **cmd:** implement status subcommand for fleet drift detection ([#64](https://github.com/rshade/gh-aw-fleet/issues/64)) ([ab116dc](https://github.com/rshade/gh-aw-fleet/commit/ab116dcf4b7de1dc2e98986440158bb43a26078e)), closes [#10](https://github.com/rshade/gh-aw-fleet/issues/10)
+* **deploy:** preflight Actions-enabled and workflow-token-write ([#66](https://github.com/rshade/gh-aw-fleet/issues/66)) ([0694ae9](https://github.com/rshade/gh-aw-fleet/commit/0694ae93355a1652c1c7b82f9a9962ec393543f5)), closes [#11](https://github.com/rshade/gh-aw-fleet/issues/11)
+* **deploy:** surface missing-secret warning in PR body ([#51](https://github.com/rshade/gh-aw-fleet/issues/51)) ([20b716b](https://github.com/rshade/gh-aw-fleet/commit/20b716bb52f90670e81b6343d7db874371837a7a)), closes [#7](https://github.com/rshade/gh-aw-fleet/issues/7)
+
 ## [0.1.2](https://github.com/rshade/gh-aw-fleet/compare/v0.1.1...v0.1.2) (2026-04-28)
 
 
