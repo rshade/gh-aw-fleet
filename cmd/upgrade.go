@@ -32,7 +32,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 					if len(args) > 0 {
 						repo = args[0]
 					}
-					return preResultFailureEnvelope(cmd, "upgrade", repo, flagApply, err)
+					return preResultFailureEnvelope(cmd, commandUpgrade, repo, flagApply, err)
 				}
 				return err
 			}
@@ -43,7 +43,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 					if len(args) > 0 {
 						repo = args[0]
 					}
-					return preResultFailureEnvelope(cmd, "upgrade", repo, flagApply, err)
+					return preResultFailureEnvelope(cmd, commandUpgrade, repo, flagApply, err)
 				}
 				return err
 			}
@@ -81,6 +81,7 @@ func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult) {
 	}
 	w := cmd.OutOrStdout()
 	fmt.Fprintf(w, "%s (clone: %s)\n", res.Repo, res.CloneDir)
+	emitUpgradeWarnings(res)
 
 	if len(res.Conflicts) > 0 {
 		fmt.Fprintf(w, "  CONFLICTS: %d file(s) need manual merge\n", len(res.Conflicts))
@@ -113,6 +114,16 @@ func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult) {
 	if res.PRURL != "" {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
+}
+
+// emitUpgradeWarnings emits one stderr Warn line per security finding. The
+// upgrade command does not currently surface other preflight warnings, so
+// the function is dedicated to the security scanner output.
+func emitUpgradeWarnings(res *fleet.UpgradeResult) {
+	if res == nil {
+		return
+	}
+	emitSecurityFindingWarnings(res.SecurityFindings)
 }
 
 func printUpgradeAll(cmd *cobra.Command, results []*fleet.UpgradeResult, audit bool) {
@@ -158,6 +169,7 @@ func printUpgradeSummary(w io.Writer, results []*fleet.UpgradeResult) {
 			continue
 		}
 		fmt.Fprintf(w, "  %s: %s\n", res.Repo, upgradeStatus(res))
+		emitUpgradeWarnings(res)
 	}
 }
 
@@ -200,7 +212,7 @@ func runUpgradeSingle(
 	if _, ok := cfg.Repos[repo]; !ok {
 		notTrackedErr := fleet.ErrRepoNotTracked(repo, cfg.LoadedFrom)
 		if jsonMode {
-			return preResultFailureEnvelope(cmd, "upgrade", repo, apply, notTrackedErr)
+			return preResultFailureEnvelope(cmd, commandUpgrade, repo, apply, notTrackedErr)
 		}
 		return notTrackedErr
 	}
@@ -214,15 +226,20 @@ func runUpgradeSingle(
 
 // emitUpgradeEnvelope writes a single-repo upgrade envelope. Hints come from
 // res.OutputLog (the captured combined stdout+stderr of gh aw upgrade/update),
-// matching the text-mode hint source at cmd/upgrade.go:110.
+// matching the text-mode hint source in printUpgrade.
 func emitUpgradeEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.UpgradeResult, upErr error) error {
+	var warnings []fleet.Diagnostic
 	var hints []fleet.Diagnostic
-	if res != nil && res.OutputLog != "" {
-		emitHints(res.Repo, fleet.CollectHints(res.OutputLog))
-		hints = fleet.CollectHintDiagnostics(res.OutputLog)
+	if res != nil {
+		emitUpgradeWarnings(res)
+		warnings = appendFindingDiagnostics(warnings, res.SecurityFindings)
+		if res.OutputLog != "" {
+			emitHints(res.Repo, fleet.CollectHints(res.OutputLog))
+			hints = fleet.CollectHintDiagnostics(res.OutputLog)
+		}
 	}
 	hints = ensureFailureHint(hints, upErr)
-	if writeErr := writeEnvelope(cmd, "upgrade", repo, apply, res, nil, hints); writeErr != nil {
+	if writeErr := writeEnvelope(cmd, commandUpgrade, repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr
 	}
 	return upErr

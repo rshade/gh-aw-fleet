@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -21,6 +22,20 @@ const SchemaVersion = 1
 const (
 	outputJSON = "json"
 	outputText = "text"
+)
+
+const (
+	commandDeploy  = "deploy"
+	commandList    = "list"
+	commandStatus  = "status"
+	commandSync    = "sync"
+	commandUpgrade = "upgrade"
+)
+
+const (
+	diagnosticFieldRepo   = "repo"
+	diagnosticFieldSecret = "secret"
+	diagnosticFieldURL    = "url"
 )
 
 // Envelope is the top-level JSON object emitted on stdout in --output json mode.
@@ -48,9 +63,9 @@ func writeEnvelope(
 	return writeEnvelopeTo(cmd.OutOrStdout(), commandName, repo, apply, result, warnings, hints)
 }
 
-// writeEnvelopeTo is the test-friendly entry point. Normalizes nil slices to
-// non-nil empty (FR-009), walks the result struct via initSlices to do the
-// same recursively, then emits compact JSON + trailing newline via
+// writeEnvelopeTo is the test-friendly entry point. Normalizes required nil
+// slices to non-nil empty (FR-009), walks the result struct via initSlices to
+// do the same recursively, then emits compact JSON + trailing newline via
 // json.NewEncoder.Encode (research.md R4: per-call flush enables NDJSON
 // streaming for upgrade --all).
 //
@@ -147,14 +162,16 @@ func preResultFailureEnvelope(
 	return err
 }
 
-// initSlices replaces every nil slice field in v with a non-nil empty slice,
-// recursing into nested structs and pointer-to-struct fields.
+// initSlices replaces every required nil slice field in v with a non-nil
+// empty slice, recursing into nested structs and pointer-to-struct fields.
 //
 // Why this exists: stdlib encoding/json marshals nil slices as JSON null but
 // non-nil empty slices as []. FR-009 requires [] for downstream consumer
 // iteration without nil-guards. Initializing the business-logic structs at
 // construction time would scatter this concern; running the helper at the
-// envelope-writer boundary keeps the JSON contract isolated.
+// envelope-writer boundary keeps the JSON contract isolated. Optional slices
+// such as security_findings are skipped because nil means "scanner did not
+// run" while a non-nil empty slice means "scanner ran clean."
 //
 // Assumes v is acyclic — it's called only on the known-finite result types
 // (ListResult, DeployResult, SyncResult, UpgradeResult), which have no
@@ -188,6 +205,9 @@ func walkInitSlices(rv reflect.Value) {
 		}
 		switch field.Kind() {
 		case reflect.Slice:
+			if isOptionalSliceField(rv.Type().Field(i)) {
+				continue
+			}
 			// Skip []byte (incl. json.RawMessage) — these have custom MarshalJSON
 			// that expects nil → null, valid JSON bytes → nested object, and empty
 			// non-nil []byte → marshal error. Don't normalize them.
@@ -211,4 +231,9 @@ func walkInitSlices(rv reflect.Value) {
 			walkInitSlices(field)
 		}
 	}
+}
+
+func isOptionalSliceField(field reflect.StructField) bool {
+	jsonKey, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+	return jsonKey == "security_findings"
 }

@@ -6,31 +6,46 @@
 // touching one table.
 package fleet
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet/fleetdiag"
+)
 
 // Diagnostic is the shared shape for warnings and hints embedded in the
 // JSON envelope (cmd/output.go) and emitted on stderr via zerolog.
-type Diagnostic struct {
-	Code    string         `json:"code"`
-	Message string         `json:"message"`
-	Fields  map[string]any `json:"fields,omitempty"`
-}
+//
+// Aliased from the fleetdiag leaf package so that internal/fleet/security
+// can depend on Diagnostic without creating an import cycle with this
+// package. Callers continue to use fleet.Diagnostic unchanged.
+type Diagnostic = fleetdiag.Diagnostic
 
 // Stable diagnostic codes. Snake_case identifiers consumed by downstream
 // agents to gate on classes of warning/hint without parsing free-form text.
+// Forwarded from fleetdiag — see Diagnostic above for rationale.
 const (
-	DiagMissingSecret         = "missing_secret"
-	DiagActionsDisabled       = "actions_disabled"
-	DiagWorkflowTokenReadOnly = "workflow_token_read_only"
-	DiagDriftDetected         = "drift_detected"
-	DiagHint                  = "hint"
-	DiagUnknownProperty       = "unknown_property"
-	DiagHTTP404               = "http_404"
-	DiagGPGFailure            = "gpg_failure"
-	DiagRateLimited           = "rate_limited"
-	DiagRepoInaccessible      = "repo_inaccessible"
-	DiagNetworkUnreachable    = "network_unreachable"
-	DiagEmptyFleet            = "empty_fleet"
+	DiagMissingSecret         = fleetdiag.DiagMissingSecret
+	DiagActionsDisabled       = fleetdiag.DiagActionsDisabled
+	DiagWorkflowTokenReadOnly = fleetdiag.DiagWorkflowTokenReadOnly
+	DiagDriftDetected         = fleetdiag.DiagDriftDetected
+	DiagHint                  = fleetdiag.DiagHint
+	DiagUnknownProperty       = fleetdiag.DiagUnknownProperty
+	DiagHTTP404               = fleetdiag.DiagHTTP404
+	DiagGPGFailure            = fleetdiag.DiagGPGFailure
+	DiagRateLimited           = fleetdiag.DiagRateLimited
+	DiagRepoInaccessible      = fleetdiag.DiagRepoInaccessible
+	DiagNetworkUnreachable    = fleetdiag.DiagNetworkUnreachable
+	DiagEmptyFleet            = fleetdiag.DiagEmptyFleet
+
+	DiagSecurityCredential            = fleetdiag.DiagSecurityCredential
+	DiagSecurityWriteOnSchedule       = fleetdiag.DiagSecurityWriteOnSchedule
+	DiagSecurityDraftFalse            = fleetdiag.DiagSecurityDraftFalse
+	DiagSecurityMissingProtectedFiles = fleetdiag.DiagSecurityMissingProtectedFiles
+	DiagSecurityEngineEnvNonAllowlist = fleetdiag.DiagSecurityEngineEnvNonAllowlist
+	DiagSecurityRepoMemoryMain        = fleetdiag.DiagSecurityRepoMemoryMain
+	DiagSecurityMCPNonStandardHost    = fleetdiag.DiagSecurityMCPNonStandardHost
+	DiagSecurityActionlint            = fleetdiag.DiagSecurityActionlint
+	DiagSecurityFrontmatterParseError = fleetdiag.DiagSecurityFrontmatterParseError
 )
 
 // Hint is a remediation suggestion keyed by a substring match against

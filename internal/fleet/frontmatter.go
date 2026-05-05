@@ -1,50 +1,32 @@
 package fleet
 
 import (
-	"errors"
-	"fmt"
 	"sort"
-	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/rshade/gh-aw-fleet/internal/fleet/frontmatter"
 )
 
 // ErrEmptyFrontmatter is returned by ParseFrontmatter when the input has no
 // YAML content. Callers typically treat this as a non-fatal skip.
-var ErrEmptyFrontmatter = errors.New("empty frontmatter")
+//
+// Forwarded from the leaf frontmatter package so internal/fleet/security
+// can share the parser without an import cycle.
+var ErrEmptyFrontmatter = frontmatter.ErrEmpty
 
 // SplitFrontmatter separates a markdown file's YAML frontmatter from its body.
 // Returns (frontmatterYAML, body) — frontmatterYAML is empty if no `---` fence.
+//
+// Forwards to frontmatter.Split.
 func SplitFrontmatter(src string) (string, string) {
-	src = strings.TrimPrefix(src, "\ufeff")
-	if !strings.HasPrefix(src, "---") {
-		return "", src
-	}
-	after := strings.TrimPrefix(src, "---")
-	after = strings.TrimPrefix(after, "\r")
-	after = strings.TrimPrefix(after, "\n")
-	end := strings.Index(after, "\n---")
-	if end < 0 {
-		return "", src
-	}
-	fm := after[:end]
-	body := after[end+len("\n---"):]
-	body = strings.TrimPrefix(body, "\r")
-	body = strings.TrimPrefix(body, "\n")
-	return fm, body
+	return frontmatter.Split(src)
 }
 
 // ParseFrontmatter yaml-decodes a frontmatter chunk into a generic map.
 // Returns ErrEmptyFrontmatter when the input has no YAML content.
+//
+// Forwards to frontmatter.Parse.
 func ParseFrontmatter(fm string) (map[string]any, error) {
-	if strings.TrimSpace(fm) == "" {
-		return nil, ErrEmptyFrontmatter
-	}
-	out := map[string]any{}
-	if err := yaml.Unmarshal([]byte(fm), &out); err != nil {
-		return nil, fmt.Errorf("yaml parse: %w", err)
-	}
-	return out, nil
+	return frontmatter.Parse(fm)
 }
 
 // ExtractWorkflowMeta pulls well-known, diff-friendly fields out of a parsed

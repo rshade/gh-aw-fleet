@@ -21,6 +21,15 @@ Skip for:
 - Bumping workflow refs to latest — see `fleet-upgrade-review`.
 - Refreshing the upstream template catalog — see `fleet-eval-templates`.
 
+## Security findings (advisory)
+
+The deploy pipeline now scans fetched workflow markdown for embedded
+credentials, fleet-structural anti-patterns, and (when actionlint is
+installed) compiled-YAML lint issues. Findings appear on stderr during
+dry-run and apply, and in a `## Security Findings` section in the opened
+PR body. Findings are advisory — they do not block the deploy. Review
+the section before merging the PR.
+
 ## The flow
 
 Three turns. Don't collapse them — the confirmation gates are deliberate.

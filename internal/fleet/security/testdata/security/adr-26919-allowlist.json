@@ -1,0 +1,12 @@
+{
+  "_source_sha": "b469d2e5bb4340b9ab2e1d93f1bfcaefbbf92109",
+  "_source_path": "pkg/constants/engine_constants.go",
+  "engines": {
+    "claude": ["ANTHROPIC_API_KEY"],
+    "codex": ["CODEX_API_KEY", "OPENAI_API_KEY"],
+    "copilot": ["COPILOT_GITHUB_TOKEN"],
+    "crush": ["ANTHROPIC_API_KEY", "COPILOT_GITHUB_TOKEN", "GEMINI_API_KEY"],
+    "gemini": ["GEMINI_API_KEY"],
+    "opencode": ["ANTHROPIC_API_KEY", "COPILOT_GITHUB_TOKEN", "GEMINI_API_KEY"]
+  }
+}

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	zlog "github.com/rs/zerolog/log"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet/security"
 )
 
 // EngineSecretInfo holds the Actions secret name and where to obtain the key for a given engine.
@@ -24,10 +26,10 @@ type EngineSecretInfo struct {
 //
 //nolint:gochecknoglobals // immutable engine→secret lookup; Go has no const map
 var EngineSecrets = map[string]EngineSecretInfo{
-	"copilot": {"COPILOT_GITHUB_TOKEN", "https://github.com/settings/personal-access-tokens/new"},
-	"claude":  {"ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys"},
-	"codex":   {"OPENAI_API_KEY", "https://platform.openai.com/api-keys"},
-	"gemini":  {"GEMINI_API_KEY", "https://aistudio.google.com/app/apikey"},
+	engineCopilot: {secretCopilotGitHubToken, keyURLCopilot},
+	engineClaude:  {secretAnthropicAPIKey, keyURLAnthropic},
+	engineCodex:   {secretOpenAIAPIKey, keyURLOpenAI},
+	engineGemini:  {secretGeminiAPIKey, keyURLGemini},
 }
 
 // DeployOpts controls deploy behavior.
@@ -64,6 +66,13 @@ type DeployResult struct {
 	// default_workflow_permissions=="read". Same fail-open semantics as
 	// ActionsDisabled — indeterminate responses leave it false.
 	WorkflowTokenReadOnly bool `json:"workflow_token_read_only"`
+
+	// SecurityFindings is the sorted output of security.Run; nil when the
+	// scanner has not run (e.g. resume-from-work-dir paths that bypass
+	// addResolvedWorkflows). Findings are advisory: they never block the
+	// deploy. Surfaced on stderr (zerolog), in the JSON envelope
+	// warnings[], and in the PR body's `## Security Findings` section.
+	SecurityFindings []security.Finding `json:"security_findings"`
 }
 
 // WorkflowOutcome is one workflow's fate during a deploy.
@@ -211,6 +220,8 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	// Check that the engine secret exists on the target repo regardless of dry-run/apply.
 	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
 	res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
+
+	res.SecurityFindings = security.Run(ctx, res.CloneDir)
 
 	if !opts.Apply {
 		return res, nil
@@ -405,7 +416,8 @@ func prepareClone(ctx context.Context, repo, explicit string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "repo", "clone", repo, dir)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	if runErr := runLogged(cmd, "gh", "repo clone", map[string]string{"repo": repo, "clone_dir": dir}); runErr != nil {
+	fields := map[string]string{fieldRepo: repo, fieldCloneDir: dir}
+	if runErr := runLogged(cmd, "gh", "repo clone", fields); runErr != nil {
 		return dir, fmt.Errorf("gh repo clone %s: %w", repo, runErr)
 	}
 	return dir, nil
@@ -419,7 +431,7 @@ func ensureInit(ctx context.Context, dir string) (bool, error) {
 	cmd.Dir = dir
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	if err := runLogged(cmd, "gh", "aw init", map[string]string{"clone_dir": dir}); err != nil {
+	if err := runLogged(cmd, "gh", "aw init", map[string]string{fieldCloneDir: dir}); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -435,14 +447,14 @@ func runAdd(ctx context.Context, dir, spec, engine string, force bool) (string, 
 	}
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = dir
-	out, err := runLoggedCombined(cmd, "gh", "aw add", map[string]string{"clone_dir": dir})
+	out, err := runLoggedCombined(cmd, "gh", "aw add", map[string]string{fieldCloneDir: dir})
 	return string(out), err
 }
 
 func gitCmd(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	out, err := runLoggedCombined(cmd, "git", subcommandLabel(args), map[string]string{"clone_dir": dir})
+	out, err := runLoggedCombined(cmd, "git", subcommandLabel(args), map[string]string{fieldCloneDir: dir})
 	if err != nil {
 		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
@@ -457,7 +469,7 @@ func gitCmdInteractive(ctx context.Context, dir string, args ...string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := runLogged(cmd, "git", subcommandLabel(args), map[string]string{"clone_dir": dir}); err != nil {
+	if err := runLogged(cmd, "git", subcommandLabel(args), map[string]string{fieldCloneDir: dir}); err != nil {
 		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return nil
@@ -466,7 +478,7 @@ func gitCmdInteractive(ctx context.Context, dir string, args ...string) error {
 func ghPRCreate(ctx context.Context, dir, title, body string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "pr", "create", "--title", title, "--body", body)
 	cmd.Dir = dir
-	out, err := runLoggedOutput(cmd, "gh", "pr create", map[string]string{"clone_dir": dir})
+	out, err := runLoggedOutput(cmd, "gh", "pr create", map[string]string{fieldCloneDir: dir})
 	if err != nil {
 		return "", ghErr(err)
 	}
@@ -583,7 +595,7 @@ func gitCurrentBranch(ctx context.Context, dir string) (string, error) {
 
 // isDefaultBranch reports whether branch is a protected default branch name.
 func isDefaultBranch(branch string) bool {
-	return branch == "main" || branch == "master"
+	return branch == branchMain || branch == branchMaster
 }
 
 // gitHasUnpushedCommits reports whether the current HEAD has commits that are
@@ -689,9 +701,9 @@ func readWorkflowTokenReadOnly(ctx context.Context, repo string) bool {
 		return false
 	}
 	switch perm {
-	case "read":
+	case workflowPermissionRead:
 		return true
-	case "write":
+	case workflowPermissionWrite:
 		return false
 	default:
 		logActionsSettingsSkip(repo, path, "unknown_value:"+perm)
@@ -704,7 +716,7 @@ func readWorkflowTokenReadOnly(ctx context.Context, repo string) bool {
 // --log-level info; visible at debug.
 func logActionsSettingsSkip(repo, endpoint, reason string) {
 	zlog.Debug().
-		Str("repo", repo).
+		Str(fieldRepo, repo).
 		Str("endpoint", endpoint).
 		Str("reason", reason).
 		Msg("actions-settings preflight skipped")
@@ -818,6 +830,10 @@ func prBody(res *DeployResult, repo string, addedCount int) string {
 		addedCount, repo,
 	)
 	if section := setupRequiredSection(res); section != "" {
+		b.WriteString(section)
+		b.WriteString("\n")
+	}
+	if section := security.RenderPRSection(res.SecurityFindings); section != "" {
 		b.WriteString(section)
 		b.WriteString("\n")
 	}

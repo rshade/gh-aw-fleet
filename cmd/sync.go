@@ -29,21 +29,21 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 			if flagPrune && !flagApply {
 				pruneErr := errors.New("--prune requires --apply")
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "sync", repo, flagApply, pruneErr)
+					return preResultFailureEnvelope(cmd, commandSync, repo, flagApply, pruneErr)
 				}
 				return pruneErr
 			}
 			cfg, err := fleet.LoadConfig(*flagDir)
 			if err != nil {
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "sync", repo, flagApply, err)
+					return preResultFailureEnvelope(cmd, commandSync, repo, flagApply, err)
 				}
 				return err
 			}
 			if _, ok := cfg.Repos[repo]; !ok {
 				notTrackedErr := fleet.ErrRepoNotTracked(repo, cfg.LoadedFrom)
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "sync", repo, flagApply, notTrackedErr)
+					return preResultFailureEnvelope(cmd, commandSync, repo, flagApply, notTrackedErr)
 				}
 				return notTrackedErr
 			}
@@ -101,13 +101,16 @@ func printSync(cmd *cobra.Command, res *fleet.SyncResult, apply, prune bool) {
 }
 
 func emitSyncWarnings(res *fleet.SyncResult) {
-	if res == nil || len(res.Drift) == 0 {
+	if res == nil {
 		return
 	}
-	zlog.Warn().
-		Str("repo", res.Repo).
-		Strs("drift", res.Drift).
-		Msg(syncDriftMessage)
+	if len(res.Drift) > 0 {
+		zlog.Warn().
+			Str(diagnosticFieldRepo, res.Repo).
+			Strs("drift", res.Drift).
+			Msg(syncDriftMessage)
+	}
+	emitSecurityFindingWarnings(res.SecurityFindings)
 }
 
 const syncDriftMessage = "Drift detected: workflows on disk not declared in fleet.json"
@@ -119,13 +122,16 @@ func emitSyncEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.Sy
 	var warnings []fleet.Diagnostic
 	var hints []fleet.Diagnostic
 
-	if res != nil && len(res.Drift) > 0 {
+	if res != nil {
 		emitSyncWarnings(res)
-		warnings = append(warnings, fleet.Diagnostic{
-			Code:    fleet.DiagDriftDetected,
-			Message: syncDriftMessage,
-			Fields:  map[string]any{"drift": res.Drift},
-		})
+		if len(res.Drift) > 0 {
+			warnings = append(warnings, fleet.Diagnostic{
+				Code:    fleet.DiagDriftDetected,
+				Message: syncDriftMessage,
+				Fields:  map[string]any{"drift": res.Drift},
+			})
+		}
+		warnings = appendFindingDiagnostics(warnings, res.SecurityFindings)
 	}
 	// Hint source mirrors text mode: only DeployPreflight.Failed (printSyncPreflight).
 	// Deploy.Failed is intentionally NOT a hint source today — widening that surface
@@ -140,7 +146,7 @@ func emitSyncEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.Sy
 	}
 	hints = ensureFailureHint(hints, syncErr)
 
-	if writeErr := writeEnvelope(cmd, "sync", repo, apply, res, warnings, hints); writeErr != nil {
+	if writeErr := writeEnvelope(cmd, commandSync, repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr
 	}
 	return syncErr

@@ -16,8 +16,8 @@ import (
 //
 //nolint:gochecknoglobals // immutable source-layout lookup; Go has no const map
 var SourceLayout = map[string]string{
-	"github/gh-aw":        ".github/workflows",
-	"githubnext/agentics": "workflows",
+	sourceGitHubAW: ".github/workflows",
+	sourceAgentics: "workflows",
 }
 
 // FetchResult is what a single source fetch returns — plus a diff summary
@@ -96,7 +96,7 @@ func fetchSource(ctx context.Context, source string) (TemplateSource, FetchResul
 	if !ok {
 		return TemplateSource{}, FetchResult{Source: source}, fmt.Errorf("no layout configured for %s", source)
 	}
-	listing, err := ghAPIJSON(ctx, fmt.Sprintf("/repos/%s/contents/%s?ref=main", source, dir))
+	listing, err := ghAPIJSON(ctx, fmt.Sprintf("/repos/%s/contents/%s?ref=%s", source, dir, branchMain))
 	if err != nil {
 		return TemplateSource{}, FetchResult{Source: source}, err
 	}
@@ -105,8 +105,8 @@ func fetchSource(ctx context.Context, source string) (TemplateSource, FetchResul
 		return TemplateSource{}, FetchResult{Source: source}, fmt.Errorf("unexpected contents response for %s", source)
 	}
 
-	ts := TemplateSource{RefFetched: "main"}
-	res := FetchResult{Source: source, Ref: "main"}
+	ts := TemplateSource{RefFetched: branchMain}
+	res := FetchResult{Source: source, Ref: branchMain}
 
 	for _, e := range entries {
 		m, entryOK := e.(map[string]any)
@@ -120,7 +120,7 @@ func fetchSource(ctx context.Context, source string) (TemplateSource, FetchResul
 		if typ != "file" || !strings.HasSuffix(name, ".md") {
 			continue
 		}
-		raw, rawErr := ghAPIRaw(ctx, fmt.Sprintf("/repos/%s/contents/%s?ref=main", source, path))
+		raw, rawErr := ghAPIRaw(ctx, fmt.Sprintf("/repos/%s/contents/%s?ref=%s", source, path, branchMain))
 		if rawErr != nil {
 			return TemplateSource{}, res, fmt.Errorf("fetch %s/%s: %w", source, path, rawErr)
 		}

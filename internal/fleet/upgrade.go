@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet/security"
 )
 
 // UpgradeOpts controls upgrade behavior. Apply=false is dry-run; Audit=true
@@ -39,6 +41,13 @@ type UpgradeResult struct {
 	PRURL        string          `json:"pr_url"`
 	AuditJSON    json.RawMessage `json:"audit_json"`
 	OutputLog    string          `json:"output_log"` // combined stdout+stderr from gh aw upgrade/update; used for hint extraction
+
+	// SecurityFindings is the sorted output of security.Run after the
+	// upgrade pipeline modifies workflow markdown. Findings are advisory:
+	// they never block the upgrade. Surfaced on stderr (zerolog), in the
+	// JSON envelope warnings[], and in the PR body's `## Security Findings`
+	// section.
+	SecurityFindings []security.Finding `json:"security_findings"`
 }
 
 // Upgrade runs the upgrade pipeline for a single repo.
@@ -85,6 +94,7 @@ func Upgrade(ctx context.Context, _ *Config, repo string, opts UpgradeOpts) (*Up
 		return res, err
 	}
 	res.ChangedFiles = changed
+	res.SecurityFindings = security.Run(ctx, res.CloneDir)
 	if len(changed) == 0 {
 		res.NoChanges = true
 		return res, nil
@@ -161,7 +171,7 @@ func runUpgrade(ctx context.Context, dir string) (string, error) {
 	var buf strings.Builder
 	cmd.Stdout = io.MultiWriter(os.Stderr, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
-	err := runLogged(cmd, "gh", "aw upgrade", map[string]string{"clone_dir": dir})
+	err := runLogged(cmd, "gh", "aw upgrade", map[string]string{fieldCloneDir: dir})
 	return buf.String(), err
 }
 
@@ -178,7 +188,7 @@ func runUpdate(ctx context.Context, dir string, major, force bool) (string, erro
 	var buf strings.Builder
 	cmd.Stdout = io.MultiWriter(os.Stderr, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
-	err := runLogged(cmd, "gh", "aw update", map[string]string{"clone_dir": dir})
+	err := runLogged(cmd, "gh", "aw update", map[string]string{fieldCloneDir: dir})
 	return buf.String(), err
 }
 
@@ -268,6 +278,10 @@ func upgradeTitle() string {
 func upgradeBody(res *UpgradeResult) string {
 	var b strings.Builder
 	b.WriteString("Upgrades agentic workflows via `gh aw upgrade` + `gh aw update`.\n\n")
+	if section := security.RenderPRSection(res.SecurityFindings); section != "" {
+		b.WriteString(section)
+		b.WriteString("\n")
+	}
 	if len(res.ChangedFiles) > 0 {
 		b.WriteString("## Changed files\n\n")
 		for _, f := range res.ChangedFiles {

@@ -38,7 +38,7 @@ func newStatusCmd(flagDir *string) *cobra.Command {
 			cfg, err := fleet.LoadConfig(*flagDir)
 			if err != nil {
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "status", repoArg, false, err)
+					return preResultFailureEnvelope(cmd, commandStatus, repoArg, false, err)
 				}
 				return err
 			}
@@ -47,7 +47,7 @@ func newStatusCmd(flagDir *string) *cobra.Command {
 			res, diags, statusErr := fleet.Status(cmd.Context(), cfg, fleet.StatusOpts{Repo: repoArg})
 			if statusErr != nil {
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "status", repoArg, false, statusErr)
+					return preResultFailureEnvelope(cmd, commandStatus, repoArg, false, statusErr)
 				}
 				return statusErr
 			}
@@ -69,7 +69,7 @@ func statusExitCode(res *fleet.StatusResult) error {
 		return nil
 	}
 	for _, r := range res.Repos {
-		if r.DriftState != "aligned" {
+		if r.DriftState != fleet.DriftStateAligned {
 			return newCommandExitError(errStatusDrift, 1, true)
 		}
 	}
@@ -89,7 +89,7 @@ func printStatus(cmd *cobra.Command, res *fleet.StatusResult, diags []fleet.Diag
 	tw := tabwriter.NewWriter(w, 0, 0, statusTabPadding, ' ', 0)
 	fmt.Fprintln(tw, "REPO\tSTATE\tMISSING\tEXTRA\tDRIFTED\tUNPINNED")
 	for _, r := range res.Repos {
-		if r.DriftState == "errored" {
+		if r.DriftState == fleet.DriftStateErrored {
 			fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\t-\n", r.Repo, r.DriftState)
 			continue
 		}
@@ -101,7 +101,7 @@ func printStatus(cmd *cobra.Command, res *fleet.StatusResult, diags []fleet.Diag
 	_ = tw.Flush()
 
 	for _, r := range res.Repos {
-		if r.DriftState == "aligned" {
+		if r.DriftState == fleet.DriftStateAligned {
 			continue
 		}
 		printRepoDetail(w, r)
@@ -110,7 +110,7 @@ func printStatus(cmd *cobra.Command, res *fleet.StatusResult, diags []fleet.Diag
 
 func printRepoDetail(w io.Writer, r fleet.RepoStatus) {
 	fmt.Fprintf(w, "\n%s (%s)\n", r.Repo, r.DriftState)
-	if r.DriftState == "errored" {
+	if r.DriftState == fleet.DriftStateErrored {
 		fmt.Fprintf(w, "  error: %s\n", r.ErrorMessage)
 		return
 	}
@@ -149,12 +149,12 @@ func emitStatusEnvelope(
 	warnings, hints := splitStatusDiags(diags)
 
 	for _, h := range hints {
-		repo, _ := h.Fields["repo"].(string)
+		repo, _ := h.Fields[diagnosticFieldRepo].(string)
 		emitHints(repo, []string{h.Message})
 	}
 	logStatusWarnings(warnings)
 
-	if writeErr := writeEnvelope(cmd, "status", repoArg, false, res, warnings, hints); writeErr != nil {
+	if writeErr := writeEnvelope(cmd, commandStatus, repoArg, false, res, warnings, hints); writeErr != nil {
 		return writeErr
 	}
 	return statusExitCode(res)
@@ -188,8 +188,8 @@ func splitStatusDiags(diags []fleet.Diagnostic) ([]fleet.Diagnostic, []fleet.Dia
 		}
 	}
 	sort.SliceStable(hints, func(i, j int) bool {
-		ri, _ := hints[i].Fields["repo"].(string)
-		rj, _ := hints[j].Fields["repo"].(string)
+		ri, _ := hints[i].Fields[diagnosticFieldRepo].(string)
+		rj, _ := hints[j].Fields[diagnosticFieldRepo].(string)
 		return ri < rj
 	})
 	return warnings, hints

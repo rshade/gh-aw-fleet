@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
+	"github.com/rshade/gh-aw-fleet/internal/fleet/security"
 )
 
 // listResultStub mirrors the JSON shape of internal/fleet.ListResult, kept
@@ -596,6 +597,83 @@ func TestUpgradeEnvelope_EmptyArrays(t *testing.T) {
 	}
 }
 
+func TestEnvelope_SecurityFindingsSkippedOmitted(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		command string
+		result  any
+	}{
+		{"deploy", "deploy", &fleet.DeployResult{Repo: "x/y"}},
+		{"sync", "sync", &fleet.SyncResult{Repo: "x/y"}},
+		{"upgrade", "upgrade", &fleet.UpgradeResult{Repo: "x/y"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := envelopeResultMap(t, tc.command, tc.result)
+			if _, ok := result["security_findings"]; ok {
+				t.Fatalf("security_findings present for skipped scanner: %v", result["security_findings"])
+			}
+		})
+	}
+}
+
+func TestEnvelope_SecurityFindingsCleanEmitsEmptyArray(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		command string
+		result  any
+	}{
+		{"deploy", "deploy", &fleet.DeployResult{Repo: "x/y", SecurityFindings: []security.Finding{}}},
+		{"sync", "sync", &fleet.SyncResult{Repo: "x/y", SecurityFindings: []security.Finding{}}},
+		{"upgrade", "upgrade", &fleet.UpgradeResult{Repo: "x/y", SecurityFindings: []security.Finding{}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := envelopeResultMap(t, tc.command, tc.result)
+			findings, ok := result["security_findings"].([]any)
+			if !ok {
+				t.Fatalf("security_findings = %T; want array in %v", result["security_findings"], result)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("len(security_findings) = %d; want 0", len(findings))
+			}
+		})
+	}
+}
+
+func TestEnvelope_SecurityFindingsNonEmptyEmitsArray(t *testing.T) {
+	finding := security.Finding{
+		RuleID:   "fleet.test.finding",
+		Severity: security.SeverityHigh,
+		File:     ".github/workflows/test.md",
+		Line:     7,
+		Message:  "synthetic security finding",
+		Remedy:   "Fix the synthetic finding.",
+	}
+	for _, tc := range []struct {
+		name    string
+		command string
+		result  any
+	}{
+		{"deploy", "deploy", &fleet.DeployResult{Repo: "x/y", SecurityFindings: []security.Finding{finding}}},
+		{"sync", "sync", &fleet.SyncResult{Repo: "x/y", SecurityFindings: []security.Finding{finding}}},
+		{"upgrade", "upgrade", &fleet.UpgradeResult{Repo: "x/y", SecurityFindings: []security.Finding{finding}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := envelopeResultMap(t, tc.command, tc.result)
+			findings, ok := result["security_findings"].([]any)
+			if !ok {
+				t.Fatalf("security_findings = %T; want array in %v", result["security_findings"], result)
+			}
+			if len(findings) != 1 {
+				t.Fatalf("len(security_findings) = %d; want 1", len(findings))
+			}
+			first, _ := findings[0].(map[string]any)
+			if first["rule_id"] != finding.RuleID {
+				t.Errorf("security_findings[0].rule_id = %v; want %q", first["rule_id"], finding.RuleID)
+			}
+		})
+	}
+}
+
 func TestEnvelope_AuditJSONNests(t *testing.T) {
 	res := &fleet.UpgradeResult{
 		Repo:      "x/y",
@@ -625,6 +703,21 @@ func TestEnvelope_AuditJSONNests(t *testing.T) {
 	if !strings.Contains(buf.String(), `"audit_json":{"version":"1","findings":[]}`) {
 		t.Errorf("audit_json not nested as object: %s", buf.String())
 	}
+}
+
+func envelopeResultMap(t *testing.T, command string, result any) map[string]any {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := writeEnvelopeTo(&buf, command, "x/y", false, result, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	var env struct {
+		Result map[string]any `json:"result"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal: %v; raw=%s", err, buf.String())
+	}
+	return env.Result
 }
 
 func TestUpgradeEnvelope_AuditJSONNil(t *testing.T) {
@@ -794,6 +887,9 @@ func TestEnvelope_NoNullSlices_AllResultTypes(t *testing.T) {
 				}
 				v, present := env.Result[jsonKey]
 				if !present {
+					if isOptionalJSONSliceField(jsonKey) {
+						continue
+					}
 					t.Errorf("%s: field %q missing from result", tc.name, jsonKey)
 					continue
 				}
@@ -803,4 +899,8 @@ func TestEnvelope_NoNullSlices_AllResultTypes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func isOptionalJSONSliceField(jsonKey string) bool {
+	return jsonKey == "security_findings"
 }

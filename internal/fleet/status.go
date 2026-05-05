@@ -18,9 +18,12 @@ import (
 // Drift states emitted on RepoStatus.DriftState. The closed set of values
 // the JSON envelope's drift_state field promises to consumers (FR-006).
 const (
-	driftStateAligned = "aligned"
-	driftStateDrifted = "drifted"
-	driftStateErrored = "errored"
+	// DriftStateAligned means every declared workflow matches the repo.
+	DriftStateAligned = "aligned"
+	// DriftStateDrifted means one or more workflows are missing, extra, drifted, or unpinned.
+	DriftStateDrifted = "drifted"
+	// DriftStateErrored means the repo could not be queried or resolved.
+	DriftStateErrored = "errored"
 )
 
 // StatusOpts controls a single Status() invocation.
@@ -50,7 +53,7 @@ type StatusResult struct {
 type RepoStatus struct {
 	// Repo is the canonical owner/name from fleet.json.
 	Repo string `json:"repo"`
-	// DriftState is one of: driftStateAligned, "drifted", driftStateErrored.
+	// DriftState is one of: DriftStateAligned, DriftStateDrifted, DriftStateErrored.
 	DriftState string `json:"drift_state"`
 	// Missing lists declared workflow names absent from the repo.
 	Missing []string `json:"missing"`
@@ -60,7 +63,7 @@ type RepoStatus struct {
 	Drifted []WorkflowDrift `json:"drifted"`
 	// Unpinned lists workflows present but lacking parseable `source:` frontmatter.
 	Unpinned []string `json:"unpinned"`
-	// ErrorMessage is empty unless DriftState == driftStateErrored.
+	// ErrorMessage is empty unless DriftState == DriftStateErrored.
 	ErrorMessage string `json:"error_message"`
 }
 
@@ -188,8 +191,8 @@ func Status(ctx context.Context, cfg *Config, opts StatusOpts) (*StatusResult, [
 
 	sort.Slice(repoStatuses, func(i, j int) bool { return repoStatuses[i].Repo < repoStatuses[j].Repo })
 	sort.SliceStable(diags, func(i, j int) bool {
-		ri, _ := diags[i].Fields["repo"].(string)
-		rj, _ := diags[j].Fields["repo"].(string)
+		ri, _ := diags[i].Fields[fieldRepo].(string)
+		rj, _ := diags[j].Fields[fieldRepo].(string)
 		return ri < rj
 	})
 
@@ -260,7 +263,7 @@ func runStatusWorkers(
 				}
 				rs := processJob(ctx, fetcher, job)
 				resultsCh <- rs
-				if rs.DriftState == driftStateErrored {
+				if rs.DriftState == DriftStateErrored {
 					diagsCh <- buildRepoErrorDiag(rs.Repo, rs.ErrorMessage)
 				}
 			}
@@ -352,7 +355,7 @@ func computeDrift(
 ) RepoStatus {
 	rs := RepoStatus{Repo: repo}
 	if fetchErr != nil {
-		rs.DriftState = driftStateErrored
+		rs.DriftState = DriftStateErrored
 		rs.ErrorMessage = fetchErr.Error()
 		return rs
 	}
@@ -400,9 +403,9 @@ func computeDrift(
 	sort.Slice(rs.Drifted, func(i, j int) bool { return rs.Drifted[i].Name < rs.Drifted[j].Name })
 
 	if len(rs.Missing)+len(rs.Extra)+len(rs.Drifted)+len(rs.Unpinned) == 0 {
-		rs.DriftState = driftStateAligned
+		rs.DriftState = DriftStateAligned
 	} else {
-		rs.DriftState = driftStateDrifted
+		rs.DriftState = DriftStateDrifted
 	}
 	return rs
 }
@@ -446,6 +449,6 @@ func buildRepoErrorDiag(repo, errMsg string) Diagnostic {
 	return Diagnostic{
 		Code:    code,
 		Message: message,
-		Fields:  map[string]any{"repo": repo},
+		Fields:  map[string]any{fieldRepo: repo},
 	}
 }

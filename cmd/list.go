@@ -14,14 +14,14 @@ const tabPadding = 2
 
 func newListCmd(flagDir *string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
+		Use:   commandList,
 		Short: "List tracked repos and their resolved workflow sets",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			jsonMode := outputMode(cmd) == outputJSON
 			cfg, err := fleet.LoadConfig(*flagDir)
 			if err != nil {
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "list", "", false, err)
+					return preResultFailureEnvelope(cmd, commandList, "", false, err)
 				}
 				return err
 			}
@@ -32,9 +32,9 @@ func newListCmd(flagDir *string) *cobra.Command {
 			if jsonMode {
 				res, buildErr := fleet.BuildListResult(cfg)
 				if buildErr != nil {
-					return preResultFailureEnvelope(cmd, "list", "", false, buildErr)
+					return preResultFailureEnvelope(cmd, commandList, "", false, buildErr)
 				}
-				return writeEnvelope(cmd, "list", "", false, res, nil, nil)
+				return writeEnvelope(cmd, commandList, "", false, res, nil, nil)
 			}
 
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tabPadding, ' ', 0)
