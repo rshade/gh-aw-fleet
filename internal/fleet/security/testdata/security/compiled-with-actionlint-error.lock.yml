@@ -1,0 +1,8 @@
+name: broken
+on: not_an_event
+jobs:
+  job1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: not-a-valid-action-reference
+        run: echo hi

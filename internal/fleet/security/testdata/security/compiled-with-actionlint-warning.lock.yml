@@ -1,0 +1,11 @@
+name: warning
+on:
+  push:
+    branches: [main]
+jobs:
+  job1:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          x=hello
+          if [ $x = world ]; then echo yes; fi

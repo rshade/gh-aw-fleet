@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
@@ -91,8 +90,7 @@ func resolveConfirmation(cmd *cobra.Command, apply, yes bool) (bool, error) {
 	if yes {
 		return true, nil
 	}
-	fd := int(os.Stdin.Fd()) //nolint:gosec // fd numbers are small and always fit in int
-	if !term.IsTerminal(fd) {
+	if !isStdinTerminal() {
 		return false, errors.New("--apply requires --yes in a non-interactive shell")
 	}
 	fmt.Fprint(cmd.ErrOrStderr(), "Write fleet.local.json? [y/N] ")
@@ -106,6 +104,14 @@ func resolveConfirmation(cmd *cobra.Command, apply, yes bool) (bool, error) {
 		return false, errors.New("aborted: re-run with --apply --yes to confirm")
 	}
 	return true, nil
+}
+
+func isStdinTerminal() bool {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 func printAdd(cmd *cobra.Command, res *fleet.AddResult) {

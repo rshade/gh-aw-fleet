@@ -15,6 +15,8 @@ import (
 
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet/security"
 )
 
 // fakeJSONResponse is one canned ghAPIJSON outcome keyed by request path.
@@ -901,5 +903,155 @@ func TestPRBody_MissingSecret(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ----- US3: Security Findings PR-body section (FR-005, FR-010) -----
+
+func TestSecurityFindingsSection_NoFindings(t *testing.T) {
+	if got := security.RenderPRSection(nil); got != "" {
+		t.Errorf("nil findings: got %q; want empty", got)
+	}
+	if got := security.RenderPRSection([]security.Finding{}); got != "" {
+		t.Errorf("empty findings slice: got %q; want empty", got)
+	}
+}
+
+func TestSecurityFindingsSection_SingleHigh(t *testing.T) {
+	res := &DeployResult{
+		SecurityFindings: []security.Finding{
+			{
+				RuleID:   "gitleaks:aws-access-key",
+				Severity: security.SeverityHigh,
+				File:     ".github/workflows/foo.md",
+				Line:     23,
+				Message:  "AWS Access Key (<redacted>)",
+				Remedy:   "Rotate the credential.",
+			},
+		},
+	}
+	got := security.RenderPRSection(res.SecurityFindings)
+	if !strings.Contains(got, "## Security Findings") {
+		t.Errorf("missing heading; got %q", got)
+	}
+	if !strings.Contains(got, "**Summary**: 1 HIGH") {
+		t.Errorf("missing or wrong summary; got %q", got)
+	}
+	if !strings.Contains(got, "`gitleaks:aws-access-key`") {
+		t.Errorf("missing rule_id; got %q", got)
+	}
+	if !strings.Contains(got, ".github/workflows/foo.md:23") {
+		t.Errorf("missing file:line; got %q", got)
+	}
+	if !strings.Contains(got, "AWS Access Key (<redacted>)") {
+		t.Errorf("missing message; got %q", got)
+	}
+	if strings.HasSuffix(got, "## Security Findings\n\n") {
+		t.Errorf("body appears empty after heading; got %q", got)
+	}
+}
+
+func TestSecurityFindingsSection_MixedSeverities(t *testing.T) {
+	res := &DeployResult{
+		SecurityFindings: []security.Finding{
+			{
+				RuleID:   "gitleaks:aws-access-key",
+				Severity: security.SeverityHigh,
+				File:     ".github/workflows/a.md",
+				Line:     1,
+				Message:  "h1",
+				Remedy:   "r",
+			},
+			{
+				RuleID:   "fleet.permissions.write-on-schedule",
+				Severity: security.SeverityHigh,
+				File:     ".github/workflows/b.md",
+				Line:     5,
+				Message:  "h2",
+				Remedy:   "r",
+			},
+			{
+				RuleID:   "fleet.safe-outputs.draft-false",
+				Severity: security.SeverityMedium,
+				File:     ".github/workflows/c.md",
+				Line:     12,
+				Message:  "m",
+				Remedy:   "r",
+			},
+			{
+				RuleID:   "actionlint:not-installed",
+				Severity: security.SeverityInfo,
+				File:     "",
+				Line:     0,
+				Message:  "i",
+				Remedy:   "r",
+			},
+		},
+	}
+	got := security.RenderPRSection(res.SecurityFindings)
+	if !strings.Contains(got, "**Summary**: 2 HIGH, 1 MEDIUM, 1 INFO") {
+		t.Errorf("wrong tally line; got %q", got)
+	}
+	// LOW is not in input → must not appear in summary line.
+	if strings.Contains(got, "LOW") {
+		t.Errorf("LOW should not appear when no LOW findings; got %q", got)
+	}
+}
+
+func TestSecurityFindingsSection_StableSort(t *testing.T) {
+	// Pre-sorted slice — RenderPRSection passes through to RenderForPRBody
+	// which renders in the order received. The Run-level sort is what guarantees
+	// the order; this test verifies the bullet rendering preserves the slice
+	// order byte-identically.
+	a := security.Finding{
+		RuleID: "z", Severity: security.SeverityHigh,
+		File: "a.md", Line: 1, Message: "m", Remedy: "r",
+	}
+	b := security.Finding{
+		RuleID: "y", Severity: security.SeverityHigh,
+		File: "a.md", Line: 5, Message: "m", Remedy: "r",
+	}
+	c := security.Finding{
+		RuleID: "x", Severity: security.SeverityMedium,
+		File: "a.md", Line: 1, Message: "m", Remedy: "r",
+	}
+	res := &DeployResult{SecurityFindings: []security.Finding{a, b, c}}
+	got := security.RenderPRSection(res.SecurityFindings)
+	ai := strings.Index(got, "`z`")
+	bi := strings.Index(got, "`y`")
+	ci := strings.Index(got, "`x`")
+	if !(ai < bi && bi < ci) {
+		t.Errorf("bullet order: z@%d, y@%d, x@%d (want strictly ascending)", ai, bi, ci)
+	}
+}
+
+func TestPRBodyAppendsSecurityFindings(t *testing.T) {
+	res := &DeployResult{
+		Repo:          "x/y",
+		MissingSecret: "ANTHROPIC_API_KEY",
+		SecretKeyURL:  "https://example",
+		Added:         []WorkflowOutcome{{Name: "wf", Spec: "spec@v1"}},
+		SecurityFindings: []security.Finding{
+			{
+				RuleID:   "fleet.permissions.write-on-schedule",
+				Severity: security.SeverityHigh,
+				File:     ".github/workflows/x.md",
+				Line:     5,
+				Message:  "m",
+				Remedy:   "r",
+			},
+		},
+	}
+	got := prBody(res, res.Repo, len(res.Added))
+	setup := strings.Index(got, "## ⚠ Setup required")
+	sec := strings.Index(got, "## Security Findings")
+	if setup < 0 {
+		t.Fatalf("missing ## ⚠ Setup required heading; body:\n%s", got)
+	}
+	if sec < 0 {
+		t.Fatalf("missing ## Security Findings heading; body:\n%s", got)
+	}
+	if !(setup < sec) {
+		t.Errorf("setup-required should appear before security-findings (got indices %d, %d)", setup, sec)
 	}
 }

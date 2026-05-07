@@ -28,14 +28,14 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 			cfg, err := fleet.LoadConfig(*flagDir)
 			if err != nil {
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "deploy", repo, flagApply, err)
+					return preResultFailureEnvelope(cmd, commandDeploy, repo, flagApply, err)
 				}
 				return err
 			}
 			if _, ok := cfg.Repos[repo]; !ok {
 				notTrackedErr := fleet.ErrRepoNotTracked(repo, cfg.LoadedFrom)
 				if jsonMode {
-					return preResultFailureEnvelope(cmd, "deploy", repo, flagApply, notTrackedErr)
+					return preResultFailureEnvelope(cmd, commandDeploy, repo, flagApply, notTrackedErr)
 				}
 				return notTrackedErr
 			}
@@ -132,22 +132,23 @@ func emitDeployWarnings(res *fleet.DeployResult) {
 	}
 	if res.ActionsDisabled {
 		zlog.Warn().
-			Str("repo", res.Repo).
-			Str("url", fleet.ActionsSettingsURL(res.Repo)).
+			Str(diagnosticFieldRepo, res.Repo).
+			Str(diagnosticFieldURL, fleet.ActionsSettingsURL(res.Repo)).
 			Msg(fleet.BuildActionsDisabledMessage(res.Repo))
 	}
 	if res.WorkflowTokenReadOnly {
 		zlog.Warn().
-			Str("repo", res.Repo).
-			Str("url", fleet.ActionsSettingsURL(res.Repo)).
+			Str(diagnosticFieldRepo, res.Repo).
+			Str(diagnosticFieldURL, fleet.ActionsSettingsURL(res.Repo)).
 			Msg(fleet.BuildWorkflowTokenReadOnlyMessage(res.Repo))
 	}
 	if res.MissingSecret != "" {
 		zlog.Warn().
-			Str("repo", res.Repo).
-			Str("secret", res.MissingSecret).
+			Str(diagnosticFieldRepo, res.Repo).
+			Str(diagnosticFieldSecret, res.MissingSecret).
 			Msg(fleet.BuildMissingSecretMessage(res))
 	}
+	emitSecurityFindingWarnings(res.SecurityFindings)
 }
 
 // emitDeployEnvelope writes the JSON envelope for a deploy invocation,
@@ -164,7 +165,7 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 				Code:    fleet.DiagActionsDisabled,
 				Message: fleet.BuildActionsDisabledMessage(res.Repo),
 				Fields: map[string]any{
-					"url": fleet.ActionsSettingsURL(res.Repo),
+					diagnosticFieldURL: fleet.ActionsSettingsURL(res.Repo),
 				},
 			})
 		}
@@ -173,7 +174,7 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 				Code:    fleet.DiagWorkflowTokenReadOnly,
 				Message: fleet.BuildWorkflowTokenReadOnlyMessage(res.Repo),
 				Fields: map[string]any{
-					"url": fleet.ActionsSettingsURL(res.Repo),
+					diagnosticFieldURL: fleet.ActionsSettingsURL(res.Repo),
 				},
 			})
 		}
@@ -182,11 +183,12 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 				Code:    fleet.DiagMissingSecret,
 				Message: fleet.BuildMissingSecretMessage(res),
 				Fields: map[string]any{
-					"secret": res.MissingSecret,
-					"url":    res.SecretKeyURL,
+					diagnosticFieldSecret: res.MissingSecret,
+					diagnosticFieldURL:    res.SecretKeyURL,
 				},
 			})
 		}
+		warnings = appendFindingDiagnostics(warnings, res.SecurityFindings)
 	}
 	if res != nil && len(res.Failed) > 0 {
 		errs := make([]string, 0, len(res.Failed))
@@ -198,7 +200,7 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 	}
 	hints = ensureFailureHint(hints, deployErr)
 
-	if writeErr := writeEnvelope(cmd, "deploy", repo, apply, res, warnings, hints); writeErr != nil {
+	if writeErr := writeEnvelope(cmd, commandDeploy, repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr
 	}
 	return deployErr

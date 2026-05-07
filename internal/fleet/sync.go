@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet/security"
 )
 
 // SyncOpts controls sync behavior.
@@ -27,6 +29,12 @@ type SyncResult struct {
 	Deploy          *DeployResult `json:"deploy"`           // set iff Apply==true and Missing/Prune required action
 	Pruned          []string      `json:"pruned"`           // files removed when --prune --apply
 	DeployPreflight *DeployResult `json:"deploy_preflight"` // set iff Apply==false to surface compilation failures
+
+	// SecurityFindings is the sorted output of security.Run for this sync.
+	// On apply paths it is propagated from res.Deploy.SecurityFindings (no
+	// double-scan); on dry-run paths from res.DeployPreflight.SecurityFindings;
+	// otherwise it is populated by a direct scan of res.CloneDir.
+	SecurityFindings []security.Finding `json:"security_findings"`
 }
 
 // Sync reconciles one repo's .github/workflows/ to match its declared profile(s).
@@ -60,15 +68,34 @@ func Sync(ctx context.Context, cfg *Config, repo string, opts SyncOpts) (*SyncRe
 
 	if opts.Apply {
 		if applyErr := applyDeployOrPrune(ctx, cfg, repo, res, opts, workflowsDir); applyErr != nil {
+			res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
 			return res, applyErr
 		}
 	} else if len(res.Missing) > 0 {
 		if preErr := runPreflight(ctx, cfg, repo, res, opts); preErr != nil {
+			res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
 			return res, preErr
 		}
 	}
 
+	res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
 	return res, nil
+}
+
+// collectSyncSecurityFindings returns the security findings to surface on
+// the SyncResult. On apply paths Deploy already ran the scanner and its
+// findings ride on res.Deploy.SecurityFindings; on dry-run paths the
+// scanner ran via DeployPreflight; otherwise (clean state, drift-only)
+// we scan the clone directly so sync still surfaces findings on
+// pre-existing workflows.
+func collectSyncSecurityFindings(ctx context.Context, res *SyncResult) []security.Finding {
+	if res.Deploy != nil && res.Deploy.SecurityFindings != nil {
+		return res.Deploy.SecurityFindings
+	}
+	if res.DeployPreflight != nil && res.DeployPreflight.SecurityFindings != nil {
+		return res.DeployPreflight.SecurityFindings
+	}
+	return security.Run(ctx, res.CloneDir)
 }
 
 // computeDriftAndMissing scans the on-disk workflows dir and populates
