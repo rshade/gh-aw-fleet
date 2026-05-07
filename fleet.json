@@ -72,6 +72,15 @@
         { "name": "archie",               "source": "githubnext/agentics" },
         { "name": "repo-ask",             "source": "githubnext/agentics" }
       ]
+    },
+    "observability-plus": {
+      "description": "Daily consumption-report workflows for cross-fleet billing visibility. Pair with `gh-aw-fleet consumption` for rollups. Each running repo consumes Copilot credits daily — opt in consciously.",
+      "sources": {
+        "github/gh-aw": { "ref": "v0.68.3" }
+      },
+      "workflows": [
+        { "name": "api-consumption-report", "source": "github/gh-aw" }
+      ]
     }
   },
   "repos": {

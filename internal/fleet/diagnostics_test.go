@@ -3,6 +3,7 @@ package fleet
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,34 @@ func TestCollectHintDiagnostics_UnknownProperty(t *testing.T) {
 	}
 	if got[0].Fields["hint"] != got[0].Message {
 		t.Errorf("Fields[hint] = %v; want = Message %q", got[0].Fields["hint"], got[0].Message)
+	}
+}
+
+func TestCollectHintDiagnostics_PaymentRequired(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"http_402", "gh: HTTP 402: spending limit reached"},
+		{"payment_required", "gh: 402 Payment Required"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CollectHintDiagnostics(tc.in)
+			if len(got) != 1 {
+				t.Fatalf("len(got) = %d; want 1; got=%+v", len(got), got)
+			}
+			if got[0].Code != DiagPaymentRequired {
+				t.Errorf("Code = %q; want %q", got[0].Code, DiagPaymentRequired)
+			}
+			if got[0].Fields["hint"] != got[0].Message {
+				t.Errorf("Fields[hint] = %v; want = Message %q", got[0].Fields["hint"], got[0].Message)
+			}
+			if strings.Contains(got[0].Message, "Copilot") ||
+				strings.Contains(got[0].Message, "GitHub spending controls") {
+				t.Errorf("Message = %q; want provider-agnostic remediation", got[0].Message)
+			}
+		})
 	}
 }
 

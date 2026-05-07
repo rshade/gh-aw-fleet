@@ -32,6 +32,7 @@ const (
 	DiagUnknownProperty       = fleetdiag.DiagUnknownProperty
 	DiagHTTP404               = fleetdiag.DiagHTTP404
 	DiagGPGFailure            = fleetdiag.DiagGPGFailure
+	DiagPaymentRequired       = fleetdiag.DiagPaymentRequired
 	DiagRateLimited           = fleetdiag.DiagRateLimited
 	DiagRepoInaccessible      = fleetdiag.DiagRepoInaccessible
 	DiagNetworkUnreachable    = fleetdiag.DiagNetworkUnreachable
@@ -56,6 +57,12 @@ type Hint struct {
 	Code    string
 }
 
+// paymentRequiredHint is shared by the "HTTP 402" and "Payment Required"
+// entries. The status is generic, so the remediation stays provider-agnostic.
+const paymentRequiredHint = "Upstream returned HTTP 402 / Payment Required. " +
+	"This is a billing, quota, entitlement, or plan rejection, not a workflow syntax error. " +
+	"Check the billing or access settings for the account, organization, or provider behind the failed request."
+
 // Ordered most-specific first; only the first match per input text is emitted.
 //
 //nolint:gochecknoglobals // immutable hint table; Go has no const slice of structs
@@ -79,6 +86,16 @@ var hints = []Hint{
 		Message: "Source path not found. Check the spec — `github/gh-aw` workflows live under `.github/workflows/`; " +
 			"`githubnext/agentics` workflows live under `workflows/`.",
 		Code: DiagHTTP404,
+	},
+	{
+		Pattern: "HTTP 402",
+		Message: paymentRequiredHint,
+		Code:    DiagPaymentRequired,
+	},
+	{
+		Pattern: "Payment Required",
+		Message: paymentRequiredHint,
+		Code:    DiagPaymentRequired,
 	},
 	{
 		Pattern: "API rate limit exceeded",

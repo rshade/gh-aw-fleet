@@ -40,6 +40,8 @@ The CLI has two config files: `fleet.json` (public, committed, example tracking 
 
 **Framing that shapes everything**: `github/gh-aw` ships the compiler + dogfooding tests; `githubnext/agentics` ships the curated library. When adding workflows to profiles, prefer agentics unless no equivalent exists. `github/gh-aw`'s `main` often contains unreleased features (like `mount-as-clis`) that break the installed CLI — always pin gh-aw sources to tags, never to `main`.
 
+**`*-plus` profiles are opt-in, cost-aware bundles**: `quality-plus`, `security-plus`, `docs-plus`, `community-plus`, and `observability-plus` are layered onto `default` per-repo via the repo's `profiles` list. `observability-plus` ships `api-consumption-report` (daily) — pair it with the planned `gh-aw-fleet consumption` subcommand for fleet-wide billing rollups, but note that opting a repo in incurs recurring Copilot-credit cost since the report is itself an LLM workflow.
+
 **Critical asymmetry**: `gh aw add` uses `fleet.json` pins (via `ResolvedWorkflow.Spec()`). `gh aw update` follows the workflow's *own* frontmatter `source:` line, not `fleet.json`. This means fleet.json edits don't propagate through `upgrade` — they need a `fleet sync --apply --force <repo>` to re-pin workflows to current fleet.json refs.
 
 **`gh aw` path conventions differ by source**: agentics uses 3-part specs (`githubnext/agentics/<name>@ref`, implicit `workflows/` dir); gh-aw needs 4-part (`github/gh-aw/.github/workflows/<name>.md@ref`). `internal/fleet/fetch.go`'s `SourceLayout` map encodes this; `ResolvedWorkflow.Spec()` consumes it. Adding a third source means adding a `SourceLayout` entry.
