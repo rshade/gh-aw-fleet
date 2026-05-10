@@ -61,7 +61,7 @@ func TestCollectHintDiagnostics_UnknownProperty(t *testing.T) {
 	}
 }
 
-func TestCollectHintDiagnostics_PaymentRequired(t *testing.T) {
+func TestCollectHintDiagnostics_BillingQuotaExceeded(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
@@ -75,15 +75,20 @@ func TestCollectHintDiagnostics_PaymentRequired(t *testing.T) {
 			if len(got) != 1 {
 				t.Fatalf("len(got) = %d; want 1; got=%+v", len(got), got)
 			}
-			if got[0].Code != DiagPaymentRequired {
-				t.Errorf("Code = %q; want %q", got[0].Code, DiagPaymentRequired)
+			if got[0].Code != DiagBillingQuotaExceeded {
+				t.Errorf("Code = %q; want %q", got[0].Code, DiagBillingQuotaExceeded)
 			}
 			if got[0].Fields["hint"] != got[0].Message {
 				t.Errorf("Fields[hint] = %v; want = Message %q", got[0].Fields["hint"], got[0].Message)
 			}
-			if strings.Contains(got[0].Message, "Copilot") ||
-				strings.Contains(got[0].Message, "GitHub spending controls") {
-				t.Errorf("Message = %q; want provider-agnostic remediation", got[0].Message)
+			if !strings.Contains(got[0].Message, "Copilot") {
+				t.Errorf("Message = %q; want GitHub-specific remediation naming Copilot", got[0].Message)
+			}
+			if !strings.Contains(got[0].Message, "github.com/settings/billing/spending_limit") {
+				t.Errorf("Message = %q; want pointer to GitHub spending controls URL", got[0].Message)
+			}
+			if !strings.Contains(got[0].Message, "gh-aw-fleet consumption") {
+				t.Errorf("Message = %q; want forward-reference to `gh-aw-fleet consumption` subcommand", got[0].Message)
 			}
 		})
 	}

@@ -30,7 +30,7 @@ const (
 	DiagUnknownProperty               = "unknown_property"
 	DiagHTTP404                       = "http_404"
 	DiagGPGFailure                    = "gpg_failure"
-	DiagPaymentRequired               = "payment_required"
+	DiagBillingQuotaExceeded          = "billing_quota_exceeded"
 	DiagRateLimited                   = "rate_limited"
 	DiagRepoInaccessible              = "repo_inaccessible"
 	DiagNetworkUnreachable            = "network_unreachable"

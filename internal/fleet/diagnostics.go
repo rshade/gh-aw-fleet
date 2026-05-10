@@ -32,7 +32,7 @@ const (
 	DiagUnknownProperty       = fleetdiag.DiagUnknownProperty
 	DiagHTTP404               = fleetdiag.DiagHTTP404
 	DiagGPGFailure            = fleetdiag.DiagGPGFailure
-	DiagPaymentRequired       = fleetdiag.DiagPaymentRequired
+	DiagBillingQuotaExceeded  = fleetdiag.DiagBillingQuotaExceeded
 	DiagRateLimited           = fleetdiag.DiagRateLimited
 	DiagRepoInaccessible      = fleetdiag.DiagRepoInaccessible
 	DiagNetworkUnreachable    = fleetdiag.DiagNetworkUnreachable
@@ -57,11 +57,15 @@ type Hint struct {
 	Code    string
 }
 
-// paymentRequiredHint is shared by the "HTTP 402" and "Payment Required"
-// entries. The status is generic, so the remediation stays provider-agnostic.
-const paymentRequiredHint = "Upstream returned HTTP 402 / Payment Required. " +
-	"This is a billing, quota, entitlement, or plan rejection, not a workflow syntax error. " +
-	"Check the billing or access settings for the account, organization, or provider behind the failed request."
+// billingQuotaHint is shared by the "HTTP 402" and "Payment Required"
+// entries. Names GitHub spending controls as the primary remediation and
+// forward-references the planned `gh-aw-fleet consumption` subcommand for
+// cross-repo cost attribution (#52).
+const billingQuotaHint = "Upstream returned HTTP 402 / Payment Required — a billing-quota or spending-cap rejection " +
+	"from GitHub Copilot's usage-based billing, not a workflow syntax error. " +
+	"Raise or review the cap at https://github.com/settings/billing/spending_limit " +
+	"(or the org-level equivalent under Organization → Settings → Billing). " +
+	"Cross-repo cost attribution will be available via `gh-aw-fleet consumption` once that subcommand ships."
 
 // Ordered most-specific first; only the first match per input text is emitted.
 //
@@ -89,13 +93,13 @@ var hints = []Hint{
 	},
 	{
 		Pattern: "HTTP 402",
-		Message: paymentRequiredHint,
-		Code:    DiagPaymentRequired,
+		Message: billingQuotaHint,
+		Code:    DiagBillingQuotaExceeded,
 	},
 	{
 		Pattern: "Payment Required",
-		Message: paymentRequiredHint,
-		Code:    DiagPaymentRequired,
+		Message: billingQuotaHint,
+		Code:    DiagBillingQuotaExceeded,
 	},
 	{
 		Pattern: "API rate limit exceeded",
