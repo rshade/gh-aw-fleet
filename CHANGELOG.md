@@ -10,6 +10,14 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.1.4](https://github.com/rshade/gh-aw-fleet/compare/v0.1.3...v0.1.4) (2026-05-10)
+
+
+### Added
+
+* **billing:** observability-plus profile + HTTP 402 diagnostic ([#72](https://github.com/rshade/gh-aw-fleet/issues/72)) ([560621e](https://github.com/rshade/gh-aw-fleet/commit/560621ea90387cdb64dbdb2b6b53acab58906283)), closes [#52](https://github.com/rshade/gh-aw-fleet/issues/52) [#56](https://github.com/rshade/gh-aw-fleet/issues/56)
+* **security:** add Layer 1 scanner for secrets and structural rules ([#69](https://github.com/rshade/gh-aw-fleet/issues/69)) ([25937e8](https://github.com/rshade/gh-aw-fleet/commit/25937e829af9d02ee5fcae393caf04c5f4fe8bbd)), closes [#37](https://github.com/rshade/gh-aw-fleet/issues/37)
+
 ## [0.1.3](https://github.com/rshade/gh-aw-fleet/compare/v0.1.2...v0.1.3) (2026-05-01)
 
 
