@@ -3,6 +3,7 @@ package fleet
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,39 @@ func TestCollectHintDiagnostics_UnknownProperty(t *testing.T) {
 	}
 	if got[0].Fields["hint"] != got[0].Message {
 		t.Errorf("Fields[hint] = %v; want = Message %q", got[0].Fields["hint"], got[0].Message)
+	}
+}
+
+func TestCollectHintDiagnostics_BillingQuotaExceeded(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"http_402", "gh: HTTP 402: spending limit reached"},
+		{"payment_required", "gh: 402 Payment Required"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CollectHintDiagnostics(tc.in)
+			if len(got) != 1 {
+				t.Fatalf("len(got) = %d; want 1; got=%+v", len(got), got)
+			}
+			if got[0].Code != DiagBillingQuotaExceeded {
+				t.Errorf("Code = %q; want %q", got[0].Code, DiagBillingQuotaExceeded)
+			}
+			if got[0].Fields["hint"] != got[0].Message {
+				t.Errorf("Fields[hint] = %v; want = Message %q", got[0].Fields["hint"], got[0].Message)
+			}
+			if !strings.Contains(got[0].Message, "Copilot") {
+				t.Errorf("Message = %q; want GitHub-specific remediation naming Copilot", got[0].Message)
+			}
+			if !strings.Contains(got[0].Message, "github.com/settings/billing/spending_limit") {
+				t.Errorf("Message = %q; want pointer to GitHub spending controls URL", got[0].Message)
+			}
+			if !strings.Contains(got[0].Message, "gh-aw-fleet consumption") {
+				t.Errorf("Message = %q; want forward-reference to `gh-aw-fleet consumption` subcommand", got[0].Message)
+			}
+		})
 	}
 }
 

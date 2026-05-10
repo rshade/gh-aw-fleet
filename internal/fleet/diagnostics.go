@@ -32,6 +32,7 @@ const (
 	DiagUnknownProperty       = fleetdiag.DiagUnknownProperty
 	DiagHTTP404               = fleetdiag.DiagHTTP404
 	DiagGPGFailure            = fleetdiag.DiagGPGFailure
+	DiagBillingQuotaExceeded  = fleetdiag.DiagBillingQuotaExceeded
 	DiagRateLimited           = fleetdiag.DiagRateLimited
 	DiagRepoInaccessible      = fleetdiag.DiagRepoInaccessible
 	DiagNetworkUnreachable    = fleetdiag.DiagNetworkUnreachable
@@ -56,6 +57,16 @@ type Hint struct {
 	Code    string
 }
 
+// billingQuotaHint is shared by the "HTTP 402" and "Payment Required"
+// entries. Names GitHub spending controls as the primary remediation and
+// forward-references the planned `gh-aw-fleet consumption` subcommand for
+// cross-repo cost attribution (#52).
+const billingQuotaHint = "Upstream returned HTTP 402 / Payment Required — a billing-quota or spending-cap rejection " +
+	"from GitHub Copilot's usage-based billing, not a workflow syntax error. " +
+	"Raise or review the cap at https://github.com/settings/billing/spending_limit " +
+	"(or the org-level equivalent under Organization → Settings → Billing). " +
+	"Cross-repo cost attribution will be available via `gh-aw-fleet consumption` once that subcommand ships."
+
 // Ordered most-specific first; only the first match per input text is emitted.
 //
 //nolint:gochecknoglobals // immutable hint table; Go has no const slice of structs
@@ -79,6 +90,16 @@ var hints = []Hint{
 		Message: "Source path not found. Check the spec — `github/gh-aw` workflows live under `.github/workflows/`; " +
 			"`githubnext/agentics` workflows live under `workflows/`.",
 		Code: DiagHTTP404,
+	},
+	{
+		Pattern: "HTTP 402",
+		Message: billingQuotaHint,
+		Code:    DiagBillingQuotaExceeded,
+	},
+	{
+		Pattern: "Payment Required",
+		Message: billingQuotaHint,
+		Code:    DiagBillingQuotaExceeded,
 	},
 	{
 		Pattern: "API rate limit exceeded",

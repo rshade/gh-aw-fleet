@@ -15,7 +15,7 @@ Profiles are the *intent layer* of the fleet. `templates.json` says what exists 
 
 Two other facts shape the flow:
 
-- `fleet.json` is the public, committed declarative state (five profiles today: `default`, `quality-plus`, `security-plus`, `docs-plus`, `community-plus`). `fleet.local.json` layers on top, is gitignored, and is where private / experimental profiles live. The user picks which to write — usually `fleet.local.json` for new or one-off profiles, `fleet.json` only when the profile is stable and meant to be shared.
+- `fleet.json` is the public, committed declarative state (six profiles today: `default`, `quality-plus`, `security-plus`, `docs-plus`, `community-plus`, `observability-plus`). `fleet.local.json` layers on top, is gitignored, and is where private / experimental profiles live. The user picks which to write — usually `fleet.local.json` for new or one-off profiles, `fleet.json` only when the profile is stable and meant to be shared.
 - `profiles/<name>.json` is a separate, human-readable mirror. Only `profiles/default.json` exists today, and no Go code reads it — it's a documentation convention. CLAUDE.md still requires `profiles/default.json` to match `fleet.json`'s `default` profile verbatim, so any write that touches the `default` profile has to update both files in the same turn.
 
 ## When to use
@@ -76,6 +76,7 @@ Call out anything the user should sanity-check:
 - Any gh-aw workflow included → flag the source stability note.
 - Pin ref differs from `default` profile → mention it and why.
 - Any workflow with `safe_outputs: create-pull-request` or `push-to-pull-request-branch` → note the noise profile, since the whole bundle's character is set by its heaviest safe-outputs.
+- Any workflow that runs an LLM on a daily schedule (e.g., `api-consumption-report` in `observability-plus`) → flag the recurring Copilot-credit cost. Daily LLM workflows multiplied across N opted-in repos can be ~$1–2/day/repo; bake a sentence about the cost into the profile description so the trade-off is visible at opt-in.
 
 Stop. Wait for explicit approval ("go", "apply", "looks good") before writing.
 

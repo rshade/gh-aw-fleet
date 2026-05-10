@@ -15,34 +15,19 @@ is biased toward *operator ergonomics* (resume, preflight, packaging) over
 *feature surface area* (new commands, new abstractions). When in doubt: less
 code, more delegation.
 
-The project is at **v0.1.1**. The 2026-06-01 transition to usage-based Copilot
+The project is at **v0.1.3**. The 2026-06-01 transition to usage-based Copilot
 billing has shifted the near-term agenda: fleet operators need cross-repo cost
 visibility, and fleet — uniquely positioned to know which repo runs which
 profile pinned to which ref — is the natural layer to provide it.
 
-## Immediate Focus (v0.2 — CLI completeness + billing readiness)
+## Immediate Focus (v0.2 — billing readiness + correctness cleanup)
 
-The CLI surface advertises seven subcommands but `status` (#10) remains a
-stub. Closing that gap removes user surprise. Bundled in this milestone: a
-deploy-time preflight (#11), one billing-readiness diagnostic (#52, the
-smallest billing-related ship), and one freshly-discovered correctness bug
-(#48).
-
-### CLI completeness
-
-- [ ] [#10](https://github.com/rshade/gh-aw-fleet/issues/10) Implement
-  `status [repo]` subcommand `[M]`
-  *Diff desired (`fleet.json`) vs actual (per-repo workflow set + pins)
-  WITHOUT cloning. Reuses `fetch.go` to read upstream + target via `gh api`.
-  Output: human-readable drift report + non-zero exit if drift exists.
-  `--json` mode for CI integration.*
-- [ ] [#11](https://github.com/rshade/gh-aw-fleet/issues/11) Preflight
-  check for Actions enabled and workflow write permissions `[M]`
-  *Two repo-level settings (Actions toggle, workflow token permissions)
-  silently break every deployed workflow if mis-set. Add
-  `checkActionsSettings()` alongside the existing `checkEngineSecret()`
-  call; surface warnings with direct links to the settings page. Pure
-  preflight — no auto-remediation.*
+CLI completeness shipped in 2026-Q2 (#10 status, #11 preflight). What
+remains for v0.2 is the smallest billing-readiness diagnostic (#52, ahead
+of the 2026-06-01 transition) and one correctness bug surfaced after #8
+landed (#48). Both are `[S]` — this milestone is intentionally small so
+the next reasonable promotion is the billing-visibility chain (#54/#55/#56
+→ #57) from Near-Term.
 
 ### Billing readiness (2026-06-01 transition)
 
@@ -161,10 +146,11 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   Add security scanning to `upgrade`/`sync`/`deploy` pipeline `[L]`
   *Umbrella: insert a scanner layer that catches secrets, dangerous
   compiled-YAML patterns, and fleet-structural violations before PRs merge.
-  Scoped into four sub-issues (#37–#40) that ship independently; promote
-  to Near-Term once #37 has a landing PR.*
-  - [ ] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
+  Layer 1 (#37) shipped 2026-05-07 — by the epic's own promotion rule, the
+  remaining children (#38–#40) are eligible for Near-Term in the next sync.*
+  - [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
     scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
+    (shipped 2026-05-07)
   - [ ] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict`
     flag: promote HIGH Layer 1 findings from advisory to blocking `[S]`
   - [ ] [#39](https://github.com/rshade/gh-aw-fleet/issues/39)
@@ -291,10 +277,47 @@ ideas close the loop without becoming a daemon.
   so a human reviewer can navigate the rollout. Pure formatting; no schema
   change.*
 
+### Status command refinements
+
+Both follow-ups extend the v1 `status` command (#10, shipped 2026-Q2). They
+were deferred at v1 to keep the initial command surface small.
+
+- [ ] [#61](https://github.com/rshade/gh-aw-fleet/issues/61) Opt-in
+  `--ref <branch>` flag for `status` non-default-branch checks `[S]`
+  *Today `status` reads each repo's default branch. Some operators stage
+  workflow changes on a feature branch; an opt-in `--ref` flag would let
+  `status` diff against an arbitrary ref. Trigger: real demand from at
+  least one external operator.*
+- [ ] [#62](https://github.com/rshade/gh-aw-fleet/issues/62) Opt-in
+  SHA-resolution drift mode for `status` to reduce false positives `[S]`
+  *Today `status` does strict string comparison: a SHA pin pointing to the
+  same commit as a tag is reported as drifted. Optional flag would resolve
+  both refs to commit SHAs via `gh api` (2N extra calls per drifted
+  candidate). Trigger: operators report content-identical false positives.*
+
 ## Completed Milestones
 
 ### 2026-Q2
 
+- [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
+  security scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
+  *First foundation of the security epic (#36): added `internal/security`
+  scanner that runs against the resolved workflow set and surfaces findings
+  on `DeployResult` / `SyncResult` / `UpgradeResult`. Advisory-only at this
+  layer; promotion to blocking arrives with #38's `--strict` flag.*
+- [x] [#11](https://github.com/rshade/gh-aw-fleet/issues/11) Preflight
+  check for Actions enabled and workflow write permissions `[M]`
+  *`checkActionsSettings()` runs alongside `checkEngineSecret()` during
+  deploy preflight; surfaces direct settings-page links when either repo-
+  level setting would silently break deployed workflows. Pure preflight,
+  no auto-remediation.*
+- [x] [#10](https://github.com/rshade/gh-aw-fleet/issues/10) Implement
+  `status [repo]` subcommand `[M]`
+  *Diffs desired (`fleet.json`) vs actual (per-repo workflow set + pins)
+  via `gh api` without cloning. Human-readable drift report by default,
+  `--output json` envelope for CI/LLM consumption, non-zero exit on drift.
+  Strict-string comparison; SHA-resolution mode tracked separately as
+  #62.*
 - [x] [#32](https://github.com/rshade/gh-aw-fleet/issues/32) `upgrade`
   first changed-file missing leading dot (TrimSpace eats porcelain status
   char) `[S]`
@@ -371,10 +394,10 @@ Any roadmap item that violates these is rejected, not negotiated.
 - **Effort labels**: `effort/small`, `effort/medium`, `effort/large`
 - **Contribution flags**: `community`, `cross-repo`, `spec-first`
 
-> Immediate Focus items (#10, #11, #48, #52), Near-Term billing-visibility
-> items (#54, #55, #56, #57), Near-Term distribution / security items (#43,
-> #49), the Future Vision security epic (#36 with children #37–#40), and the
-> Future Vision billing-deferred items (#53, #59, #60) are tracked as GitHub
-> issues. The unlinked Near-Term and Future items don't have issues yet —
-> open them as work picks up, then run `/roadmap sync` to keep this file
-> aligned.
+> Immediate Focus items (#48, #52), Near-Term billing-visibility items
+> (#54, #55, #56, #57), Near-Term distribution / security items (#43, #49),
+> the Future Vision security epic (#36 with remaining children #38–#40),
+> the Future Vision billing-deferred items (#53, #59, #60), and the Status
+> command refinements (#61, #62) are tracked as GitHub issues. The
+> unlinked Near-Term and Future items don't have issues yet — open them
+> as work picks up, then run `/roadmap sync` to keep this file aligned.
