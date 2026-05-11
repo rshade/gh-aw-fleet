@@ -15,30 +15,32 @@ is biased toward *operator ergonomics* (resume, preflight, packaging) over
 *feature surface area* (new commands, new abstractions). When in doubt: less
 code, more delegation.
 
-The project is at **v0.1.3**. The 2026-06-01 transition to usage-based Copilot
+The project is at **v0.1.4**. The 2026-06-01 transition to usage-based Copilot
 billing has shifted the near-term agenda: fleet operators need cross-repo cost
 visibility, and fleet — uniquely positioned to know which repo runs which
 profile pinned to which ref — is the natural layer to provide it.
 
-## Immediate Focus (v0.2 — billing readiness + correctness cleanup)
+## Immediate Focus (v0.2 — billing-visibility prerequisites + correctness cleanup)
 
-CLI completeness shipped in 2026-Q2 (#10 status, #11 preflight). What
-remains for v0.2 is the smallest billing-readiness diagnostic (#52, ahead
-of the 2026-06-01 transition) and one correctness bug surfaced after #8
-landed (#48). Both are `[S]` — this milestone is intentionally small so
-the next reasonable promotion is the billing-visibility chain (#54/#55/#56
-→ #57) from Near-Term.
+CLI completeness and the smallest billing-readiness pieces shipped in
+2026-Q2 (#10 status, #11 preflight, #52 HTTP 402 diagnostic, #56
+`api-consumption-report` profile). What remains for v0.2 is one correctness
+bug (#48) plus the two additive metadata prerequisites (#54, #55) that
+unlock the cross-fleet `consumption` subcommand (#57) in v0.3. #54 and #55
+are independent — land in any order.
 
-### Billing readiness (2026-06-01 transition)
+### Billing-visibility prerequisites
 
-- [ ] [#52](https://github.com/rshade/gh-aw-fleet/issues/52) Add diagnostic
-  hint for HTTP 402 / Copilot billing-quota exceeded errors `[S]`
-  *Recommended starting point in this batch. Single-file edit to
-  `internal/fleet/diagnostics.go` `hints[]` table; exact pattern shape
-  established by the existing unknown-property / 404 / gpg entries. Forward-
-  references the `consumption` subcommand (#57) once it ships. Ship before
-  2026-06-01 so operators get an actionable message instead of raw
-  `gh aw` stderr the first time a billing cap fires.*
+- [ ] [#54](https://github.com/rshade/gh-aw-fleet/issues/54) Add optional
+  `tier` annotation to profile definitions `[M]`
+  *Advisory `minimal | standard | premium` field on `Profile`. Surface in
+  `list` output. No enforcement — annotation only. Becomes the `--by tier`
+  group-by key for #57. Independent of #55; land in any order.*
+- [ ] [#55](https://github.com/rshade/gh-aw-fleet/issues/55) Add optional
+  `cost_center` field to `RepoSpec` `[M]`
+  *Free-form string per repo. Surface in `list`. Same shape as #54
+  (additive metadata, no enforcement). Becomes the `--by cost-center` key
+  for #57. Independent of #54; land in any order.*
 
 ### Correctness
 
@@ -51,32 +53,16 @@ the next reasonable promotion is the billing-visibility chain (#54/#55/#56
 
 ## Near-Term Vision (v0.3 — billing visibility + operator quality)
 
-Once Immediate Focus closes, the next layer is the cross-fleet consumption
-view (#57 and its prerequisites #54/#55/#56), which is *the* fleet feature
-the new billing model justifies. Wrapped around that: a security default
-flip (#49), packaging (#43, gh-extension item), and the existing operator-QoL
-items.
+Once Immediate Focus closes, the headline v0.3 work is the cross-fleet
+consumption rollup (#57) — the fleet feature the new billing model
+justifies. #56 (workflow profile) shipped in v0.2; #54 + #55 (metadata
+prereqs) are in Immediate Focus, so by the time v0.3 opens, #57's
+prerequisites are all in place. Wrapped around that: a security default
+flip (#49), packaging (#43, gh-extension item), inline config docs (#73),
+and the existing operator-QoL items.
 
 ### Billing visibility (consumption tracking)
 
-These four issues are sequenced: #54, #55, #56 are independent prerequisites
-to #57. Land them in any order; #57 needs all three.
-
-- [ ] [#54](https://github.com/rshade/gh-aw-fleet/issues/54) Add optional
-  `tier` annotation to profile definitions `[M]`
-  *Advisory `minimal | standard | premium` field on `Profile`. Surface in
-  `list` output. No enforcement — annotation only. Becomes the `--by tier`
-  group-by key for #57.*
-- [ ] [#55](https://github.com/rshade/gh-aw-fleet/issues/55) Add optional
-  `cost_center` field to `RepoSpec` `[M]`
-  *Free-form string per repo. Surface in `list`. Same shape as #54 (additive
-  metadata, no enforcement). Becomes the `--by cost-center` key for #57.*
-- [ ] [#56](https://github.com/rshade/gh-aw-fleet/issues/56) Add
-  `api-consumption-report` workflow to a fleet profile `[S]`
-  *Pure profile composition — no Go code. Recommended path: new
-  `observability-plus` opt-in profile (matches existing `*-plus` naming).
-  Provides the per-repo data feed #57 aggregates. Cost-aware operators
-  will care: the workflow itself consumes ~$1–2/day per repo running it.*
 - [ ] [#57](https://github.com/rshade/gh-aw-fleet/issues/57) Add
   `gh-aw-fleet consumption` subcommand for cross-fleet billing rollups
   `[L]`
@@ -85,7 +71,8 @@ to #57. Land them in any order; #57 needs all three.
   data via `aw_info.json` from run artifacts. `--latest` / `--trailing` /
   `--since` modes; `--by repo|profile|cost-center|workflow` grouping.
   Ships `cost *float64` placeholder for the future Copilot credit field
-  (tracked separately as #59).*
+  (tracked separately as #59). Depends on #54 + #55 from Immediate Focus
+  and on #56 (already shipped in v0.2).*
 
 ### Distribution + security defaults
 
@@ -106,6 +93,16 @@ to #57. Land them in any order; #57 needs all three.
 
 ### Operator quality of life
 
+- [ ] [#73](https://github.com/rshade/gh-aw-fleet/issues/73) Support HuJson
+  for inline config documentation `[M]`
+  *Allow `//` comments and trailing commas in `fleet.json`,
+  `fleet.local.json`, `templates.json`, and `profiles/default.json` so pin
+  rationale and per-workflow eval notes live next to the data they
+  describe. Read path: `hujson.Standardize()` before `json.Unmarshal`;
+  write path: `hujson.Patch` preserves comments through tool-driven edits.
+  **Boundary note**: introduces a third-party dep (`tailscale/hujson`)
+  against Principle I — justify or vendor the minimal Standardize/Patch
+  surface before merging.*
 - [ ] `sync --dry-run` runs deploy preflight `[M]`
   *Today `sync --dry-run` computes the diff but doesn't validate that the
   resolved workflows would actually `gh aw add` cleanly (404s on bad pins,
@@ -299,6 +296,20 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#56](https://github.com/rshade/gh-aw-fleet/issues/56) Add
+  `api-consumption-report` workflow to a fleet profile `[S]`
+  *Shipped 2026-05-10 as the new `observability-plus` opt-in profile in
+  `profiles/default.json`. Provides the per-repo data feed the upcoming
+  `consumption` subcommand (#57) aggregates. Pure profile composition,
+  no Go code. Opting a repo in incurs recurring Copilot-credit cost since
+  the report is itself an LLM workflow.*
+- [x] [#52](https://github.com/rshade/gh-aw-fleet/issues/52) Add diagnostic
+  hint for HTTP 402 / Copilot billing-quota exceeded errors `[S]`
+  *Shipped 2026-05-10 in the same release as #56. Added a `hints[]` entry
+  in `internal/fleet/diagnostics.go` for `HTTP 402` / `Payment Required`
+  patterns. Lands before the 2026-06-01 usage-based billing transition so
+  operators get an actionable message on first cap hit. Follow-up #53
+  expands the pattern catalog once real failures are observed.*
 - [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
   security scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
   *First foundation of the security epic (#36): added `internal/security`
@@ -394,10 +405,11 @@ Any roadmap item that violates these is rejected, not negotiated.
 - **Effort labels**: `effort/small`, `effort/medium`, `effort/large`
 - **Contribution flags**: `community`, `cross-repo`, `spec-first`
 
-> Immediate Focus items (#48, #52), Near-Term billing-visibility items
-> (#54, #55, #56, #57), Near-Term distribution / security items (#43, #49),
-> the Future Vision security epic (#36 with remaining children #38–#40),
-> the Future Vision billing-deferred items (#53, #59, #60), and the Status
-> command refinements (#61, #62) are tracked as GitHub issues. The
-> unlinked Near-Term and Future items don't have issues yet — open them
-> as work picks up, then run `/roadmap sync` to keep this file aligned.
+> Immediate Focus items (#48, #54, #55), the Near-Term billing-visibility
+> item (#57), Near-Term distribution / security / config items (#43, #49,
+> #73), the Future Vision security epic (#36 with remaining children
+> #38–#40), the Future Vision billing-deferred items (#53, #59, #60), and
+> the Status command refinements (#61, #62) are tracked as GitHub issues.
+> The unlinked Near-Term and Future items don't have issues yet — open
+> them as work picks up, then run `/roadmap sync` to keep this file
+> aligned.

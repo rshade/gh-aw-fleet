@@ -1,29 +1,44 @@
 <!--
 SYNC IMPACT REPORT
-Version change: TEMPLATE (placeholders) → 1.0.0
-Rationale: Initial ratification; establishes governance for the project for the first time.
+Version change: 1.0.0 → 1.1.0
+Rationale: Codifies the previously implicit minimal-direct-dependencies norm
+into an explicit "Third-Party Dependencies" section, retroactively records the
+existing direct deps (cobra, zerolog, yaml.v3, gitleaks/v8) as approved, and
+carves out `github.com/tailscale/hujson` as the first amendment-driven addition
+to support inline config documentation (#73). MINOR bump: new section + material
+expansion of guidance; no principle removed or redefined.
 
-Principles established:
-  I.   Thin-Orchestrator Code Quality
-  II.  Testing Standards (Build-Green + Real-World Dry-Run)
-  III. User Experience Consistency (Three-Turn Mutation Pattern)
-  IV.  Performance Requirements (Parallelism, Cache, 5-Minute Ceiling)
+Modified principles: none (all four principles unchanged).
 
 Sections added:
-  - Declarative Reconcile Invariants
-  - Development Workflow
-  - Governance
+  - Third-Party Dependencies (between Declarative Reconcile Invariants and
+    Development Workflow)
 
-Sections removed: none (first ratification).
+Sections modified:
+  - Development Workflow: Complexity bullet now defers dependency policy to the
+    new Third-Party Dependencies section (one-line PR rationale is no longer
+    sufficient for new direct deps; an amendment is required).
+
+Sections removed: none.
 
 Templates requiring updates:
-  ✅ .specify/templates/constitution-template.md — source template; left intact (it is a scaffold, not a mirror).
-  ✅ .specify/templates/plan-template.md — has a generic "Constitution Check" slot that resolves to these principles at plan time; no hardcoded references to prior principles.
-  ✅ .specify/templates/spec-template.md — no constitution references detected.
-  ✅ .specify/templates/tasks-template.md — no constitution references detected.
-  ⚠ .specify/templates/commands/*.md — directory does not exist; nothing to audit.
-  ✅ CLAUDE.md — already encodes the operational subset (gpg signing, git-from-Bash, conventional commits, dry-run default). Principles here subsume and generalize it.
-  ✅ README.md — describes architecture; no conflicts with new principles.
+  ✅ .specify/templates/constitution-template.md — generic scaffold; no version-
+     specific content to mirror.
+  ✅ .specify/templates/plan-template.md — Constitution Check slot is generic
+     ("Gates determined based on constitution file"); resolves to current
+     principles at plan time. No hardcoded references to update.
+  ✅ .specify/templates/spec-template.md — no constitution or dependency
+     references detected.
+  ✅ .specify/templates/tasks-template.md — no constitution or dependency
+     references detected.
+  ⚠ .specify/templates/commands/*.md — directory does not exist; nothing to
+     audit.
+  ⚠ CLAUDE.md / AGENTS.md — the "Active Technologies" blocks in feature specs
+     reference "No new third-party dependencies — constitution Principle I."
+     That note is now formally satisfied by the Third-Party Dependencies
+     section; CLAUDE.md does not need to change, but future feature specs
+     SHOULD point to the new section by name instead of "Principle I."
+  ✅ README.md — no dependency-policy content; no changes needed.
 
 Follow-up TODOs: none.
 -->
@@ -84,13 +99,27 @@ These apply to every command that reads or mutates fleet state:
 - `git add`, `git commit`, and `git push` from Claude Code's Bash tool are denied at the allowlist level (`.claude/settings.json`). The Go tool invoking git via `exec.Command` inside `Deploy`/`Sync`/`Upgrade` is the only legitimate path.
 - `github/gh-aw` sources MUST pin to a tagged release (not `main` or a SHA) in any profile used for production deploys. `githubnext/agentics` MAY pin to `main` until the library tags releases.
 
+## Third-Party Dependencies
+
+Go module direct dependencies stay minimal. New entries in `go.mod`'s top-level `require()` block MUST be evaluated against three alternatives — the Go standard library, vendoring the minimal surface from the upstream package, or delegating the work to one of the orchestrated CLIs (`gh aw`, `gh`, `git`) — before adoption. Adding any new direct dependency requires a constitution amendment to this section (MINOR version bump); removing an approved entry is MAJOR.
+
+Indirect (transitive) dependencies in `go.mod`'s second `require()` block are not governed by this section — they flow from the approved direct deps and from the Go toolchain.
+
+**Approved direct dependencies**:
+
+- `github.com/spf13/cobra` — CLI scaffolding; the standard library `flag` package lacks subcommand and persistent-flag support (grandfathered at v1.0.0 ratification).
+- `github.com/rs/zerolog` — Structured stderr logging with level/format flags wired via `internal/log.Configure`; `log/slog` was evaluated but the codebase had already adopted zerolog in #24 before slog reached parity (grandfathered at v1.0.0 ratification).
+- `gopkg.in/yaml.v3` — Workflow frontmatter parsing and `templates.json` evaluation handling; required to interop with `gh aw`'s YAML output (grandfathered at v1.0.0 ratification).
+- `github.com/zricethezav/gitleaks/v8` — Secrets-scanning rule engine for the Layer 1 security scanner (`internal/security`). Vendoring the rule set was rejected because the upstream catalog updates faster than this repo's release cadence; re-implementing detection logic would re-host complexity that has a maintained home upstream. Adopted in #37; retroactively recorded as approved here.
+- `github.com/tailscale/hujson` — Comment-preserving reads and writes of fleet config files (`fleet.json`, `fleet.local.json`, `templates.json`, `profiles/default.json`). The standard `encoding/json` package cannot preserve `//` comments or trailing commas across round-trip edits, which blocks the inline-documentation use case in #73 (operators annotating pin choices, profile rationale, and per-workflow `Evaluation` notes next to the data they describe). Scope: `hujson.Standardize()` runs on the read path before `json.Unmarshal`; `hujson.Patch` runs on the write path to surgically apply edits while preserving operator-authored comments. Vendoring was rejected because the package must stay in sync with `encoding/json` semantics, a maintenance burden best owned upstream.
+
 ## Development Workflow
 
 - Proposed changes enter via PRs that include at minimum: `go build`/`go vet` clean, and for behavior changes, evidence from a dry-run or a subagent test of an affected skill.
 - The four skills in `skills/` MUST be updated when a command they reference gains or loses a flag, when a new failure class surfaces a new `CollectHints` pattern, or when the three-turn flow materially changes.
 - `CLAUDE.md` MUST be updated when a new architectural invariant is established (e.g., a new source repo added to `SourceLayout`, a new loader precedence rule).
 - Release cadence is continuous on the tool's own `main` branch. Fleet deployments use tagged source refs (`v0.68.3` etc.) via `fleet.json`; this is independent of the tool's own versioning.
-- Complexity MUST be justified: added abstractions, new dependencies, and new deny/allow entries in `.claude/settings.json` require a one-line rationale in the PR description.
+- Complexity MUST be justified: added abstractions and new deny/allow entries in `.claude/settings.json` require a one-line rationale in the PR description. New direct dependencies require a constitution amendment per the **Third-Party Dependencies** section above — a one-line PR rationale is not sufficient.
 
 ## Governance
 
@@ -112,4 +141,4 @@ Layering:
 
 When the three disagree, the constitution wins, followed by CLAUDE.md, followed by README.md. Disagreements surface as amendment proposals.
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-18 | **Last Amended**: 2026-04-18
+**Version**: 1.1.0 | **Ratified**: 2026-04-18 | **Last Amended**: 2026-05-10
