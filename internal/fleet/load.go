@@ -38,7 +38,12 @@ const (
 // jsonPatchOpAdd is the RFC 6902 "add" operation name. Per the RFC, "add"
 // replaces the value when the target path already exists, which is the
 // behavior buildTemplatesPatch relies on.
-const jsonPatchOpAdd = "add"
+const (
+	jsonPatchOpAdd       = "add"
+	jsonPatchMemberOp    = "op"
+	jsonPatchMemberPath  = "path"
+	jsonPatchMemberValue = "value"
+)
 
 // probeConfigPath returns the on-disk path for the given base name. Prefers
 // <base>.hujson over <base>.json so operators who opt into HuJson syntax
@@ -277,9 +282,9 @@ func SaveTemplates(dir string, t *Templates) error {
 // comments around them — survive the write unchanged.
 func buildTemplatesPatch(t *Templates) ([]byte, error) {
 	ops := []map[string]any{
-		{"op": jsonPatchOpAdd, "path": "/version", "value": t.Version},
-		{"op": jsonPatchOpAdd, "path": "/fetched_at", "value": t.FetchedAt},
-		{"op": jsonPatchOpAdd, "path": "/sources", "value": t.Sources},
+		{jsonPatchMemberOp: jsonPatchOpAdd, jsonPatchMemberPath: "/version", jsonPatchMemberValue: t.Version},
+		{jsonPatchMemberOp: jsonPatchOpAdd, jsonPatchMemberPath: "/fetched_at", jsonPatchMemberValue: t.FetchedAt},
+		{jsonPatchMemberOp: jsonPatchOpAdd, jsonPatchMemberPath: "/sources", jsonPatchMemberValue: t.Sources},
 	}
 	data, err := json.Marshal(ops)
 	if err != nil {
