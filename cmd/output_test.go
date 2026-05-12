@@ -216,7 +216,7 @@ func TestListEnvelope_Populated(t *testing.T) {
 	}
 	want := `{"schema_version":1,"command":"list","repo":"","apply":false,` +
 		`"result":{"loaded_from":"fleet.local.json","repos":[` +
-		`{"repo":"a/b","profiles":["empty"],"engine":"claude","workflows":[],"excluded":[],"extra":[]}` +
+		`{"repo":"a/b","profiles":["empty"],"profile_tiers":{},"engine":"claude","workflows":[],"excluded":[],"extra":[],"cost_center":""}` +
 		`]},"warnings":[],"hints":[]}` + "\n"
 	if buf.String() != want {
 		t.Errorf("envelope =\n  %s\nwant\n  %s", buf.String(), want)

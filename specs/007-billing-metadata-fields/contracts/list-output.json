@@ -1,0 +1,52 @@
+{
+  "_comment": "Example JSON envelope produced by `gh-aw-fleet list --output json` AFTER this feature ships. Shows the additive `profile_tiers` and `cost_center` fields on each row. Envelope `schema_version` remains 1. Envelope key set matches cmd/output.go's Envelope struct exactly: schema_version, command, repo, apply, result, warnings, hints (FR-009).",
+  "schema_version": 1,
+  "command": "list",
+  "repo": "",
+  "apply": false,
+  "result": {
+    "loaded_from": "fleet.json + fleet.local.json",
+    "repos": [
+      {
+        "_comment_row_1": "Repo with two profiles, both having tiers set, and a cost_center set in fleet.local.json.",
+        "repo": "rshade/example-paid",
+        "profiles": ["default", "security-plus"],
+        "profile_tiers": {
+          "default": "standard",
+          "security-plus": "premium"
+        },
+        "engine": "copilot",
+        "workflows": ["ci-doctor", "issue-triage", "secret-scan"],
+        "excluded": [],
+        "extra": [],
+        "cost_center": "platform-eng"
+      },
+      {
+        "_comment_row_2": "Repo with one profile carrying a tier; cost_center unset → empty string (always present per FR-008).",
+        "repo": "rshade/example-minimal",
+        "profiles": ["default"],
+        "profile_tiers": {
+          "default": "standard"
+        },
+        "engine": "copilot",
+        "workflows": ["ci-doctor"],
+        "excluded": [],
+        "extra": [],
+        "cost_center": ""
+      },
+      {
+        "_comment_row_3": "Repo whose only profile has NO tier set on its underlying Profile definition. profile_tiers is an empty MAP (not null) per FR-007.",
+        "repo": "rshade/example-untyped",
+        "profiles": ["legacy-custom"],
+        "profile_tiers": {},
+        "engine": "claude",
+        "workflows": ["ci-doctor"],
+        "excluded": [],
+        "extra": [],
+        "cost_center": ""
+      }
+    ]
+  },
+  "warnings": [],
+  "hints": []
+}

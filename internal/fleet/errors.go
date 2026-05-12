@@ -37,9 +37,9 @@ func parseLoadedSources(loadedFrom string) (string, string) {
 	for _, p := range parts {
 		source := strings.TrimSpace(p)
 		switch filepath.Base(source) {
-		case ConfigFile:
+		case ConfigFile, configBase + hujsonExt:
 			base = source
-		case LocalConfigFile:
+		case LocalConfigFile, localBase + hujsonExt:
 			local = source
 		}
 	}

@@ -193,43 +193,47 @@ func initSlices(v any) {
 	walkInitSlices(rv)
 }
 
-// walkInitSlices is intentionally a switch on three relevant Kinds; other
-// kinds (numeric, bool, string, map, etc.) need no normalization.
-//
-//nolint:gocognit,exhaustive // exhaustive: only the three kinds matter for FR-009; gocognit: shape mirrors the kind switch by design
+// walkInitSlices normalizes slices nested inside structs and pointers.
 func walkInitSlices(rv reflect.Value) {
 	for i := range rv.NumField() {
 		field := rv.Field(i)
 		if !field.CanSet() {
 			continue
 		}
-		switch field.Kind() {
-		case reflect.Slice:
-			if isOptionalSliceField(rv.Type().Field(i)) {
-				continue
-			}
-			// Skip []byte (incl. json.RawMessage) — these have custom MarshalJSON
-			// that expects nil → null, valid JSON bytes → nested object, and empty
-			// non-nil []byte → marshal error. Don't normalize them.
-			if field.Type().Elem().Kind() == reflect.Uint8 {
-				continue
-			}
-			if field.IsNil() {
-				field.Set(reflect.MakeSlice(field.Type(), 0, 0))
-			}
-			// Recurse into struct elements so nested struct slice-fields normalize too.
-			if field.Type().Elem().Kind() == reflect.Struct {
-				for j := range field.Len() {
-					walkInitSlices(field.Index(j))
-				}
-			}
-		case reflect.Pointer:
+		if field.Kind() == reflect.Slice {
+			initSliceField(rv.Type().Field(i), field)
+			continue
+		}
+		if field.Kind() == reflect.Pointer {
 			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
 				walkInitSlices(field.Elem())
 			}
-		case reflect.Struct:
+			continue
+		}
+		if field.Kind() == reflect.Struct {
 			walkInitSlices(field)
 		}
+	}
+}
+
+func initSliceField(structField reflect.StructField, field reflect.Value) {
+	if isOptionalSliceField(structField) {
+		return
+	}
+	// Skip []byte (incl. json.RawMessage) — these have custom MarshalJSON
+	// that expects nil → null, valid JSON bytes → nested object, and empty
+	// non-nil []byte → marshal error. Don't normalize them.
+	if field.Type().Elem().Kind() == reflect.Uint8 {
+		return
+	}
+	if field.IsNil() {
+		field.Set(reflect.MakeSlice(field.Type(), 0, 0))
+	}
+	if field.Type().Elem().Kind() != reflect.Struct {
+		return
+	}
+	for j := range field.Len() {
+		walkInitSlices(field.Index(j))
 	}
 }
 

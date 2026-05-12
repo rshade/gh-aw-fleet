@@ -42,6 +42,26 @@ func TestErrRepoNotTracked(t *testing.T) {
 			want:       `repo "owner/repo" not tracked in /some/dir/fleet.json or /some/dir/fleet.local.json`,
 		},
 		{
+			name:       "hujson base only",
+			loadedFrom: "fleet.hujson",
+			want:       `repo "owner/repo" not tracked in fleet.hujson`,
+		},
+		{
+			name:       "hujson local only",
+			loadedFrom: "fleet.local.hujson",
+			want:       `repo "owner/repo" not tracked in fleet.local.hujson`,
+		},
+		{
+			name:       "both hujson with paths",
+			loadedFrom: "/some/dir/fleet.hujson + /some/dir/fleet.local.hujson",
+			want:       `repo "owner/repo" not tracked in /some/dir/fleet.hujson or /some/dir/fleet.local.hujson`,
+		},
+		{
+			name:       "mixed extensions",
+			loadedFrom: "/some/dir/fleet.hujson + /some/dir/fleet.local.json",
+			want:       `repo "owner/repo" not tracked in /some/dir/fleet.hujson or /some/dir/fleet.local.json`,
+		},
+		{
 			name:       "empty loadedFrom defaults to both",
 			loadedFrom: "",
 			want:       `repo "owner/repo" not tracked in fleet.json or fleet.local.json`,

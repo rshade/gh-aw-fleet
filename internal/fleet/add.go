@@ -1,11 +1,16 @@
 package fleet
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	zlog "github.com/rs/zerolog/log"
+	"github.com/tailscale/hujson"
 )
 
 const (
@@ -133,14 +138,17 @@ func Add(cfg *Config, opts AddOptions) (*AddResult, error) {
 		return nil, fmt.Errorf("resolve workflows for %q: %w", opts.Repo, err)
 	}
 
-	localPath := resolve(opts.Dir, LocalConfigFile)
+	localPath, localExists, probeErr := probeConfigPath(opts.Dir, localBase)
+	if probeErr != nil {
+		return nil, fmt.Errorf("probe local config: %w", probeErr)
+	}
 	res := &AddResult{
 		Repo:             opts.Repo,
 		Profiles:         opts.Profiles,
 		Engine:           opts.Engine,
 		Resolved:         resolved,
 		Warnings:         collectAddWarnings(cfg, opts, parsedExtras, resolved),
-		SynthesizedLocal: !strings.Contains(cfg.LoadedFrom, LocalConfigFile),
+		SynthesizedLocal: !localExists,
 		LocalPath:        localPath,
 	}
 
@@ -148,12 +156,105 @@ func Add(cfg *Config, opts AddOptions) (*AddResult, error) {
 		return res, nil
 	}
 
-	minimal := BuildMinimalLocalConfig(opts.Repo, candidate)
-	if saveErr := SaveLocalConfig(opts.Dir, minimal); saveErr != nil {
-		return res, fmt.Errorf("write %s: %w", localPath, saveErr)
+	if writeErr := writeLocalAddition(opts.Dir, opts.Repo, candidate); writeErr != nil {
+		return res, fmt.Errorf("write %s: %w", localPath, writeErr)
 	}
 	res.WroteLocal = true
 	return res, nil
+}
+
+// writeLocalAddition persists a new repo entry into the local-overlay file,
+// preferring an in-place HuJson AST mutation that preserves operator-authored
+// comments and trailing commas elsewhere in the file. Falls back to a full
+// re-marshal (losing comments but emitting a structured warning) when the
+// AST path cannot apply the mutation.
+//
+// When no local file exists yet, BuildMinimalLocalConfig produces the
+// scaffold and writeJSON writes it out — there are no comments to preserve.
+func writeLocalAddition(dir, repo string, spec RepoSpec) error {
+	path, exists, err := probeConfigPath(dir, localBase)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return writeJSON(path, BuildMinimalLocalConfig(repo, spec))
+	}
+	astErr := writeHujson(path, func(root *hujson.Value) error {
+		return appendRepoMember(root, repo, spec)
+	})
+	if astErr == nil {
+		return nil
+	}
+	zlog.Warn().
+		Str("event", "hujson_fallback_to_rewrite").
+		Str("path", path).
+		Err(astErr).
+		Msg("comment-preserving append failed; rewriting from current contents")
+	existing, loadErr := loadConfigFile(path)
+	if loadErr != nil {
+		return fmt.Errorf("fallback re-read %s: %w", path, loadErr)
+	}
+	if existing.Repos == nil {
+		existing.Repos = map[string]RepoSpec{}
+	}
+	existing.Repos[repo] = spec
+	return writeJSON(path, existing)
+}
+
+// appendRepoMember inserts a new (slug, spec) pair under the root config's
+// /repos object via direct AST mutation. Comments and trailing commas
+// elsewhere in the file are unaffected. Synthesizes an empty /repos
+// member when the on-disk file omits the key.
+func appendRepoMember(root *hujson.Value, slug string, spec RepoSpec) error {
+	rootObj, ok := root.Value.(*hujson.Object)
+	if !ok {
+		return errors.New("config root is not a JSON object")
+	}
+	reposVal := root.Find("/repos")
+	if reposVal == nil {
+		reposParsed, parseErr := hujson.Parse([]byte("{}"))
+		if parseErr != nil {
+			return fmt.Errorf("synthesize /repos: %w", parseErr)
+		}
+		nameParsed, parseErr := hujson.Parse([]byte(`"repos"`))
+		if parseErr != nil {
+			return fmt.Errorf("synthesize /repos name: %w", parseErr)
+		}
+		rootObj.Members = append(rootObj.Members, hujson.ObjectMember{
+			Name:  nameParsed,
+			Value: reposParsed,
+		})
+		reposVal = root.Find("/repos")
+		if reposVal == nil {
+			return errors.New("/repos missing after synthesis")
+		}
+	}
+	reposObj, ok := reposVal.Value.(*hujson.Object)
+	if !ok {
+		return errors.New("/repos is not a JSON object")
+	}
+
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
+		return fmt.Errorf("marshal repo spec: %w", err)
+	}
+	specParsed, err := hujson.Parse(specJSON)
+	if err != nil {
+		return fmt.Errorf("parse repo spec: %w", err)
+	}
+	nameJSON, err := json.Marshal(slug)
+	if err != nil {
+		return fmt.Errorf("marshal slug: %w", err)
+	}
+	nameParsed, err := hujson.Parse(nameJSON)
+	if err != nil {
+		return fmt.Errorf("parse slug: %w", err)
+	}
+	reposObj.Members = append(reposObj.Members, hujson.ObjectMember{
+		Name:  nameParsed,
+		Value: specParsed,
+	})
+	return nil
 }
 
 // unknownKeyError formats a consistent "X not defined; available: [...]" error
@@ -209,26 +310,37 @@ func collectAddWarnings(
 
 // duplicateRepoError names the source file(s) declaring repo. When LoadConfig
 // loaded only one file, the answer is carried in cfg.LoadedFrom with no disk
-// I/O. In the merged-load case we re-read both files to disambiguate.
+// I/O. In the merged-load case we re-read both files (probing for .hujson
+// or .json each) to disambiguate. Reports filenames as base names rather
+// than full paths to keep operator-facing errors stable across working
+// directories. Probe failures (e.g. permission errors on stat) surface a
+// degraded error that still names the duplicate but admits the missing
+// disambiguation.
 func duplicateRepoError(cfg *Config, dir, repo string) error {
-	basePath := resolve(dir, ConfigFile)
-	localPath := resolve(dir, LocalConfigFile)
+	basePath, _, baseProbeErr := probeConfigPath(dir, configBase)
+	localPath, _, localProbeErr := probeConfigPath(dir, localBase)
+	if baseProbeErr != nil || localProbeErr != nil {
+		return fmt.Errorf(
+			"repo %q already exists in fleet config (could not disambiguate source: %w)",
+			repo, errors.Join(baseProbeErr, localProbeErr),
+		)
+	}
 	switch cfg.LoadedFrom {
 	case basePath:
-		return fmt.Errorf("repo %q already exists in %s", repo, ConfigFile)
+		return fmt.Errorf("repo %q already exists in %s", repo, filepath.Base(basePath))
 	case localPath:
-		return fmt.Errorf("repo %q already exists in %s", repo, LocalConfigFile)
+		return fmt.Errorf("repo %q already exists in %s", repo, filepath.Base(localPath))
 	}
 
 	var sources []string
 	if base, err := loadConfigFile(basePath); err == nil && base != nil {
 		if _, ok := base.Repos[repo]; ok {
-			sources = append(sources, ConfigFile)
+			sources = append(sources, filepath.Base(basePath))
 		}
 	}
 	if local, err := loadConfigFile(localPath); err == nil && local != nil {
 		if _, ok := local.Repos[repo]; ok {
-			sources = append(sources, LocalConfigFile)
+			sources = append(sources, filepath.Base(localPath))
 		}
 	}
 	if len(sources) == 0 {

@@ -12,11 +12,15 @@ const SchemaVersion = 1
 // Loaded from fleet.local.json (if present) or fleet.json. Edits to this file are the source of truth;
 // `fleet sync` and `fleet upgrade` reconcile repos toward it.
 type Config struct {
-	Version    int                 `json:"version"`
-	Defaults   Defaults            `json:"defaults,omitzero"`
-	Profiles   map[string]Profile  `json:"profiles,omitempty"`
-	Repos      map[string]RepoSpec `json:"repos"`
-	LoadedFrom string              `json:"-"`
+	Version  int                 `json:"version"`
+	Defaults Defaults            `json:"defaults,omitzero"`
+	Profiles map[string]Profile  `json:"profiles,omitempty"`
+	Repos    map[string]RepoSpec `json:"repos"`
+	// LoadedFrom names the on-disk source of this Config in human form,
+	// e.g. "fleet.json", "fleet.local.hujson", or "fleet.json + fleet.local.json"
+	// when both base and local files were merged. Set by LoadConfig only;
+	// callers must not modify.
+	LoadedFrom string `json:"-"`
 }
 
 // Defaults are applied to every repo unless overridden in RepoSpec.
@@ -35,11 +39,19 @@ func (c *Config) EffectiveEngine(repo string) string {
 
 // Profile is a named bundle of workflows pulled from one or more upstream
 // source repositories. A profile advances atomically: bumping Sources[x].Ref
-// re-pins every workflow in the profile sourced from x.
+// re-pins every workflow in the profile sourced from x. The optional Tier
+// field carries an advisory cost-tier label consumed by `gh-aw-fleet list`
+// and the planned consumption subcommand.
 type Profile struct {
-	Description string               `json:"description,omitempty"`
-	Sources     map[string]SourcePin `json:"sources"`
-	Workflows   []ProfileWorkflow    `json:"workflows"`
+	Description string `json:"description,omitempty"`
+	// Tier is an advisory cost-tier label (recommended vocabulary:
+	// "minimal" | "standard" | "premium") used by the planned consumption
+	// subcommand as a group-by key. Free-form — the tool does not enforce
+	// the recommended vocabulary, and an empty string is equivalent to the
+	// field being absent on disk.
+	Tier      string               `json:"tier,omitempty"`
+	Sources   map[string]SourcePin `json:"sources"`
+	Workflows []ProfileWorkflow    `json:"workflows"`
 }
 
 // SourcePin records the ref (tag/branch/sha) for a given source repo within
@@ -56,9 +68,17 @@ type ProfileWorkflow struct {
 	Path   string `json:"path,omitempty"`
 }
 
-// RepoSpec is the desired state for a single target repo.
+// RepoSpec is the desired state for a single target repo. The optional
+// CostCenter field carries a free-form budget-attribution label surfaced by
+// `gh-aw-fleet list` and consumed as a group-by key by the planned
+// consumption subcommand.
 type RepoSpec struct {
-	Profiles            []string          `json:"profiles"`
+	Profiles []string `json:"profiles"`
+	// CostCenter is a free-form per-repo budget-attribution label. The tool
+	// does not validate that the named cost center actually exists in the
+	// org's billing UI, and applies no special handling based on which
+	// fleet file (fleet.json vs fleet.local.json) the value appears in.
+	CostCenter          string            `json:"cost_center,omitempty"`
 	Engine              string            `json:"engine,omitempty"`
 	ExtraWorkflows      []ExtraWorkflow   `json:"extra,omitempty"`
 	ExcludeFromProfiles []string          `json:"exclude,omitempty"`
