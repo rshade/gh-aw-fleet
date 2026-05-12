@@ -1,7 +1,9 @@
 package fleet
 
 import (
+	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -94,6 +96,143 @@ func TestBuildListResult_EmptyConfig(t *testing.T) {
 	}
 	if res.LoadedFrom != "" {
 		t.Errorf("LoadedFrom = %q; want empty", res.LoadedFrom)
+	}
+}
+
+// TestBuildListResult_ProfileTiers covers FR-007: ProfileTiers reflects
+// per-profile Tier values for the row, and is an empty map (never nil) when
+// no profile in the row has a tier.
+func TestBuildListResult_ProfileTiers(t *testing.T) {
+	cfg := &Config{
+		Defaults: Defaults{Engine: "copilot"},
+		Profiles: map[string]Profile{
+			"default":       {Tier: "standard", Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}},
+			"security-plus": {Tier: "premium", Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}},
+			"legacy":        {Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}},
+		},
+		Repos: map[string]RepoSpec{
+			"o/single-tiered":    {Profiles: []string{"default"}},
+			"o/two-mixed":        {Profiles: []string{"default", "legacy"}},
+			"o/two-both-tiered":  {Profiles: []string{"default", "security-plus"}},
+			"o/all-untiered":     {Profiles: []string{"legacy"}},
+			"o/two-all-untiered": {Profiles: []string{"legacy", "legacy"}},
+		},
+	}
+
+	res, err := BuildListResult(cfg)
+	if err != nil {
+		t.Fatalf("BuildListResult: %v", err)
+	}
+	by := make(map[string]ListRow, len(res.Repos))
+	for _, r := range res.Repos {
+		by[r.Repo] = r
+	}
+
+	cases := []struct {
+		repo string
+		want map[string]string
+	}{
+		{"o/single-tiered", map[string]string{"default": "standard"}},
+		{"o/two-mixed", map[string]string{"default": "standard"}},
+		{"o/two-both-tiered", map[string]string{"default": "standard", "security-plus": "premium"}},
+		{"o/all-untiered", map[string]string{}},
+		{"o/two-all-untiered", map[string]string{}},
+	}
+	for _, tc := range cases {
+		row, ok := by[tc.repo]
+		if !ok {
+			t.Errorf("missing row for %q", tc.repo)
+			continue
+		}
+		if row.ProfileTiers == nil {
+			t.Errorf("%s: ProfileTiers is nil; want non-nil map (FR-007 invariant)", tc.repo)
+			continue
+		}
+		if len(row.ProfileTiers) != len(tc.want) {
+			t.Errorf("%s: ProfileTiers = %v; want %v", tc.repo, row.ProfileTiers, tc.want)
+			continue
+		}
+		for k, v := range tc.want {
+			if got := row.ProfileTiers[k]; got != v {
+				t.Errorf("%s: ProfileTiers[%q] = %q; want %q", tc.repo, k, got, v)
+			}
+		}
+	}
+}
+
+// TestListRow_ProfileTiersEmptyMapMarshalsAsObject covers the FR-007 edge case
+// the plan explicitly calls out: an initialized-empty (non-nil) ProfileTiers
+// must marshal to "profile_tiers":{}, never "profile_tiers":null.
+func TestListRow_ProfileTiersEmptyMapMarshalsAsObject(t *testing.T) {
+	row := ListRow{
+		Repo:         "o/r",
+		Profiles:     []string{},
+		ProfileTiers: map[string]string{},
+		Workflows:    []string{},
+		Excluded:     []string{},
+		Extra:        []string{},
+	}
+	b, err := json.Marshal(row)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	out := string(b)
+	if !strings.Contains(out, `"profile_tiers":{}`) {
+		t.Errorf("marshaled output missing \"profile_tiers\":{}: %s", out)
+	}
+	if strings.Contains(out, `"profile_tiers":null`) {
+		t.Errorf("marshaled output contains forbidden \"profile_tiers\":null: %s", out)
+	}
+}
+
+// TestBuildListResult_CostCenter covers FR-008: ListRow.CostCenter copies
+// RepoSpec.CostCenter verbatim, including the empty-string case when the
+// annotation is unset.
+func TestBuildListResult_CostCenter(t *testing.T) {
+	cfg := &Config{
+		Profiles: map[string]Profile{
+			"p": {Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}},
+		},
+		Repos: map[string]RepoSpec{
+			"o/with-cc":    {Profiles: []string{"p"}, CostCenter: "platform-eng"},
+			"o/without-cc": {Profiles: []string{"p"}},
+		},
+	}
+	res, err := BuildListResult(cfg)
+	if err != nil {
+		t.Fatalf("BuildListResult: %v", err)
+	}
+	got := map[string]string{}
+	for _, r := range res.Repos {
+		got[r.Repo] = r.CostCenter
+	}
+	if got["o/with-cc"] != "platform-eng" {
+		t.Errorf("CostCenter for o/with-cc = %q; want %q", got["o/with-cc"], "platform-eng")
+	}
+	if got["o/without-cc"] != "" {
+		t.Errorf("CostCenter for o/without-cc = %q; want empty string", got["o/without-cc"])
+	}
+}
+
+// TestListRow_CostCenterAlwaysEmitted covers FR-008: cost_center is always
+// present in the JSON envelope, even when unset — never omitted.
+func TestListRow_CostCenterAlwaysEmitted(t *testing.T) {
+	row := ListRow{
+		Repo:         "o/r",
+		Profiles:     []string{},
+		ProfileTiers: map[string]string{},
+		Workflows:    []string{},
+		Excluded:     []string{},
+		Extra:        []string{},
+		CostCenter:   "",
+	}
+	b, err := json.Marshal(row)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	out := string(b)
+	if !strings.Contains(out, `"cost_center":""`) {
+		t.Errorf("marshaled output missing \"cost_center\":\"\": %s", out)
 	}
 }
 

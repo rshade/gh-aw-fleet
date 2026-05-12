@@ -49,6 +49,7 @@ Ask the user for each of these. Propose defaults based on the repo's shape (lang
 2. **Engine**: optional override of `defaults.engine` (which is `copilot`). Only set if user has a specific reason (e.g., trialing `claude`). Propose: leave unset so the fleet default applies.
 3. **Excludes**: workflows from the selected profile(s) to skip. Propose based on repo shape — e.g., exclude `daily-doc-updater` + `docs-noob-tester` on a repo with no public docs; exclude `dependabot-pr-bundler` if Dependabot isn't configured.
 4. **Extras**: local workflows (source `local`) or ad-hoc additions not in any profile. Rare for a new repo; skip unless user volunteers.
+5. **Cost center (optional)**: a free-form `cost_center` label on the `RepoSpec` in `fleet.local.json` for budget attribution; consumed by the planned `gh-aw-fleet consumption` subcommand. Skip if the org doesn't track per-repo cost centers; keep private values out of `fleet.json`.
 
 Don't ask about deploy timing yet — that question makes more sense after the user has seen and approved the actual JSON diff (Step 3). Asking too early forces them to commit to a flow before they know what's being registered.
 

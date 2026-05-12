@@ -330,6 +330,15 @@ When only one exists, that one is used directly. The stderr line
 `(loaded fleet.local.json)` when only one is present) printed at the
 start of every command tells you which mode is active.
 
+**Merge granularity is per-entry, not per-field.** A profile (or repo)
+defined in `fleet.local.json` replaces the matching entry in `fleet.json`
+wholesale — including optional fields like `tier` or `cost_center` that
+the local copy may omit. If `fleet.json` declares `"default": { "tier":
+"standard", ... }` and `fleet.local.json` redefines `"default"` without a
+`tier`, the merged view drops the tier. Either keep `tier` / `cost_center`
+in the local copy, or drop the duplicate profile/repo entry so the base
+definition flows through unmodified.
+
 To start from scratch, copy `fleet.example.json` to `fleet.local.json`
 (or to `fleet.json` if you want it committed) and edit, or use
 `gh-aw-fleet add` to generate entries.
@@ -381,6 +390,45 @@ Example fragment:
       ]
     }
   }
+}
+```
+
+### Annotations (HuJson)
+
+`fleet.json`, `fleet.local.json`, `templates.json`, and
+`profiles/default.json` all accept [HuJson](https://github.com/tailscale/hujson)
+syntax — a JSON superset that allows `//` line comments, `/* */` block
+comments, and trailing commas. Operators can document *why* a pin is set,
+why a workflow is excluded, or why a repo opts into a `*-plus` profile
+right next to the data.
+
+The loader prefers `<base>.hujson` over `<base>.json` if both extensions
+exist for the same base name; having both is rejected as ambiguous.
+Writes preserve operator-authored comments — `gh-aw-fleet add` and
+`fleet template fetch` only touch the keys they need to change.
+
+Example:
+
+```hujson
+{
+  "version": 1,
+  "profiles": {
+    "default": {
+      // Pinned to v0.68.3 because v0.69.0 broke the `mount-as-clis`
+      // frontmatter property and broke deploys for ~half the fleet.
+      "sources": {
+        "github/gh-aw": { "ref": "v0.68.3" },
+      },
+      "workflows": [
+        { "name": "audit-workflows", "source": "github/gh-aw" },
+      ],
+    },
+  },
+  "repos": {
+    "acme/widgets": {
+      "profiles": ["default", "security-plus"], // legal asked for SAST
+    },
+  },
 }
 ```
 

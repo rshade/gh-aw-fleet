@@ -13,14 +13,25 @@ type ListResult struct {
 
 // ListRow is one repo entry in ListResult.Repos. Engine renders as the empty
 // string when no engine is configured, NOT the text-mode "-" placeholder.
-// Profiles, Workflows, Excluded, and Extra are always non-nil.
+// Profiles, Workflows, Excluded, Extra, and ProfileTiers are always non-nil.
+// CostCenter is always emitted in the JSON envelope; the empty string
+// signals "unset" rather than the field being omitted (FR-008).
 type ListRow struct {
-	Repo      string   `json:"repo"`
-	Profiles  []string `json:"profiles"`
-	Engine    string   `json:"engine"`
-	Workflows []string `json:"workflows"`
-	Excluded  []string `json:"excluded"`
-	Extra     []string `json:"extra"`
+	Repo     string   `json:"repo"`
+	Profiles []string `json:"profiles"`
+	// ProfileTiers maps each of this row's profile names to the Tier value
+	// declared on the underlying Profile definition. Keys are a subset of
+	// Profiles — only profiles whose Tier is non-empty appear here.
+	// Invariant: always an initialized map (never nil) so JSON marshals as
+	// {} rather than null (FR-007).
+	ProfileTiers map[string]string `json:"profile_tiers"`
+	Engine       string            `json:"engine"`
+	Workflows    []string          `json:"workflows"`
+	Excluded     []string          `json:"excluded"`
+	Extra        []string          `json:"extra"`
+	// CostCenter mirrors RepoSpec.CostCenter. Always emitted in the JSON
+	// envelope (no omitempty); the empty string is the unset signal.
+	CostCenter string `json:"cost_center"`
 }
 
 // BuildListResult walks cfg.Repos in sorted order, resolves each repo's
@@ -44,12 +55,14 @@ func BuildListResult(cfg *Config) (*ListResult, error) {
 			return nil, err
 		}
 		rows = append(rows, ListRow{
-			Repo:      repo,
-			Profiles:  nonNilStrings(spec.Profiles),
-			Engine:    cfg.EffectiveEngine(repo),
-			Workflows: workflowNames(resolved),
-			Excluded:  nonNilStrings(spec.ExcludeFromProfiles),
-			Extra:     extraNames(spec.ExtraWorkflows),
+			Repo:         repo,
+			Profiles:     nonNilStrings(spec.Profiles),
+			ProfileTiers: ProfileTiersMap(spec.Profiles, cfg.Profiles),
+			Engine:       cfg.EffectiveEngine(repo),
+			Workflows:    workflowNames(resolved),
+			Excluded:     nonNilStrings(spec.ExcludeFromProfiles),
+			Extra:        extraNames(spec.ExtraWorkflows),
+			CostCenter:   spec.CostCenter,
 		})
 	}
 	return &ListResult{LoadedFrom: cfg.LoadedFrom, Repos: rows}, nil
@@ -76,4 +89,20 @@ func nonNilStrings(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// ProfileTiersMap returns the sparse map of profile-name → Tier for the
+// profiles listed in `names`, dropping profiles whose Tier is unset.
+// Returns a non-nil (possibly empty) map so JSON marshals as {} rather
+// than null (FR-007 invariant). Single source of truth for the
+// "what counts as a tier" rule, consumed by BuildListResult (JSON) and
+// the text-mode list renderer.
+func ProfileTiersMap(names []string, defs map[string]Profile) map[string]string {
+	out := make(map[string]string, len(names))
+	for _, n := range names {
+		if t := defs[n].Tier; t != "" {
+			out[n] = t
+		}
+	}
+	return out
 }

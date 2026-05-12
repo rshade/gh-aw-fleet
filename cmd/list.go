@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -38,7 +40,7 @@ func newListCmd(flagDir *string) *cobra.Command {
 			}
 
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tabPadding, ' ', 0)
-			fmt.Fprintln(tw, "REPO\tPROFILES\tENGINE\tWORKFLOWS\tEXCLUDED\tEXTRA")
+			fmt.Fprintln(tw, "REPO\tPROFILES\tTIERS\tENGINE\tWORKFLOWS\tEXCLUDED\tEXTRA\tCOST_CENTER")
 			repos := make([]string, 0, len(cfg.Repos))
 			for r := range cfg.Repos {
 				repos = append(repos, r)
@@ -50,9 +52,15 @@ func newListCmd(flagDir *string) *cobra.Command {
 				if resolveErr != nil {
 					return resolveErr
 				}
-				fmt.Fprintf(tw, "%s\t%v\t%s\t%d\t%v\t%d\n",
-					r, spec.Profiles, orDash(cfg.EffectiveEngine(r)), len(resolved),
-					orEmpty(spec.ExcludeFromProfiles), len(spec.ExtraWorkflows))
+				fmt.Fprintf(tw, "%s\t%v\t%s\t%s\t%d\t%v\t%d\t%s\n",
+					r,
+					spec.Profiles,
+					tiersCellForRow(spec.Profiles, cfg.Profiles),
+					orDash(cfg.EffectiveEngine(r)),
+					len(resolved),
+					orEmpty(spec.ExcludeFromProfiles),
+					len(spec.ExtraWorkflows),
+					orDash(spec.CostCenter))
 			}
 			return tw.Flush()
 		},
@@ -64,6 +72,40 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// tiersForRow derives the text-mode tiers values from fleet.ProfileTiersMap.
+// Each position holds either the profile's Tier or "-" as a placeholder;
+// when every slot would be "-", returns an empty slice so the cell renders as
+// [] — matching the slice-empty convention used for Excluded and Extra, and
+// avoiding the visually noisy "[- - -]" rendering for fleets that have not
+// opted into tier annotations yet.
+func tiersForRow(profiles []string, profileDefs map[string]fleet.Profile) []string {
+	tiered := fleet.ProfileTiersMap(profiles, profileDefs)
+	if len(tiered) == 0 {
+		return []string{}
+	}
+	out := make([]string, 0, len(profiles))
+	for _, name := range profiles {
+		if t, ok := tiered[name]; ok {
+			out = append(out, t)
+		} else {
+			out = append(out, "-")
+		}
+	}
+	return out
+}
+
+func tiersCellForRow(profiles []string, profileDefs map[string]fleet.Profile) string {
+	tiers := tiersForRow(profiles, profileDefs)
+	if len(tiers) == 0 {
+		return "[]"
+	}
+	quoted := make([]string, 0, len(tiers))
+	for _, tier := range tiers {
+		quoted = append(quoted, strconv.Quote(tier))
+	}
+	return "[" + strings.Join(quoted, " ") + "]"
 }
 
 func orEmpty(s []string) []string {

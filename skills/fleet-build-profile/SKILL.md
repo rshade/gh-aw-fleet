@@ -52,6 +52,8 @@ A profile has a `sources` map: for each upstream repo it draws from, a `ref`. De
 - **`github/gh-aw`**: pin to a tag (`vX.Y.Z`), **never `main`**. CLAUDE.md is explicit: gh-aw's `main` often contains unreleased compiler features (e.g., `mount-as-clis`) that break the installed CLI. If the user says `main`, push back once and propose the latest tag instead.
 - **Omit sources this profile doesn't use.** A `docs-plus` profile that draws only from agentics shouldn't carry a `github/gh-aw` pin. Extra pins don't hurt deploys but pollute the diff surface on pin bumps.
 
+Optionally set an advisory `tier` label on the profile (recommended values: `minimal | standard | premium`) so it surfaces in `gh-aw-fleet list` and groups for the planned `gh-aw-fleet consumption` subcommand. The vocabulary is advisory — values are preserved verbatim, no enum enforcement.
+
 Read `templates.json`'s `fetched_at` for context on how old the catalog is — if it's stale (>a week), mention it and suggest running `fleet-eval-templates` first.
 
 ### Step 3 — curate the workflow list

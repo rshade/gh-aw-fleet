@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	zlog "github.com/rs/zerolog/log"
+	"github.com/tailscale/hujson"
 )
 
 // Filenames the fleet reads/writes relative to the working directory.
@@ -21,21 +24,97 @@ const (
 	SourceLocal = "local"
 )
 
-// LoadConfig reads fleet.json as the base config, then overlays fleet.local.json if present.
-// Repos and profiles from fleet.local.json are merged on top of fleet.json — local entries
-// add to or replace base entries, so you never need to duplicate shared profiles.
-// Sets LoadedFrom on the returned config to indicate which file(s) were loaded.
+// Base names (no extension) used by probeConfigPath when deciding between
+// the standard-JSON and HuJson variants of each config file.
+const (
+	configBase    = "fleet"
+	localBase     = "fleet.local"
+	templatesBase = "templates"
+
+	hujsonExt = ".hujson"
+	jsonExt   = ".json"
+)
+
+// probeConfigPath returns the on-disk path for the given base name. Prefers
+// <base>.hujson over <base>.json so operators who opt into HuJson syntax
+// can name files explicitly. Errors when both extensions are present —
+// that is a misconfiguration: the loader cannot guess which one is
+// authoritative, and a silent prefer would let the unread file drift.
+//
+// When neither file exists, the .json path is returned with exists=false
+// so callers can synthesize a new file at the standard-JSON name.
+func probeConfigPath(dir, base string) (string, bool, error) {
+	hujsonPath := resolve(dir, base+hujsonExt)
+	jsonPath := resolve(dir, base+jsonExt)
+	hujsonExists, hErr := pathExists(hujsonPath)
+	if hErr != nil {
+		return "", false, hErr
+	}
+	jsonExists, jErr := pathExists(jsonPath)
+	if jErr != nil {
+		return "", false, jErr
+	}
+	if hujsonExists && jsonExists {
+		return "", false, fmt.Errorf(
+			"ambiguous config: both %s and %s exist; remove one",
+			hujsonPath, jsonPath,
+		)
+	}
+	if hujsonExists {
+		return hujsonPath, true, nil
+	}
+	if jsonExists {
+		return jsonPath, true, nil
+	}
+	return jsonPath, false, nil
+}
+
+// pathExists distinguishes "absent" (false, nil) from "stat failed for some
+// other reason" (false, err) so callers can treat the two cases differently.
+func pathExists(p string) (bool, error) {
+	_, err := os.Stat(p)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// LoadConfig reads fleet.json (or fleet.hujson) as the base, then overlays
+// fleet.local.json (or fleet.local.hujson) if present. Repos and profiles
+// from the local file merge on top of the base — local entries add to or
+// replace base entries, so you never need to duplicate shared profiles.
+//
+// HuJson syntax (//-line comments, /*-block comments, trailing commas) is
+// supported in either file via hujson.Standardize on the read path.
+//
+// Sets LoadedFrom on the returned config to indicate which file(s) were
+// loaded.
 func LoadConfig(dir string) (*Config, error) {
-	basePath := resolve(dir, ConfigFile)
-	base, baseErr := loadConfigFile(basePath)
-	if baseErr != nil && !os.IsNotExist(baseErr) {
-		return nil, fmt.Errorf("read %s: %w", basePath, baseErr)
+	basePath, baseExists, err := probeConfigPath(dir, configBase)
+	if err != nil {
+		return nil, err
+	}
+	var base *Config
+	if baseExists {
+		base, err = loadConfigFile(basePath)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", basePath, err)
+		}
 	}
 
-	localPath := resolve(dir, LocalConfigFile)
-	local, localErr := loadConfigFile(localPath)
-	if localErr != nil && !os.IsNotExist(localErr) {
-		return nil, fmt.Errorf("read %s: %w", localPath, localErr)
+	localPath, localExists, err := probeConfigPath(dir, localBase)
+	if err != nil {
+		return nil, err
+	}
+	var local *Config
+	if localExists {
+		local, err = loadConfigFile(localPath)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", localPath, err)
+		}
 	}
 
 	if base == nil && local == nil {
@@ -55,14 +134,21 @@ func LoadConfig(dir string) (*Config, error) {
 	return merged, nil
 }
 
-// loadConfigFile reads and parses a single config file. Returns (nil, os.ErrNotExist) if missing.
+// loadConfigFile reads and parses a single config file. Runs the input
+// through hujson.Standardize before json.Unmarshal so HuJson syntax is
+// transparent to the consumer; vanilla JSON passes through unchanged.
+// Returns (nil, os.ErrNotExist) if missing.
 func loadConfigFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
+	std, stdErr := hujson.Standardize(data)
+	if stdErr != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, stdErr)
+	}
 	var c Config
-	if jsonErr := json.Unmarshal(data, &c); jsonErr != nil {
+	if jsonErr := json.Unmarshal(std, &c); jsonErr != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, jsonErr)
 	}
 	if c.Version != SchemaVersion {
@@ -100,34 +186,101 @@ func mergeConfigs(base, local *Config) *Config {
 	return &merged
 }
 
-// SaveLocalConfig writes fleet.local.json atomically to the given directory.
-// No symmetric SaveConfig exists: fleet.json is read-only from this package.
+// SaveLocalConfig writes fleet.local.json (or fleet.local.hujson when that
+// is the existing file) atomically to the given directory. Targets the
+// probed path so a write next to an existing .hujson source does not
+// silently create a .json sibling that the next read would reject as
+// ambiguous. No symmetric SaveConfig exists: fleet.json is read-only
+// from this package.
 func SaveLocalConfig(dir string, c *Config) error {
-	path := resolve(dir, LocalConfigFile)
+	path, _, err := probeConfigPath(dir, localBase)
+	if err != nil {
+		return err
+	}
 	return writeJSON(path, c)
 }
 
-// LoadTemplates reads templates.json; returns an empty catalog if the file
-// doesn't exist (first-run case, before `fleet template fetch`).
+// LoadTemplates reads templates.json (or templates.hujson); returns an
+// empty catalog if neither file exists (first-run case, before
+// `fleet template fetch`).
 func LoadTemplates(dir string) (*Templates, error) {
-	path := resolve(dir, TemplatesFile)
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
+	path, exists, err := probeConfigPath(dir, templatesBase)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
 		return &Templates{Version: SchemaVersion, Sources: map[string]TemplateSource{}}, nil
 	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	std, stdErr := hujson.Standardize(data)
+	if stdErr != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, stdErr)
+	}
 	var t Templates
-	if jsonErr := json.Unmarshal(data, &t); jsonErr != nil {
+	if jsonErr := json.Unmarshal(std, &t); jsonErr != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, jsonErr)
 	}
 	return &t, nil
 }
 
-// SaveTemplates writes the upstream-catalog cache to dir/TemplatesFile as indented JSON.
+// SaveTemplates writes the upstream-catalog cache to dir/<templatesBase>.<ext>,
+// targeting the probed path so a write next to an existing .hujson source
+// does not create a .json sibling.
+//
+// When the file already exists, applies an RFC 6902 patch that replaces only
+// /version, /fetched_at, and /sources — leaving /evaluations and any
+// surrounding comments intact. This preserves operator-authored notes on
+// individual workflow evaluations across `fleet template fetch` runs.
+//
+// When no existing file is present, falls back to a full marshal — there
+// are no comments to preserve.
 func SaveTemplates(dir string, t *Templates) error {
-	return writeJSON(resolve(dir, TemplatesFile), t)
+	path, exists, err := probeConfigPath(dir, templatesBase)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return writeJSON(path, t)
+	}
+	ops, opsErr := buildTemplatesPatch(t)
+	if opsErr != nil {
+		return opsErr
+	}
+	patchErr := writeHujson(path, func(v *hujson.Value) error {
+		if applyErr := v.Patch(ops); applyErr != nil {
+			return fmt.Errorf("apply patch to %s: %w", path, applyErr)
+		}
+		return nil
+	})
+	if patchErr != nil {
+		zlog.Warn().
+			Str("event", "hujson_fallback_to_rewrite").
+			Str("path", path).
+			Err(patchErr).
+			Msg("comment-preserving patch failed; rewriting templates from scratch")
+		return writeJSON(path, t)
+	}
+	return nil
+}
+
+// buildTemplatesPatch produces an RFC 6902 patch document with three "add"
+// ops (add replaces the value when the key already exists, per the RFC).
+// /evaluations is intentionally excluded so existing entries — and the
+// comments around them — survive the write unchanged.
+func buildTemplatesPatch(t *Templates) ([]byte, error) {
+	ops := []map[string]any{
+		{"op": "add", "path": "/version", "value": t.Version},
+		{"op": "add", "path": "/fetched_at", "value": t.FetchedAt},
+		{"op": "add", "path": "/sources", "value": t.Sources},
+	}
+	data, err := json.Marshal(ops)
+	if err != nil {
+		return nil, fmt.Errorf("marshal patch ops: %w", err)
+	}
+	return data, nil
 }
 
 func resolve(dir, name string) string {
@@ -137,16 +290,69 @@ func resolve(dir, name string) string {
 	return filepath.Join(dir, name)
 }
 
+// writeJSON serializes v as indented JSON and writes it to path atomically
+// via tmp+rename. Used for the first-write case (no existing file to
+// preserve comments from) and as the fallback path when comment-preserving
+// writers cannot apply a mutation. Trailing-newline policy lives in
+// atomicWrite.
 func writeJSON(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
+	return atomicWrite(path, data)
+}
+
+// atomicWrite stages bytes at path+".tmp" then renames into place, ensuring
+// readers never observe a partially-written file. Ensures a trailing
+// newline (POSIX text-file convention).
+func atomicWrite(path string, data []byte) error {
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
 	tmp := path + ".tmp"
-	if writeErr := os.WriteFile(tmp, append(data, '\n'), 0o600); writeErr != nil {
+	if writeErr := os.WriteFile(tmp, data, 0o600); writeErr != nil {
 		return writeErr
 	}
 	return os.Rename(tmp, path)
+}
+
+// writeHujson reads the existing file at path (or starts from an empty
+// object scaffold when missing), parses it as HuJson, runs the caller's
+// apply step on the syntax tree, formats, packs, and atomically writes.
+// Comments and whitespace outside the touched region survive.
+//
+// Returns an error if the file is unreadable for a reason other than
+// not-exist, if hujson.Parse rejects the file, or if apply fails.
+// Callers that want graceful degradation (fall back to a full rewrite)
+// detect those errors and call writeJSON themselves with a warning log.
+func writeHujson(path string, apply func(*hujson.Value) error) error {
+	existing, err := readHujsonOrScaffold(path)
+	if err != nil {
+		return err
+	}
+	v, parseErr := hujson.Parse(existing)
+	if parseErr != nil {
+		return fmt.Errorf("parse %s as hujson: %w", path, parseErr)
+	}
+	if applyErr := apply(&v); applyErr != nil {
+		return applyErr
+	}
+	v.Format()
+	return atomicWrite(path, v.Pack())
+}
+
+// readHujsonOrScaffold returns the contents of path, or "{}" when path
+// does not exist (giving Parse a valid empty-object starting point).
+func readHujsonOrScaffold(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return data, nil
+	}
+	if os.IsNotExist(err) {
+		return []byte("{}"), nil
+	}
+	return nil, fmt.Errorf("read %s: %w", path, err)
 }
 
 // ResolveRepoWorkflows flattens a RepoSpec into the concrete list of

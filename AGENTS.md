@@ -42,11 +42,15 @@ The CLI has two config files: `fleet.json` (public, committed, example tracking 
 
 **`*-plus` profiles are opt-in, cost-aware bundles**: `quality-plus`, `security-plus`, `docs-plus`, `community-plus`, and `observability-plus` are layered onto `default` per-repo via the repo's `profiles` list. `observability-plus` ships `api-consumption-report` (daily) — pair it with the planned `gh-aw-fleet consumption` subcommand for fleet-wide billing rollups, but note that opting a repo in incurs recurring Copilot-credit cost since the report is itself an LLM workflow.
 
+**Billing-metadata fields are advisory, not enforced**: `Profile.Tier` (`tier` on a profile, recommended `minimal | standard | premium`) and `RepoSpec.CostCenter` (`cost_center` on a repo, free-form) are optional declarative annotations the loader silently accepts when absent. Neither bumps `fleet.SchemaVersion` or the `--output json` envelope's `schema_version` — both are additive. Both are prerequisite group-by keys for the planned `gh-aw-fleet consumption` subcommand. The tool does not validate values, gate behavior on them, or restrict which file (`fleet.json` vs `fleet.local.json`) they appear in — operator self-polices the public/private split. Surfaced in `gh-aw-fleet list` as a parallel `TIERS` column and an appended `COST_CENTER` column; see godoc on the `Profile` and `RepoSpec` types for the field-level contract.
+
 **Critical asymmetry**: `gh aw add` uses `fleet.json` pins (via `ResolvedWorkflow.Spec()`). `gh aw update` follows the workflow's *own* frontmatter `source:` line, not `fleet.json`. This means fleet.json edits don't propagate through `upgrade` — they need a `fleet sync --apply --force <repo>` to re-pin workflows to current fleet.json refs.
 
 **`gh aw` path conventions differ by source**: agentics uses 3-part specs (`githubnext/agentics/<name>@ref`, implicit `workflows/` dir); gh-aw needs 4-part (`github/gh-aw/.github/workflows/<name>.md@ref`). `internal/fleet/fetch.go`'s `SourceLayout` map encodes this; `ResolvedWorkflow.Spec()` consumes it. Adding a third source means adding a `SourceLayout` entry.
 
 **Diagnostic layer**: `internal/fleet/diagnostics.go` defines `CollectHints(texts...)` which scans error output for known patterns (unknown-property, HTTP 404, gpg failure) and returns actionable remediations. `cmd/deploy.go` and `cmd/upgrade.go` surface hints in failure paths. When a new class of error shows up, add a hint entry — it's a single-file edit.
+
+**HuJson on the read/write paths**: `internal/fleet/load.go` runs every config file (`fleet.json`, `fleet.local.json`, `templates.json`) through `hujson.Standardize()` before `json.Unmarshal`, so `//` line comments, `/* */` block comments, and trailing commas are accepted everywhere. The loader probes `<base>.hujson` first and falls back to `<base>.json`; both files present is rejected as ambiguous. Writes preserve operator-authored comments via direct AST mutation (`Add` appends to `/repos`) or RFC 6902 `Patch` (`SaveTemplates` replaces `/version` + `/fetched_at` + `/sources` and leaves `/evaluations` untouched). Only `fleet.local.json` and `templates.json` are written; `fleet.json` and `profiles/default.json` are read-only. When a comment-preserving write fails, callers fall back to `writeJSON` and emit `level=warn, event=hujson_fallback_to_rewrite`.
 
 ## Hard invariants
 
@@ -87,7 +91,10 @@ Committed at repo root; shared with collaborators and subagents. Allows `go buil
 - N/A — pure read command, no on-disk state, no cache. Output is transient to stdout. (004-status-drift-detection)
 - Go 1.25.8 (per `go.mod`). + `github.com/spf13/cobra` v1.10.2 (CLI), `github.com/rs/zerolog` v1.x (stderr structured logging), `encoding/json` (stdlib, JSON envelope). **No new third-party dependencies** (Constitution Principle I; Assumptions in spec). (005-actions-preflight)
 - N/A — pure read calls to the GitHub API; no on-disk state, no cache. Findings are transient on `DeployResult`. (005-actions-preflight)
+- Go 1.25.8 (per `go.mod`). + `github.com/tailscale/hujson` (BSD-3-Clause, zero transitive deps) for comment-preserving reads/writes of `fleet.json`, `fleet.local.json`, `templates.json`, and `profiles/default.json`. Approved direct dependency under [Constitution v1.1.0 §Third-Party Dependencies](./.specify/memory/constitution.md). (issue #73)
+- N/A — read path runs `hujson.Standardize()` before `json.Unmarshal`; write path uses direct AST mutation (`hujson.Parse`/`Pack`) for `Add` and RFC 6902 patches (`hujson.Patch`) for `SaveTemplates`. Probes `<base>.hujson` then `<base>.json`; both present is rejected as ambiguous. (issue #73)
 
 ## Recent Changes
+- issue-73 (hujson): comment-preserving config — `//` line, `/* */` block, and trailing-comma syntax accepted in `fleet.json` / `fleet.local.json` / `templates.json` / `profiles/default.json`; `.hujson` extension preferred over `.json`; `gh-aw-fleet add` no longer overwrites prior repo entries when the local file exists.
 - 002-add-zerolog-logging: added `--log-level` / `--log-format` persistent flags; `⚠ WARNING:` lines in `deploy`/`sync` moved to stderr as structured `warn` events; subprocess summaries at `debug`.
 - 001-add-subcommand: added `gh-aw-fleet add <owner/repo>` subcommand (cobra) for onboarding repos into `fleet.local.json`.
