@@ -22,9 +22,13 @@ REPO                       PROFILES                TIERS                 ENGINE 
 1. The `TIERS` cell starts with `[` and ends with `]`. Its slice positions
    correspond 1:1 with the same row's `PROFILES` cell positions.
 2. For each profile whose underlying `cfg.Profiles[name].Tier` is non-empty,
-   the corresponding `TIERS` slot shows the tier value verbatim.
+   the corresponding `TIERS` slot shows the tier value wrapped in
+   `strconv.Quote` (e.g. `"standard"`). Quoting is deliberate: `Tier` is a
+   free-form string, so unquoted `%v` rendering would make a value like
+   `premium review` indistinguishable from two adjacent slots.
 3. For each profile with an empty tier, the corresponding `TIERS` slot shows
-   `-` (the existing unset-string placeholder shared with `Engine`).
+   `"-"` (the unset-string placeholder, also quoted for consistency with the
+   tier slots).
 4. **Special case**: when **every** profile in the row is untiered, the
    `TIERS` cell renders `[]` (matches today's `Excluded`/`Extra` empty-slice
    convention).
@@ -38,17 +42,17 @@ REPO                       PROFILES                TIERS                 ENGINE 
 ### Row 1: two profiles, both tiered, cost-center set
 
 ```text
-rshade/example-paid        [default security-plus]  [standard premium]    copilot  3  []  0  platform-eng
+rshade/example-paid        [default security-plus]  ["standard" "premium"]    copilot  3  []  0  platform-eng
 ```
 
 Two profiles in use; both have tiers; tier values render in slice positions
-matching the profile names. Cost-center column shows the operator-supplied
-value verbatim.
+matching the profile names. Each tier is wrapped in `strconv.Quote`.
+Cost-center column shows the operator-supplied value verbatim.
 
 ### Row 2: one profile, tier set, cost-center unset
 
 ```text
-rshade/example-minimal     [default]                [standard]            copilot  1  []  0  -
+rshade/example-minimal     [default]                ["standard"]            copilot  1  []  0  -
 ```
 
 Single profile, single tier, slot-aligned. Cost-center column shows `-`.
@@ -65,12 +69,13 @@ Profile has no tier on its `Profile.Tier` definition; `TIERS` cell renders
 ### Row 4: mixed — some profiles have tiers, some don't
 
 ```text
-rshade/example-mixed       [default custom-legacy]  [standard -]          copilot  2  []  0  growth
+rshade/example-mixed       [default custom-legacy]  ["standard" "-"]          copilot  2  []  0  growth
 ```
 
 `default` has tier `standard`; `custom-legacy` has no tier and renders as
-`-` in its slot. Position-1 of `PROFILES` pairs with position-1 of `TIERS`,
-etc. — the binding is by index, never by string match.
+`"-"` in its slot (the placeholder is also `strconv.Quote`-wrapped, so all
+slots in the cell parse uniformly). Position-1 of `PROFILES` pairs with
+position-1 of `TIERS`, etc. — the binding is by index, never by string match.
 
 ## Consumer impact
 

@@ -126,36 +126,39 @@ fmt.Fprintf(tw, "%s\t%v\t%s\t%d\t%v\t%d\n",
 After this feature:
 
 ```go
-fmt.Fprintf(tw, "%s\t%v\t%v\t%s\t%d\t%v\t%d\t%s\n",
+fmt.Fprintf(tw, "%s\t%v\t%s\t%s\t%d\t%v\t%d\t%s\n",
     r,
-    spec.Profiles,                                  // unchanged %v on []string
-    tiersForRow(spec.Profiles, cfg.Profiles),       // NEW: parallel []string
+    spec.Profiles,                                            // unchanged %v on []string
+    tiersCellForRow(spec.Profiles, cfg.Profiles),             // NEW: pre-rendered string
     orDash(cfg.EffectiveEngine(r)),
     len(resolved),
     orEmpty(spec.ExcludeFromProfiles),
     len(spec.ExtraWorkflows),
-    orDash(spec.CostCenter))                         // NEW column
+    orDash(spec.CostCenter))                                  // NEW column
 ```
 
-`tiersForRow` is a new private helper in `cmd/list.go` that walks the row's profile names in order and returns a `[]string`:
+The TIERS column is rendered via two helpers in `cmd/list.go`:
 
-- For each profile whose underlying `cfg.Profiles[name].Tier` is non-empty, append the tier value.
-- For each profile with an empty tier, append `"-"` (the existing unset-string placeholder shared with `Engine` via `orDash` in `cmd/list.go`).
-- **Special case**: when **every** position would be `"-"` (no profile in the row has a tier), return `[]string{}` so `%v` formats as `[]` — matching today's slice-empty convention for `Excluded` and `Extra`.
+- `tiersForRow(profiles, profileDefs) []string` walks the row's profile names in order and returns a `[]string`:
+  - For each profile whose underlying `cfg.Profiles[name].Tier` is non-empty, append the tier value.
+  - For each profile with an empty tier, append `"-"` (the unset-string placeholder shared with `Engine` via `orDash`).
+  - **Special case**: when **every** position would be `"-"` (no profile in the row has a tier), return `[]string{}` so the cell renders `[]` — matching the slice-empty convention for `Excluded` and `Extra`.
+- `tiersCellForRow(profiles, profileDefs) string` wraps `tiersForRow` and produces the final cell text: each slot is wrapped in `strconv.Quote` (e.g. `"standard"`) and joined with a single space inside brackets.
 
-This logic prevents `%v`'s ambiguous double-space rendering for mixed tiered/untiered rows (`["standard","","premium"]` would format as `[standard  premium]` with a confusing gap).
+Quoting is deliberate. `Profile.Tier` is a free-form string (the recommended values `minimal | standard | premium` are convention, not enforced), so a tier like `premium review` must remain distinguishable from two adjacent slots. The test `TestTiersCellForRowPreservesFreeFormBoundaries` in `cmd/list_test.go` pins this contract.
 
 **Rendering examples** (cells shown bracketed):
 
-| Repo state                                      | PROFILES cell             | TIERS cell             |
-|-------------------------------------------------|---------------------------|------------------------|
-| One profile, tier set                           | `[default]`               | `[standard]`           |
-| Two profiles, both tiered                       | `[default quality-plus]`  | `[standard premium]`   |
-| Three profiles, only middle one tiered          | `[a default c]`           | `[- standard -]`       |
-| One profile, no tier                            | `[legacy-custom]`         | `[]`                   |
-| Two profiles, neither tiered                    | `[a b]`                   | `[]`                   |
+| Repo state                                      | PROFILES cell             | TIERS cell                  |
+|-------------------------------------------------|---------------------------|-----------------------------|
+| One profile, tier set                           | `[default]`               | `["standard"]`              |
+| Two profiles, both tiered                       | `[default quality-plus]`  | `["standard" "premium"]`    |
+| Three profiles, only middle one tiered          | `[a default c]`           | `["-" "standard" "-"]`      |
+| One profile, no tier                            | `[legacy-custom]`         | `[]`                        |
+| Two profiles, neither tiered                    | `[a b]`                   | `[]`                        |
+| Two profiles, free-form tier with a space       | `[review default]`        | `["premium review" "standard"]` |
 
-The helper is a pure function easily unit-testable in `cmd/list_test.go` (new file) without a tabwriter dependency.
+Both helpers are pure functions, unit-testable in `cmd/list_test.go` without a tabwriter dependency.
 
 ## Relationships
 

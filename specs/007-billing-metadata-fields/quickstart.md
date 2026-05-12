@@ -61,12 +61,12 @@ The value is a **free-form string**. It SHOULD match the cost-center name config
 ```sh
 $ gh-aw-fleet list
   (loaded fleet.json + fleet.local.json)
-REPO                  PROFILES                    TIERS                 ENGINE   WORKFLOWS  EXCLUDED  EXTRA  COST_CENTER
-your-org/your-repo    [default security-plus]     [standard premium]    copilot  4          []        0      platform-eng
+REPO                  PROFILES                    TIERS                       ENGINE   WORKFLOWS  EXCLUDED  EXTRA  COST_CENTER
+your-org/your-repo    [default security-plus]     ["standard" "premium"]      copilot  4          []        0      platform-eng
 ```
 
-- The new `TIERS` column appears between `PROFILES` and `ENGINE`. Slice positions correspond 1:1 with `PROFILES`: `default` → `standard`, `security-plus` → `premium`.
-- A profile with no tier renders as `-` in the corresponding `TIERS` slot. When every profile in the row is untiered, the cell renders `[]` (matching the existing slice-empty convention).
+- The new `TIERS` column appears between `PROFILES` and `ENGINE`. Slice positions correspond 1:1 with `PROFILES`: `default` → `"standard"`, `security-plus` → `"premium"`. Each tier is wrapped in `strconv.Quote` so free-form values that contain spaces (e.g. `"premium review"`) remain distinguishable from adjacent slots.
+- A profile with no tier renders as `"-"` in the corresponding `TIERS` slot (also quoted for uniform parsing). When every profile in the row is untiered, the cell renders `[]` (matching the existing slice-empty convention).
 - The new `COST_CENTER` column appears at the end. Shows the value, or `-` when unset.
 
 ### JSON mode

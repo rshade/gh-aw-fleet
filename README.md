@@ -402,8 +402,9 @@ comments, and trailing commas. Operators can document *why* a pin is set,
 why a workflow is excluded, or why a repo opts into a `*-plus` profile
 right next to the data.
 
-The loader prefers `<base>.hujson` over `<base>.json` if both extensions
-exist for the same base name; having both is rejected as ambiguous.
+The loader checks for `<base>.hujson` first and falls back to `<base>.json`
+if the HuJson variant is absent; having both files present for the same
+base name is rejected as ambiguous so the unread file can't silently drift.
 Writes preserve operator-authored comments — `gh-aw-fleet add` and
 `fleet template fetch` only touch the keys they need to change.
 

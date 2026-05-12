@@ -29,7 +29,7 @@ string, empty when unset) to each `ListRow`. Tracks #54 (tier) and #55
 ## Technical Context
 
 **Language/Version**: Go 1.25.8 (per `go.mod`).
-**Primary Dependencies**: `github.com/spf13/cobra` v1.10.2 (CLI), `github.com/rs/zerolog` v1.35.1 (stderr structured logging), `gopkg.in/yaml.v3` v3.0.1 (frontmatter parsing — unchanged on this feature path), `encoding/json` (stdlib). **No new third-party dependencies** — within the approved set under Constitution v1.1.0 § Third-Party Dependencies.
+**Primary Dependencies**: `github.com/spf13/cobra` v1.10.2 (CLI), `github.com/rs/zerolog` v1.35.1 (stderr structured logging), `gopkg.in/yaml.v3` v3.0.1 (frontmatter parsing — unchanged on this feature path), `encoding/json` (stdlib). **No new third-party dependencies introduced by the billing-metadata slice** — within the approved set under Constitution v1.1.0 § Third-Party Dependencies. (Note: the PR that ships this work also bundles the HuJson migration tracked separately under issue #73, which does add `github.com/tailscale/hujson` as a direct dependency under the same constitutional carve-out; that addition is documented in `specs/007-billing-metadata-fields/research.md` Decision 8 and the issue-73 plan, not driven by this slice.)
 **Storage**: N/A. Pure read/parse of `fleet.json` / `fleet.local.json`. No persistent state outside the existing JSON files. Round-trip serialization must remain byte-identical (SC-006).
 **Testing**: `go test ./...` (existing unit-test pattern in `internal/fleet/list_result_test.go`, `cmd/output_test.go`); `go run . list` for end-to-end sanity; `make ci` (`fmt-check vet lint test`) is the local gate.
 **Target Platform**: Linux/macOS/Windows CLI binary; `go build ./...` clean across platforms.

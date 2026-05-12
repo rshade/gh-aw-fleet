@@ -132,16 +132,16 @@ The spec (`spec.md`) carries no `[NEEDS CLARIFICATION]` markers and the single o
 - Two sequenced PRs (tier first, cost-center second): rejected because the second PR would re-touch every file the first touched, doubling review overhead with no isolation benefit.
 - Two parallel PRs: rejected because file overlap creates a guaranteed merge conflict.
 
-### Decision 8: No new third-party dependencies
+### Decision 8: No new third-party dependencies (for the billing-metadata slice)
 
-**Decision**: This work uses only the standard library and the already-approved direct dependencies (cobra, zerolog, yaml.v3, gitleaks/v8 — none of which are touched by this feature).
+**Decision**: This slice uses only the standard library and the already-approved direct dependencies (cobra, zerolog, yaml.v3, gitleaks/v8 — none of which are touched by this feature). The bundled HuJson migration (issue #73) is a separate slice and introduces its own direct dependency (`github.com/tailscale/hujson`) under the same constitutional carve-out — that addition is owned by issue #73's plan, not by this one.
 
 **Rationale**:
 
-- Constitution v1.1.0 § Third-Party Dependencies requires an amendment for any new direct dependency. None is justified here: the changes are pure-Go struct extensions and `encoding/json` (stdlib) handles serialization.
-- The user prompt explicitly states "No new third-party dependencies" as a constraint.
+- Constitution v1.1.0 § Third-Party Dependencies requires an amendment for any new direct dependency. None is justified for the billing-metadata work: the changes are pure-Go struct extensions and `encoding/json` (stdlib) handles serialization.
+- The user prompt for the 007 slice explicitly states "No new third-party dependencies" as a constraint. The hujson addition was scoped, justified, and approved under a separate workstream (issue #73) before being bundled into the same PR.
 
-**Alternatives considered**: none — no third-party need surfaced during design.
+**Alternatives considered**: none — no third-party need surfaced during design of the billing-metadata fields themselves.
 
 ## Notes for Phase 1
 

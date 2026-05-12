@@ -10,15 +10,20 @@ import (
 	"github.com/tailscale/hujson"
 )
 
-// TestProfilesDefaultParity enforces the CLAUDE.md invariant: the `default`
-// profile in fleet.json must match profiles/default.json verbatim. Both
-// files are passed through hujson.Standardize first so HuJson syntax in
-// either file does not cause spurious drift; comparison is structural
-// (Go map/slice equality after re-marshaling), so reordering of keys
-// inside maps does not count as drift.
+// TestProfilesDefaultParity enforces the CLAUDE.md invariant that the
+// `default` profile in fleet.json must stay aligned with the canonical
+// `profiles/default.json`. Both files are passed through hujson.Standardize
+// before json.Unmarshal, then compared with reflect.DeepEqual on the
+// resulting Go values. The check is therefore **structural**, not
+// byte-identical: HuJson syntax, comment placement, whitespace, and map
+// key order on either side will not cause spurious drift — only a semantic
+// difference in the underlying profile data does.
 //
-// When this test fails, choose one side as authoritative and align the
-// other. Both files are operator-curated; neither is generated.
+// Operators should still author both files to be visually identical; the
+// "verbatim" framing in the CLAUDE.md invariant captures intent. This test
+// catches drift that affects behavior, which is the necessary half of the
+// invariant. When this test fails, choose one side as authoritative and
+// align the other. Both files are operator-curated; neither is generated.
 func TestProfilesDefaultParity(t *testing.T) {
 	repoRoot, err := findRepoRoot()
 	if err != nil {
