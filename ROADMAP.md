@@ -20,27 +20,40 @@ billing has shifted the near-term agenda: fleet operators need cross-repo cost
 visibility, and fleet — uniquely positioned to know which repo runs which
 profile pinned to which ref — is the natural layer to provide it.
 
-## Immediate Focus (v0.2 — billing-visibility prerequisites + correctness cleanup)
+## Release Composition Rule
 
-CLI completeness and the smallest billing-readiness pieces shipped in
-2026-Q2 (#10 status, #11 preflight, #52 HTTP 402 diagnostic, #56
-`api-consumption-report` profile). What remains for v0.2 is one correctness
-bug (#48) plus the two additive metadata prerequisites (#54, #55) that
-unlock the cross-fleet `consumption` subcommand (#57) in v0.3. #54 and #55
-are independent — land in any order.
+Each tagged release should include at least one **cost-visibility** item
+and at least one **security** item. Cost because the 2026-06-01
+usage-based Copilot billing transition makes cost a continuous operator
+concern; security because the prt-scan-era supply-chain landscape makes
+fleet-layer policy enforcement the natural defense. A release that ships
+only correctness work, or that lands one of the two domains without the
+other, drifts the project from the two mandates that justify a
+fleet-layer tool existing.
 
-### Billing-visibility prerequisites
+**Identifying candidates**:
 
-- [ ] [#54](https://github.com/rshade/gh-aw-fleet/issues/54) Add optional
-  `tier` annotation to profile definitions `[M]`
-  *Advisory `minimal | standard | premium` field on `Profile`. Surface in
-  `list` output. No enforcement — annotation only. Becomes the `--by tier`
-  group-by key for #57. Independent of #55; land in any order.*
-- [ ] [#55](https://github.com/rshade/gh-aw-fleet/issues/55) Add optional
-  `cost_center` field to `RepoSpec` `[M]`
-  *Free-form string per repo. Surface in `list`. Same shape as #54
-  (additive metadata, no enforcement). Becomes the `--by cost-center` key
-  for #57. Independent of #54; land in any order.*
+- **Cost**: items labeled `cost` on GitHub — currently #53, #57, #59,
+  #60.
+- **Security**: items labeled `security` on GitHub — currently #36
+  (EPIC) with children #38–#40, plus #49.
+
+**Status**: v0.1.x → v0.2 satisfied this (#54 / #55 / #56 cost
+prereqs, #37 Layer 1 security scanner). The v0.3 Near-Term lineup
+satisfies it (#57 cost, #49 security). Forward releases should keep one
+of each on the merge queue alongside any feature or correctness work.
+
+**Exception**: a release scoped as a single `fix:` hotfix (no feature
+changes) is exempt — the rule applies to feature-bearing releases.
+
+## Immediate Focus (v0.2 — correctness cleanup before v0.3 begins)
+
+The billing-visibility prerequisites (#54 `tier`, #55 `cost_center`) and the
+HuJson config-comments work (#73) all shipped together in PR #78 on
+2026-05-12. That clears the last data-shape blockers for `consumption`
+(#57). Only one correctness bug remains before the v0.2 release tag: the
+sync resume-guard misfire on internally-prepared clones (#48). Once that
+lands, v0.3 work (#57 first) opens.
 
 ### Correctness
 
@@ -53,13 +66,13 @@ are independent — land in any order.
 
 ## Near-Term Vision (v0.3 — billing visibility + operator quality)
 
-Once Immediate Focus closes, the headline v0.3 work is the cross-fleet
-consumption rollup (#57) — the fleet feature the new billing model
-justifies. #56 (workflow profile) shipped in v0.2; #54 + #55 (metadata
-prereqs) are in Immediate Focus, so by the time v0.3 opens, #57's
-prerequisites are all in place. Wrapped around that: a security default
-flip (#49), packaging (#43, gh-extension item), inline config docs (#73),
-and the existing operator-QoL items.
+The headline v0.3 work is the cross-fleet consumption rollup (#57) — the
+fleet feature the new billing model justifies. All of its prerequisites
+are now landed: #56 (the `api-consumption-report` profile) shipped in
+v0.2, and #54 + #55 (the `tier` / `cost_center` metadata fields) shipped
+in PR #78 on 2026-05-12. #57 is unblocked and is the largest piece in this
+phase. Wrapped around it: a security default flip (#49), packaging (#43,
+gh-extension item), and operator-QoL items.
 
 ### Billing visibility (consumption tracking)
 
@@ -93,16 +106,6 @@ and the existing operator-QoL items.
 
 ### Operator quality of life
 
-- [ ] [#73](https://github.com/rshade/gh-aw-fleet/issues/73) Support HuJson
-  for inline config documentation `[M]`
-  *Allow `//` comments and trailing commas in `fleet.json`,
-  `fleet.local.json`, `templates.json`, and `profiles/default.json` so pin
-  rationale and per-workflow eval notes live next to the data they
-  describe. Read path: `hujson.Standardize()` before `json.Unmarshal`;
-  write path: `hujson.Patch` preserves comments through tool-driven edits.
-  **Boundary note**: introduces a third-party dep (`tailscale/hujson`)
-  against Principle I — justify or vendor the minimal Standardize/Patch
-  surface before merging.*
 - [ ] `sync --dry-run` runs deploy preflight `[M]`
   *Today `sync --dry-run` computes the diff but doesn't validate that the
   resolved workflows would actually `gh aw add` cleanly (404s on bad pins,
@@ -296,6 +299,28 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#73](https://github.com/rshade/gh-aw-fleet/issues/73) Support HuJson
+  for inline config documentation `[M]`
+  *Shipped 2026-05-12 in PR #78. `internal/fleet/load.go` runs every
+  config file (`fleet.json`, `fleet.local.json`, `templates.json`,
+  `profiles/default.json`) through `hujson.Standardize()` before
+  `json.Unmarshal`; writes use direct AST mutation (`Add`) or RFC 6902
+  patches (`SaveTemplates`) to preserve operator-authored comments. The
+  boundary note on third-party deps was resolved by Constitution v1.1.0
+  §Third-Party Dependencies, which adds `tailscale/hujson` as an
+  approved direct dependency.*
+- [x] [#55](https://github.com/rshade/gh-aw-fleet/issues/55) Add optional
+  `cost_center` field to `RepoSpec` `[M]`
+  *Shipped 2026-05-12 in PR #78. Free-form string per repo, surfaced as
+  an appended column in `gh-aw-fleet list`. Additive: no `SchemaVersion`
+  bump, no envelope change, silently accepted when absent. Becomes the
+  `--by cost-center` group-by key for #57.*
+- [x] [#54](https://github.com/rshade/gh-aw-fleet/issues/54) Add optional
+  `tier` annotation to profile definitions `[M]`
+  *Shipped 2026-05-12 in PR #78. Advisory `minimal | standard | premium`
+  field on `Profile`, surfaced as a parallel `TIERS` column in `list`.
+  No enforcement — annotation only. Becomes the `--by tier` group-by
+  key for #57.*
 - [x] [#56](https://github.com/rshade/gh-aw-fleet/issues/56) Add
   `api-consumption-report` workflow to a fleet profile `[S]`
   *Shipped 2026-05-10 as the new `observability-plus` opt-in profile in
@@ -403,13 +428,15 @@ Any roadmap item that violates these is rejected, not negotiated.
 - **GitHub issues**: <https://github.com/rshade/gh-aw-fleet/issues>
 - **Roadmap phase labels**: `roadmap/current`, `roadmap/next`, `roadmap/future`
 - **Effort labels**: `effort/small`, `effort/medium`, `effort/large`
+- **Release-composition labels**: `cost`, `security` (see Release
+  Composition Rule above)
 - **Contribution flags**: `community`, `cross-repo`, `spec-first`
 
-> Immediate Focus items (#48, #54, #55), the Near-Term billing-visibility
-> item (#57), Near-Term distribution / security / config items (#43, #49,
-> #73), the Future Vision security epic (#36 with remaining children
-> #38–#40), the Future Vision billing-deferred items (#53, #59, #60), and
-> the Status command refinements (#61, #62) are tracked as GitHub issues.
-> The unlinked Near-Term and Future items don't have issues yet — open
-> them as work picks up, then run `/roadmap sync` to keep this file
-> aligned.
+> The Immediate Focus correctness item (#48), the Near-Term
+> billing-visibility item (#57), the Near-Term distribution / security
+> items (#43, #49), the Future Vision security epic (#36 with remaining
+> children #38–#40), the Future Vision billing-deferred items (#53, #59,
+> #60), and the Status command refinements (#61, #62) are tracked as
+> GitHub issues. The unlinked Near-Term and Future items don't have
+> issues yet — open them as work picks up, then run `/roadmap sync` to
+> keep this file aligned.
