@@ -10,6 +10,23 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.2.0](https://github.com/rshade/gh-aw-fleet/compare/v0.1.4...v0.2.0) (2026-05-14)
+
+
+### Added
+
+* **config:** hujson syntax + billing-metadata fields ([#78](https://github.com/rshade/gh-aw-fleet/issues/78)) ([5b3f6fb](https://github.com/rshade/gh-aw-fleet/commit/5b3f6fbc2d87deaa04df1e9c19273865f577cec6)), closes [#54](https://github.com/rshade/gh-aw-fleet/issues/54) [#55](https://github.com/rshade/gh-aw-fleet/issues/55) [#73](https://github.com/rshade/gh-aw-fleet/issues/73)
+
+
+### Fixed
+
+* **sync:** lock in resume-guard bypass on internally-prepared clones ([#81](https://github.com/rshade/gh-aw-fleet/issues/81)) ([3eeb8b5](https://github.com/rshade/gh-aw-fleet/commit/3eeb8b56295958673c0095bd22c77c3e91ce7a65)), closes [#48](https://github.com/rshade/gh-aw-fleet/issues/48)
+
+
+### Chores
+
+* release 0.2.0 ([c416f89](https://github.com/rshade/gh-aw-fleet/commit/c416f8911c90383f27ab493145e047941ae3fc8e))
+
 ## [0.1.4](https://github.com/rshade/gh-aw-fleet/compare/v0.1.3...v0.1.4) (2026-05-10)
 
 
