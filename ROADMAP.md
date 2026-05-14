@@ -46,23 +46,17 @@ of each on the merge queue alongside any feature or correctness work.
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
 
-## Immediate Focus (v0.2 — correctness cleanup before v0.3 begins)
+## Immediate Focus (v0.2 → v0.3 transition)
 
-The billing-visibility prerequisites (#54 `tier`, #55 `cost_center`) and the
-HuJson config-comments work (#73) all shipped together in PR #78 on
-2026-05-12. That clears the last data-shape blockers for `consumption`
-(#57). Only one correctness bug remains before the v0.2 release tag: the
-sync resume-guard misfire on internally-prepared clones (#48). Once that
-lands, v0.3 work (#57 first) opens.
+The last v0.2 correctness item (#48, sync resume-guard misfire) shipped in
+PR #81 on 2026-05-14, alongside the billing-visibility prerequisites
+(#54 `tier`, #55 `cost_center`) and the HuJson config-comments work (#73)
+that landed earlier in PR #78. **v0.2 is ready to tag.** v0.3 begins with
+the cross-fleet consumption rollup (#57) — see Near-Term Vision below. No
+correctness blockers remain.
 
-### Correctness
-
-- [ ] [#48](https://github.com/rshade/gh-aw-fleet/issues/48) `sync`
-  preflight + apply mis-trigger "refusing to resume" check on
-  internally-prepared clones `[S]`
-  *Surfaced after #8 landed in 2026-Q2. The resume guard fires on
-  internally-prepared clone dirs that should pass. Single fix path; can
-  ship as a `fix:` PR.*
+*No active items. Promote #57 (or another Near-Term item) into Immediate
+Focus when v0.3 work starts.*
 
 ## Near-Term Vision (v0.3 — billing visibility + operator quality)
 
@@ -299,6 +293,13 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#48](https://github.com/rshade/gh-aw-fleet/issues/48) `sync`
+  preflight + apply mis-trigger "refusing to resume" check on
+  internally-prepared clones `[S]`
+  *Shipped 2026-05-14 in PR #81. Resume guard now correctly bypasses the
+  check on internally-prepared clone directories that flow through
+  deploy/sync's own state-prep path. Closes the last v0.2 correctness
+  blocker.*
 - [x] [#73](https://github.com/rshade/gh-aw-fleet/issues/73) Support HuJson
   for inline config documentation `[M]`
   *Shipped 2026-05-12 in PR #78. `internal/fleet/load.go` runs every
@@ -432,11 +433,10 @@ Any roadmap item that violates these is rejected, not negotiated.
   Composition Rule above)
 - **Contribution flags**: `community`, `cross-repo`, `spec-first`
 
-> The Immediate Focus correctness item (#48), the Near-Term
-> billing-visibility item (#57), the Near-Term distribution / security
-> items (#43, #49), the Future Vision security epic (#36 with remaining
-> children #38–#40), the Future Vision billing-deferred items (#53, #59,
-> #60), and the Status command refinements (#61, #62) are tracked as
-> GitHub issues. The unlinked Near-Term and Future items don't have
-> issues yet — open them as work picks up, then run `/roadmap sync` to
-> keep this file aligned.
+> The Near-Term billing-visibility item (#57), the Near-Term
+> distribution / security items (#43, #49), the Future Vision security
+> epic (#36 with remaining children #38–#40), the Future Vision
+> billing-deferred items (#53, #59, #60), and the Status command
+> refinements (#61, #62) are tracked as GitHub issues. The unlinked
+> Near-Term and Future items don't have issues yet — open them as work
+> picks up, then run `/roadmap sync` to keep this file aligned.
