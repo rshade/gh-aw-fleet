@@ -554,6 +554,45 @@ func newTestRepo(t *testing.T, setup func(dir string)) string {
 	return dir
 }
 
+func TestDeployUserSuppliedWorkDirTriggersResumeGuard(t *testing.T) {
+	dir := newTestRepo(t, func(d string) {
+		cmd := exec.Command("git", "branch", "-M", "main")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("rename branch to main: %v", err)
+		}
+	})
+
+	cfg := &Config{
+		Version: SchemaVersion,
+		Profiles: map[string]Profile{
+			"default": {
+				Sources: map[string]SourcePin{
+					"githubnext/agentics": {Ref: "v1.0.0"},
+				},
+				Workflows: []ProfileWorkflow{
+					{Name: "ci-doctor", Source: "githubnext/agentics"},
+				},
+			},
+		},
+		Repos: map[string]RepoSpec{
+			"acme/widgets": {Profiles: []string{"default"}},
+		},
+	}
+
+	_, err := Deploy(context.Background(), cfg, "acme/widgets", DeployOpts{
+		Apply:         false,
+		WorkDir:       dir,
+		InternalClone: false,
+	})
+	if err == nil {
+		t.Fatal("Deploy returned nil error, want refusing to resume")
+	}
+	if !strings.Contains(err.Error(), "refusing to resume") {
+		t.Fatalf("error = %q, want substring %q", err.Error(), "refusing to resume")
+	}
+}
+
 func TestHasStagedOrUnstagedWorkflowChanges(t *testing.T) {
 	ctx := context.Background()
 
