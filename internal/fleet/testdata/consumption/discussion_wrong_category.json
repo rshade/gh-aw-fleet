@@ -1,0 +1,9 @@
+{
+  "number": 105,
+  "title": "Daily consumption — 2026-05-13",
+  "body": "## Summary\n\nThis is in the general category — should be filtered out.\n\nSee the workflow run: https://github.com/rshade/example/actions/runs/5559999999/agentic_workflow\n\n<!-- gh-aw-tracker-id: api-consumption-report-daily -->\n<!-- gh-aw-expires: 2099-01-01T00:00:00Z -->\n",
+  "html_url": "https://github.com/rshade/example/discussions/105",
+  "category": {
+    "slug": "general"
+  }
+}

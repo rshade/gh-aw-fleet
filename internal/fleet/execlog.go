@@ -30,6 +30,8 @@ func runLoggedCombined(cmd *exec.Cmd, toolLabel, subcommand string, extraFields 
 }
 
 // runLoggedOutput wraps cmd.Output() with the same summary event.
+//
+//nolint:unparam // toolLabel kept on signature for future non-gh callers; matches runLogged/runLoggedCombined shape
 func runLoggedOutput(cmd *exec.Cmd, toolLabel, subcommand string, extraFields map[string]string) ([]byte, error) {
 	start := time.Now()
 	out, err := cmd.Output()

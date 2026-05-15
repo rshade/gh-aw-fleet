@@ -25,11 +25,12 @@ const (
 )
 
 const (
-	commandDeploy  = "deploy"
-	commandList    = "list"
-	commandStatus  = "status"
-	commandSync    = "sync"
-	commandUpgrade = "upgrade"
+	commandConsumption = "consumption"
+	commandDeploy      = "deploy"
+	commandList        = "list"
+	commandStatus      = "status"
+	commandSync        = "sync"
+	commandUpgrade     = "upgrade"
 )
 
 const (

@@ -45,6 +45,7 @@ and calling Claude when a deploy or merge needs judgment.`,
 		newDeployCmd(&flagDir),
 		newSyncCmd(&flagDir),
 		newUpgradeCmd(&flagDir),
+		newConsumptionCmd(&flagDir),
 	)
 	return root
 }

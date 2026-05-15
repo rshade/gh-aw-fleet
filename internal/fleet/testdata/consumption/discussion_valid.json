@@ -1,0 +1,9 @@
+{
+  "number": 101,
+  "title": "Daily consumption — 2026-05-13",
+  "body": "## Summary\n\nReport for 2026-05-13.\n\nSee the workflow run: https://github.com/rshade/example-paid/actions/runs/5551234567/agentic_workflow\n\n<!-- gh-aw-tracker-id: api-consumption-report-daily -->\n<!-- gh-aw-expires: 2099-01-01T00:00:00Z -->\n",
+  "html_url": "https://github.com/rshade/example-paid/discussions/101",
+  "category": {
+    "slug": "audits"
+  }
+}

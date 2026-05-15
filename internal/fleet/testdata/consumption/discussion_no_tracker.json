@@ -1,0 +1,9 @@
+{
+  "number": 106,
+  "title": "Quarterly security audit — 2026-Q1",
+  "body": "## Summary\n\nAn unrelated audit discussion that legitimately lacks the tracker marker — should be filtered out silently.\n\nSee https://github.com/rshade/example/actions/runs/5550000001/agentic_workflow for the run.\n\n<!-- gh-aw-expires: 2099-01-01T00:00:00Z -->\n",
+  "html_url": "https://github.com/rshade/example/discussions/106",
+  "category": {
+    "slug": "audits"
+  }
+}

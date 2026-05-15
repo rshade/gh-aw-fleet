@@ -1,0 +1,76 @@
+{
+  "_comment": "Example JSON envelope produced by `gh-aw-fleet consumption --output json` AFTER this feature ships. Shows the ConsumptionResult shape under result:. Envelope schema_version remains 1 (additive new subcommand; SC-006). Envelope key set matches cmd/output.go's Envelope struct exactly: schema_version, command, repo, apply, result, warnings, hints. The `repo` envelope field is empty because consumption is fleet-wide, mirroring `list`.",
+  "schema_version": 1,
+  "command": "consumption",
+  "repo": "",
+  "apply": false,
+  "result": {
+    "loaded_from": "fleet.json + fleet.local.json",
+    "fetch_mode": "trailing-7d",
+    "group_by": "repo",
+    "groups": [
+      {
+        "_comment_group_1": "Repo with a populated upstream cost value — surfaces alongside API-call volume.",
+        "key": "rshade/example-paid",
+        "github_api_calls": 4827,
+        "safe_output_calls": 31,
+        "cost": 12.45,
+        "report_count": 7
+      },
+      {
+        "_comment_group_2": "Repo with no populated cost — cost field is omitted via omitempty (Decision 6).",
+        "key": "rshade/example-minimal",
+        "github_api_calls": 612,
+        "safe_output_calls": 4,
+        "report_count": 7
+      },
+      {
+        "_comment_group_3": "Repo with only 3 reports in the 7-day window — others were in-progress or expired; per-row report_count reveals sparse coverage so operators can spot it.",
+        "key": "rshade/example-spotty",
+        "github_api_calls": 1100,
+        "safe_output_calls": 7,
+        "report_count": 3
+      }
+    ],
+    "top_burners": [
+      {
+        "_comment_top_1": "Highest-burner workflow across the whole fleet. Ranked by api_calls (cost-when-populated is informational at v1 — see Decision 6 and Story 4 acceptance #3).",
+        "workflow": "issue-triage",
+        "runs": 156,
+        "api_calls": 3210,
+        "avg_duration_s": 42.7,
+        "cost": 8.91
+      },
+      {
+        "workflow": "ci-doctor",
+        "runs": 84,
+        "api_calls": 2104,
+        "avg_duration_s": 31.2
+      },
+      {
+        "workflow": "api-consumption-report",
+        "runs": 21,
+        "api_calls": 805,
+        "avg_duration_s": 18.4
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "_comment_warning_1": "Repo enumerated in fleet config but has zero discovered consumption discussions. Code DiagHint (Decision 8); message points at the prerequisite workflow installation.",
+      "code": "hint",
+      "message": "No consumption reports discovered for rshade/example-no-reports — the api-consumption-report workflow is either not deployed to this repo or has not yet produced a daily report. See: deploy api-consumption-report via your default profile."
+    },
+    {
+      "_comment_warning_2": "Repo had a recent in-progress report that the rollup included (trailing-window mode includes them per FR-012). Code DiagHint; one diagnostic per included in-progress report.",
+      "code": "hint",
+      "message": "Included in-progress report from rshade/example-spotty (2026-05-13). Totals for this repo may be partial."
+    },
+    {
+      "_comment_warning_3": "Run-log artifact garbage-collected past the platform's ~90-day retention. Discovery succeeded; fetch failed cleanly with the HTTP 404 family hint (Decision 8 reuses DiagHTTP404).",
+      "code": "http_404",
+      "message": "Run artifact for rshade/example-old (run #4517 on 2026-02-08) is past the ~90-day run-log retention window. Source path not found. Check the spec — `github/gh-aw` workflows live under `.github/workflows/`; `githubnext/agentics` workflows live under `workflows/`."
+    }
+  ],
+  "hints": []
+}
