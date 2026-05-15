@@ -133,7 +133,7 @@ func CollectHintDiagnostics(texts ...string) []Diagnostic {
 					out = append(out, Diagnostic{
 						Code:    h.Code,
 						Message: h.Message,
-						Fields:  map[string]any{"hint": h.Message},
+						Fields:  map[string]any{fieldHint: h.Message},
 					})
 					seen[h.Message] = true
 				}
@@ -167,6 +167,6 @@ func HintFromError(err error) Diagnostic {
 	return Diagnostic{
 		Code:    DiagHint,
 		Message: msg,
-		Fields:  map[string]any{"hint": msg},
+		Fields:  map[string]any{fieldHint: msg},
 	}
 }

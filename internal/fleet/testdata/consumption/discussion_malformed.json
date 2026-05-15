@@ -1,0 +1,9 @@
+{
+  "number": 104,
+  "title": "Daily consumption — 2026-05-12",
+  "body": "## Summary\n\nThis body is missing the actions/runs/{id}/agentic_workflow link — the upstream report format drifted.\n\n<!-- gh-aw-tracker-id: api-consumption-report-daily -->\n<!-- gh-aw-expires: 2099-01-01T00:00:00Z -->\n",
+  "html_url": "https://github.com/rshade/example-drift/discussions/104",
+  "category": {
+    "slug": "audits"
+  }
+}

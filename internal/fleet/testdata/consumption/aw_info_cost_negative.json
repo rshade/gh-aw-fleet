@@ -1,0 +1,11 @@
+{
+  "github_rate_limit_usage": {
+    "core_consumed": 220,
+    "core_limit": 5000,
+    "core_remaining": 4780
+  },
+  "safe_outputs": {
+    "total_calls": 2
+  },
+  "cost": -1.5
+}

@@ -1,0 +1,24 @@
+{
+  "workflows": [
+    {
+      "name": "issue-triage",
+      "runs": 156,
+      "api_calls": 3210,
+      "avg_duration_seconds": 42.7,
+      "cost": 8.91
+    },
+    {
+      "name": "ci-doctor",
+      "runs": 84,
+      "api_calls": 2104,
+      "avg_duration_seconds": 31.2,
+      "cost": 3.54
+    },
+    {
+      "name": "api-consumption-report",
+      "runs": 21,
+      "api_calls": 805,
+      "avg_duration_seconds": 18.4
+    }
+  ]
+}

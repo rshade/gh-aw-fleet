@@ -28,6 +28,8 @@ const (
 
 const (
 	fieldCloneDir = "clone_dir"
+	fieldHint     = "hint"
+	fieldPath     = "path"
 	fieldRepo     = "repo"
 )
 
