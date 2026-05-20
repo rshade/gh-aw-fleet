@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	zlog "github.com/rs/zerolog/log"
+
 	"github.com/rshade/gh-aw-fleet/internal/fleet/security"
 )
 
@@ -48,10 +50,34 @@ type UpgradeResult struct {
 	// JSON envelope warnings[], and in the PR body's `## Security Findings`
 	// section.
 	SecurityFindings []security.Finding `json:"security_findings"`
+
+	// CompileStrictApplied is true ONLY when `gh aw compile --strict` was
+	// invoked AND exited 0 during this Upgrade run. False covers both
+	// "resolver said skip" and "resolver said apply but probe/compile
+	// aborted." Consumers MUST cross-reference CompileStrictSource to
+	// disambiguate.
+	CompileStrictApplied bool `json:"compile_strict_applied"`
+
+	// CompileStrictSource discriminates why CompileStrictApplied has its
+	// value. One of "explicit" (operator override via RepoSpec.CompileStrict),
+	// "auto-public", "auto-private", "auto-fallback", or "" (the resolver
+	// never ran — early error path). Empty string is DISTINCT from the four
+	// valid values; consumers MUST treat it as "not applicable to this
+	// result."
+	CompileStrictSource string `json:"compile_strict_source"`
 }
 
+// SetCompileStrictSource implements compileStrictResult.
+func (r *UpgradeResult) SetCompileStrictSource(s string) { r.CompileStrictSource = s }
+
+// SetCompileStrictApplied implements compileStrictResult.
+func (r *UpgradeResult) SetCompileStrictApplied(b bool) { r.CompileStrictApplied = b }
+
+// WorkCloneDir implements compileStrictResult.
+func (r *UpgradeResult) WorkCloneDir() string { return r.CloneDir }
+
 // Upgrade runs the upgrade pipeline for a single repo.
-func Upgrade(ctx context.Context, _ *Config, repo string, opts UpgradeOpts) (*UpgradeResult, error) {
+func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*UpgradeResult, error) {
 	res := &UpgradeResult{Repo: repo}
 	var err error
 	res.CloneDir, err = prepareClone(ctx, repo, opts.WorkDir)
@@ -101,7 +127,28 @@ func Upgrade(ctx context.Context, _ *Config, repo string, opts UpgradeOpts) (*Up
 	}
 
 	if !opts.Apply {
+		// Dry-run path: resolve and log the would-be policy without invoking
+		// the probe or the compile subprocess (cli-semantics.md §Dry-run mode).
+		effective, source, reason := cfg.EffectiveCompileStrict(ctx, repo)
+		res.CompileStrictSource = source
+		zlog.Info().
+			Str("event", "compile_strict_resolved").
+			Str(fieldRepo, repo).
+			Bool("effective", effective).
+			Str("source", source).
+			Msg("compile-strict resolution")
+		if source == CompileStrictSourceAutoFallback {
+			zlog.Warn().
+				Str("event", "compile_strict_lookup_failed").
+				Str(fieldRepo, repo).
+				Str("reason", reason).
+				Msg("compile-strict visibility lookup failed; defaulting to strict ON")
+		}
 		return res, nil
+	}
+
+	if compileErr := runCompileStrictIfNeeded(ctx, res, cfg, repo); compileErr != nil {
+		return res, compileErr
 	}
 
 	return createUpgradePR(ctx, res)

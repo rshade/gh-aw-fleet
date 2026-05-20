@@ -44,4 +44,18 @@ const (
 	DiagSecurityMCPNonStandardHost    = "security_mcp_non_standard_host"
 	DiagSecurityActionlint            = "security_actionlint"
 	DiagSecurityFrontmatterParseError = "security_frontmatter_parse_error"
+
+	// DiagCompileStrictFailed fires when `gh aw compile --strict` exits non-zero
+	// because one or more workflows violate strict-mode validation. The hint
+	// names the work-dir clone path for inspection and the `compile_strict: false`
+	// opt-out path in fleet.local.json.
+	DiagCompileStrictFailed = "compile_strict_failed"
+	// DiagGhAwTooOld fires when `gh aw compile --help` does not advertise the
+	// `--strict` flag — the installed `gh aw` extension predates the minimum
+	// supported version (v0.68.3). The hint names `gh extension upgrade aw`.
+	DiagGhAwTooOld = "gh_aw_too_old"
+	// DiagGhAwMissing fires when the `gh aw compile --help` probe itself fails
+	// (binary not found or exec error). The hint names
+	// `gh extension install github/gh-aw`.
+	DiagGhAwMissing = "gh_aw_missing"
 )

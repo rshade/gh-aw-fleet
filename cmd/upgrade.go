@@ -114,6 +114,13 @@ func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult) {
 	if res.PRURL != "" {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
+	if res.CompileStrictSource != "" {
+		if res.CompileStrictApplied {
+			fmt.Fprintf(w, "  compile-strict: applied (source: %s)\n", res.CompileStrictSource)
+		} else {
+			fmt.Fprintf(w, "  compile-strict: skipped (source: %s)\n", res.CompileStrictSource)
+		}
+	}
 }
 
 // emitUpgradeWarnings emits one stderr Warn line per security finding. The

@@ -3,9 +3,11 @@ package fleet
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -66,6 +68,21 @@ type DeployResult struct {
 	// default_workflow_permissions=="read". Same fail-open semantics as
 	// ActionsDisabled — indeterminate responses leave it false.
 	WorkflowTokenReadOnly bool `json:"workflow_token_read_only"`
+
+	// CompileStrictApplied is true ONLY when `gh aw compile --strict` was
+	// invoked AND exited 0 during this Deploy run. False covers both
+	// "resolver said skip" and "resolver said apply but probe/compile
+	// aborted." Consumers MUST cross-reference CompileStrictSource to
+	// disambiguate.
+	CompileStrictApplied bool `json:"compile_strict_applied"`
+
+	// CompileStrictSource discriminates why CompileStrictApplied has its
+	// value. One of "explicit" (operator override via RepoSpec.CompileStrict),
+	// "auto-public", "auto-private", "auto-fallback", or "" (the resolver
+	// never ran — early error path). Empty string is DISTINCT from the four
+	// valid values; consumers MUST treat it as "not applicable to this
+	// result."
+	CompileStrictSource string `json:"compile_strict_source"`
 
 	// SecurityFindings is the sorted output of security.Run; nil when the
 	// scanner has not run (e.g. resume-from-work-dir paths that bypass
@@ -224,8 +241,30 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	res.SecurityFindings = security.Run(ctx, res.CloneDir)
 
 	if !opts.Apply {
+		// Dry-run path: resolve and log the would-be policy without invoking
+		// the probe or the compile subprocess (cli-semantics.md §Dry-run mode).
+		effective, source, reason := cfg.EffectiveCompileStrict(ctx, repo)
+		res.CompileStrictSource = source
+		zlog.Info().
+			Str("event", "compile_strict_resolved").
+			Str(fieldRepo, repo).
+			Bool("effective", effective).
+			Str("source", source).
+			Msg("compile-strict resolution")
+		if source == CompileStrictSourceAutoFallback {
+			zlog.Warn().
+				Str("event", "compile_strict_lookup_failed").
+				Str(fieldRepo, repo).
+				Str("reason", reason).
+				Msg("compile-strict visibility lookup failed; defaulting to strict ON")
+		}
 		return res, nil
 	}
+
+	if compileErr := runCompileStrictIfNeeded(ctx, res, cfg, repo); compileErr != nil {
+		return res, compileErr
+	}
+
 	staged, err := hasStagedOrUnstagedWorkflowChanges(ctx, res.CloneDir)
 	if err != nil {
 		return res, err
@@ -287,6 +326,9 @@ func handleWorkDirResume(
 		res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
 		if !opts.Apply {
 			return res, true, nil
+		}
+		if compileErr := runCompileStrictIfNeeded(ctx, res, cfg, repo); compileErr != nil {
+			return res, true, compileErr
 		}
 		out, prErr := createDeployPR(ctx, res, repo, opts, branch)
 		return out, true, prErr
@@ -616,6 +658,180 @@ func gitHasUnpushedCommits(ctx context.Context, dir string) (bool, error) {
 //nolint:gochecknoglobals // test seam; tests override this to stub gh api calls
 var ghAPIExists = func(ctx context.Context, path string) bool {
 	return exec.CommandContext(ctx, "gh", "api", path).Run() == nil
+}
+
+// RepoVisibility returns the repo's `visibility` field via the package-level
+// injection seam. Stable export so the `cmd/` layer can render the onboarding
+// info line at `gh-aw-fleet add` time without reaching across packages for
+// an unexported var. Tests in this package override the seam itself; tests in
+// downstream packages should inject their own indirection.
+func RepoVisibility(ctx context.Context, repo string) (string, error) {
+	return ghRepoVisibility(ctx, repo)
+}
+
+// ghRepoVisibility returns the repo's `visibility` field from
+// `gh api /repos/<owner>/<repo> --jq .visibility`. Returns the trimmed string
+// ("public" | "private" | "internal" | …) or a wrapped error.
+//
+//nolint:gochecknoglobals // test-injection seam mirroring ghAPIExists/ghAPIJSON
+var ghRepoVisibility = func(ctx context.Context, repo string) (string, error) {
+	path := fmt.Sprintf("/repos/%s", repo)
+	cmd := exec.CommandContext(ctx, "gh", "api", path, "--jq", ".visibility")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", ghErr(err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// ghAwCompileHelp runs `gh aw compile --help` and returns combined stdout+stderr.
+// Used to probe whether the locally-installed `gh aw` advertises the `--strict`
+// flag (R2 in research.md).
+//
+//nolint:gochecknoglobals // test-injection seam mirroring ghAPIExists/ghAPIJSON
+var ghAwCompileHelp = func(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "gh", "aw", "compile", "--help")
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// ghAwVersionRE extracts the first vMAJOR.MINOR.PATCH token from
+// `gh aw --version` output. Used for diagnostic enrichment only — the gate
+// is the flag probe (R3 in research.md).
+var ghAwVersionRE = regexp.MustCompile(`v\d+\.\d+\.\d+`)
+
+// ghAwVersion runs `gh aw --version` and returns the parsed semver token
+// (e.g. "v0.72.1") or an empty string when parsing fails. The wrapped error
+// is non-nil only on exec failure.
+//
+//nolint:gochecknoglobals // test-injection seam mirroring ghAPIExists/ghAPIJSON
+var ghAwVersion = func(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "gh", "aw", "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return ghAwVersionRE.FindString(string(out)), nil
+}
+
+// runGhAwCompileStrict invokes `gh aw compile --strict` in dir, tee-ing
+// combined stdout+stderr to the operator's stderr (so compile progress is
+// visible) while also returning the buffered output for hint extraction. The
+// returned error is non-nil only when the subprocess exits non-zero.
+//
+//nolint:gochecknoglobals // test-injection seam mirroring ghAPIExists/ghAPIJSON
+var runGhAwCompileStrict = func(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "gh", "aw", "compile", "--strict")
+	cmd.Dir = dir
+	var buf strings.Builder
+	cmd.Stdout = io.MultiWriter(os.Stderr, &buf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+	err := runLogged(cmd, "gh", "aw compile --strict", map[string]string{fieldCloneDir: dir})
+	return buf.String(), err
+}
+
+// compileStrictResult is the minimum surface runCompileStrictIfNeeded needs
+// from a Deploy- or Upgrade-result struct. Lets one helper service both
+// pipelines without duplication. The accessor is named WorkCloneDir (rather
+// than the natural CloneDir) because Go forbids method/field name collisions
+// and both DeployResult and UpgradeResult already expose a CloneDir string
+// field.
+type compileStrictResult interface {
+	SetCompileStrictSource(string)
+	SetCompileStrictApplied(bool)
+	WorkCloneDir() string
+}
+
+// SetCompileStrictSource implements compileStrictResult.
+func (r *DeployResult) SetCompileStrictSource(s string) { r.CompileStrictSource = s }
+
+// SetCompileStrictApplied implements compileStrictResult.
+func (r *DeployResult) SetCompileStrictApplied(b bool) { r.CompileStrictApplied = b }
+
+// WorkCloneDir implements compileStrictResult.
+func (r *DeployResult) WorkCloneDir() string { return r.CloneDir }
+
+// runCompileStrictIfNeeded resolves the effective compile-strict policy for
+// repo via cfg, emits the FR-006 info log event, optionally emits the FR-007
+// warn event on auto-fallback, then probes the local `gh aw compile --help`
+// and invokes `gh aw compile --strict` in the result's clone directory when
+// the resolver says ON. Failures from probe or compile produce wrapped errors
+// carrying actionable diagnostics from CollectHints. The work-dir clone is
+// NOT deleted on failure — the caller's existing preservation behavior owns
+// that contract (Constitution Principle III).
+func runCompileStrictIfNeeded(ctx context.Context, res compileStrictResult, cfg *Config, repo string) error {
+	effective, source, reason := cfg.EffectiveCompileStrict(ctx, repo)
+	res.SetCompileStrictSource(source)
+
+	zlog.Info().
+		Str("event", "compile_strict_resolved").
+		Str(fieldRepo, repo).
+		Bool("effective", effective).
+		Str("source", source).
+		Msg("compile-strict resolution")
+
+	if source == CompileStrictSourceAutoFallback {
+		zlog.Warn().
+			Str("event", "compile_strict_lookup_failed").
+			Str(fieldRepo, repo).
+			Str("reason", reason).
+			Msg("compile-strict visibility lookup failed; defaulting to strict ON")
+	}
+
+	if !effective {
+		return nil
+	}
+
+	helpOut, helpErr := ghAwCompileHelp(ctx)
+	if helpErr != nil {
+		errText := helpErr.Error() + " " + helpOut
+		hint := firstHintMessage(errText, DiagGhAwMissing)
+		return fmt.Errorf("gh aw compile --help probe failed: %s: %w", hint, helpErr)
+	}
+	if !strings.Contains(helpOut, "--strict") {
+		version, _ := ghAwVersion(ctx)
+		if version == "" {
+			version = "(version unknown)"
+		}
+		hint := firstHintMessage("unknown flag: --strict", DiagGhAwTooOld)
+		return fmt.Errorf(
+			"gh aw is too old: %s detected, minimum v0.68.3 required: %s",
+			version, hint,
+		)
+	}
+
+	compileOut, compileErr := runGhAwCompileStrict(ctx, res.WorkCloneDir())
+	if compileErr != nil {
+		hint := firstHintMessage(compileOut, DiagCompileStrictFailed)
+		return fmt.Errorf(
+			"gh aw compile --strict failed: %s: %s: %w",
+			hint, strings.TrimSpace(compileOut), compileErr,
+		)
+	}
+
+	res.SetCompileStrictApplied(true)
+	return nil
+}
+
+// firstHintMessage scans text via CollectHintDiagnostics and returns the
+// first hint message matching wantCode, or a generic fallback when no
+// diagnostic with that code matched. Used to attach an actionable hint to
+// the wrapped errors runCompileStrictIfNeeded returns.
+func firstHintMessage(text, wantCode string) string {
+	for _, d := range CollectHintDiagnostics(text) {
+		if d.Code == wantCode {
+			return d.Message
+		}
+	}
+	switch wantCode {
+	case DiagCompileStrictFailed:
+		return "compile_strict_failed: inspect the work-dir clone and consider setting \"compile_strict\": false for this repo"
+	case DiagGhAwTooOld:
+		return "gh_aw_too_old: upgrade with `gh extension upgrade aw`"
+	case DiagGhAwMissing:
+		return "gh_aw_missing: install with `gh extension install github/gh-aw`"
+	}
+	return wantCode
 }
 
 // checkActionsSettings queries the GitHub Actions repo-level permission

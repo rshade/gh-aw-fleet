@@ -1094,3 +1094,291 @@ func TestPRBodyAppendsSecurityFindings(t *testing.T) {
 		t.Errorf("setup-required should appear before security-findings (got indices %d, %d)", setup, sec)
 	}
 }
+
+// compileStrictSeams bundles closure-replacable seam state for one test.
+// Counters let assertions verify each seam was invoked the expected number
+// of times.
+type compileStrictSeams struct {
+	visibility      string
+	visibilityErr   error
+	visibilityCalls int
+	helpOut         string
+	helpErr         error
+	helpCalls       int
+	versionOut      string
+	versionErr      error
+	versionCalls    int
+	compileOut      string
+	compileErr      error
+	compileCalls    int
+}
+
+// installCompileStrictSeams replaces the four package-level seams with
+// counting closures populated from s. Restores originals on test cleanup.
+func installCompileStrictSeams(t *testing.T, s *compileStrictSeams) {
+	t.Helper()
+	origVis := ghRepoVisibility
+	origHelp := ghAwCompileHelp
+	origVer := ghAwVersion
+	origCompile := runGhAwCompileStrict
+	t.Cleanup(func() {
+		ghRepoVisibility = origVis
+		ghAwCompileHelp = origHelp
+		ghAwVersion = origVer
+		runGhAwCompileStrict = origCompile
+	})
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		s.visibilityCalls++
+		return s.visibility, s.visibilityErr
+	}
+	ghAwCompileHelp = func(_ context.Context) (string, error) {
+		s.helpCalls++
+		return s.helpOut, s.helpErr
+	}
+	ghAwVersion = func(_ context.Context) (string, error) {
+		s.versionCalls++
+		return s.versionOut, s.versionErr
+	}
+	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+		s.compileCalls++
+		return s.compileOut, s.compileErr
+	}
+}
+
+// captureZlog redirects the zerolog global logger to buf for the duration of
+// the test. Returns the buffer so callers can inspect emitted events.
+func captureZlog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	orig := zlog.Logger
+	//nolint:reassign // zerolog's documented global-logger-replacement pattern; restored on cleanup
+	zlog.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	t.Cleanup(func() {
+		//nolint:reassign // restore in cleanup
+		zlog.Logger = orig
+	})
+	return &buf
+}
+
+// findZlogEvent scans newline-delimited JSON in buf for the first object
+// whose "event" field equals want. Returns nil when no match.
+func findZlogEvent(t *testing.T, buf *bytes.Buffer, want string) map[string]any {
+	t.Helper()
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		if obj["event"] == want {
+			return obj
+		}
+	}
+	return nil
+}
+
+func TestDeploy_AutoPublicPath_InvokesStrictCompile(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "Usage: gh aw compile [flags]\n  --strict  enable strict validation\n",
+		compileOut: "ok",
+	}
+	installCompileStrictSeams(t, seams)
+	buf := captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if !res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = false; want true")
+	}
+	if res.CompileStrictSource != "auto-public" {
+		t.Errorf("CompileStrictSource = %q; want auto-public", res.CompileStrictSource)
+	}
+	if seams.visibilityCalls != 1 || seams.helpCalls != 1 || seams.compileCalls != 1 {
+		t.Errorf("seam calls: visibility=%d help=%d compile=%d; want 1/1/1",
+			seams.visibilityCalls, seams.helpCalls, seams.compileCalls)
+	}
+	evt := findZlogEvent(t, buf, "compile_strict_resolved")
+	if evt == nil {
+		t.Fatalf("no compile_strict_resolved event; log=%s", buf.String())
+	}
+	if evt["source"] != "auto-public" || evt["effective"] != true {
+		t.Errorf("event fields = %+v; want source=auto-public effective=true", evt)
+	}
+}
+
+func TestDeploy_ExplicitFalseOnPublic_SkipsAll(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{visibility: "public"} // would say "public" if asked
+	installCompileStrictSeams(t, seams)
+	// Override visibility seam with a fails-test-if-invoked closure.
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		t.Fatalf("ghRepoVisibility invoked despite explicit override (FR-008)")
+		return "", nil
+	}
+
+	cfg := &Config{Repos: map[string]RepoSpec{
+		"rshade/test": {CompileStrict: boolPtr(false)},
+	}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = true; want false")
+	}
+	if res.CompileStrictSource != "explicit" {
+		t.Errorf("CompileStrictSource = %q; want explicit", res.CompileStrictSource)
+	}
+	if seams.helpCalls != 0 || seams.compileCalls != 0 {
+		t.Errorf("seams: help=%d compile=%d; want both 0", seams.helpCalls, seams.compileCalls)
+	}
+}
+
+func TestDeploy_ExplicitTrueOnPrivate_InvokesCompile(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		helpOut:    "  --strict  do the thing\n",
+		compileOut: "ok",
+	}
+	installCompileStrictSeams(t, seams)
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		t.Fatalf("ghRepoVisibility invoked despite explicit override (FR-008)")
+		return "", nil
+	}
+
+	cfg := &Config{Repos: map[string]RepoSpec{
+		"rshade/test": {CompileStrict: boolPtr(true)},
+	}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if !res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = false; want true")
+	}
+	if res.CompileStrictSource != "explicit" {
+		t.Errorf("CompileStrictSource = %q; want explicit", res.CompileStrictSource)
+	}
+	if seams.helpCalls != 1 || seams.compileCalls != 1 {
+		t.Errorf("seams: help=%d compile=%d; want 1/1", seams.helpCalls, seams.compileCalls)
+	}
+}
+
+func TestDeploy_VisibilityLookupFails_FailSecureStrictOn(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibilityErr: errors.New("HTTP 403 Forbidden"),
+		helpOut:       "  --strict  enable strict validation\n",
+		compileOut:    "ok",
+	}
+	installCompileStrictSeams(t, seams)
+	buf := captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil (fail-secure proceeds)", err)
+	}
+	if !res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = false; want true")
+	}
+	if res.CompileStrictSource != "auto-fallback" {
+		t.Errorf("CompileStrictSource = %q; want auto-fallback", res.CompileStrictSource)
+	}
+	if seams.compileCalls != 1 {
+		t.Errorf("compile seam calls = %d; want 1", seams.compileCalls)
+	}
+	warn := findZlogEvent(t, buf, "compile_strict_lookup_failed")
+	if warn == nil {
+		t.Fatalf("no compile_strict_lookup_failed event; log=%s", buf.String())
+	}
+	reason, _ := warn["reason"].(string)
+	if !strings.Contains(reason, "403") {
+		t.Errorf("warn.reason = %q; want substring 403", reason)
+	}
+}
+
+func TestDeploy_CompileFails_EmitsDiagCompileStrictFailed(t *testing.T) {
+	cloneDir := t.TempDir()
+	res := &DeployResult{Repo: "rshade/test", CloneDir: cloneDir}
+	const rawStderr = "✗ strict mode validation failed for workflow foo.md"
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "  --strict  do the thing\n",
+		compileOut: rawStderr,
+		compileErr: errors.New("exit 1"),
+	}
+	installCompileStrictSeams(t, seams)
+	_ = captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test")
+	if err == nil {
+		t.Fatal("err = nil; want non-nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "compile_strict") && !strings.Contains(msg, "\"compile_strict\": false") {
+		t.Errorf("err = %q; want hint referencing compile_strict false opt-out", msg)
+	}
+	if !strings.Contains(msg, rawStderr) {
+		t.Errorf("err = %q; want raw compile stderr %q preserved (FR-009)", msg, rawStderr)
+	}
+	if res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = true; want false")
+	}
+	if _, statErr := os.Stat(cloneDir); statErr != nil {
+		t.Errorf("clone dir %q removed by helper; FR-009 requires preservation: %v", cloneDir, statErr)
+	}
+}
+
+func TestDeploy_ProbeFlagAbsent_EmitsDiagGhAwTooOld(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "Usage: gh aw compile [flags]\n  --some-other-flag\n",
+		versionOut: "v0.50.0",
+	}
+	installCompileStrictSeams(t, seams)
+	_ = captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test")
+	if err == nil {
+		t.Fatal("err = nil; want non-nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"v0.68.3", "v0.50.0"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("err = %q; want substring %q", msg, want)
+		}
+	}
+	if seams.compileCalls != 0 {
+		t.Errorf("compile seam invoked despite flag-absent probe; calls=%d", seams.compileCalls)
+	}
+}
+
+func TestDeploy_ProbeFailed_EmitsDiagGhAwMissing(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpErr:    errors.New("exec: \"gh\": executable file not found in $PATH"),
+	}
+	installCompileStrictSeams(t, seams)
+	_ = captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test")
+	if err == nil {
+		t.Fatal("err = nil; want non-nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "gh extension install") {
+		t.Errorf("err = %q; want substring gh extension install", msg)
+	}
+	if seams.compileCalls != 0 {
+		t.Errorf("compile seam invoked despite probe-failed; calls=%d", seams.compileCalls)
+	}
+}

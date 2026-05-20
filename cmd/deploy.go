@@ -109,6 +109,13 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 	if res.PRURL != "" {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
+	if res.CompileStrictSource != "" {
+		if res.CompileStrictApplied {
+			fmt.Fprintf(w, "  compile-strict: applied (source: %s)\n", res.CompileStrictSource)
+		} else {
+			fmt.Fprintf(w, "  compile-strict: skipped (source: %s)\n", res.CompileStrictSource)
+		}
+	}
 	emitDeployWarnings(res)
 	if !apply {
 		fmt.Fprintln(w, "\nRe-run with --apply to commit, push, and open the PR.")

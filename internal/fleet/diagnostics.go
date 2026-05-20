@@ -47,6 +47,10 @@ const (
 	DiagSecurityMCPNonStandardHost    = fleetdiag.DiagSecurityMCPNonStandardHost
 	DiagSecurityActionlint            = fleetdiag.DiagSecurityActionlint
 	DiagSecurityFrontmatterParseError = fleetdiag.DiagSecurityFrontmatterParseError
+
+	DiagCompileStrictFailed = fleetdiag.DiagCompileStrictFailed
+	DiagGhAwTooOld          = fleetdiag.DiagGhAwTooOld
+	DiagGhAwMissing         = fleetdiag.DiagGhAwMissing
 )
 
 // Hint is a remediation suggestion keyed by a substring match against
@@ -116,6 +120,40 @@ var hints = []Hint{
 		Message: "gpg-agent couldn't prompt for a passphrase in this non-interactive context. " +
 			"Unlock gpg-agent in your shell (`echo test | gpg -as > /dev/null`) and re-run.",
 		Code: DiagGPGFailure,
+	},
+	{
+		Pattern: "strict mode validation",
+		Message: "Workflow violates `gh aw compile --strict` validation. " +
+			"Inspect the work-dir clone for the failing workflow markdown and fix the underlying issue, " +
+			"or opt this repo out by setting `\"compile_strict\": false` in fleet.local.json for the repo entry.",
+		Code: DiagCompileStrictFailed,
+	},
+	{
+		Pattern: "strict mode requires",
+		Message: "Workflow violates `gh aw compile --strict` validation. " +
+			"Inspect the work-dir clone for the failing workflow markdown and fix the underlying issue, " +
+			"or opt this repo out by setting `\"compile_strict\": false` in fleet.local.json for the repo entry.",
+		Code: DiagCompileStrictFailed,
+	},
+	{
+		Pattern: "unknown flag: --strict",
+		Message: "Local `gh aw` is too old: `compile --strict` requires minimum v0.68.3. " +
+			"Upgrade with `gh extension upgrade aw`. To bypass for repos that don't need strict compile, " +
+			"set `\"compile_strict\": false` in fleet.local.json.",
+		Code: DiagGhAwTooOld,
+	},
+	{
+		Pattern: "unknown long flag '--strict'",
+		Message: "Local `gh aw` is too old: `compile --strict` requires minimum v0.68.3. " +
+			"Upgrade with `gh extension upgrade aw`. To bypass for repos that don't need strict compile, " +
+			"set `\"compile_strict\": false` in fleet.local.json.",
+		Code: DiagGhAwTooOld,
+	},
+	{
+		Pattern: "executable file not found",
+		Message: "The `gh aw` extension binary is missing or broken. " +
+			"Install with `gh extension install github/gh-aw` (or `gh extension upgrade aw` if already installed).",
+		Code: DiagGhAwMissing,
 	},
 }
 

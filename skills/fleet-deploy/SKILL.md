@@ -56,6 +56,7 @@ The output includes (as applicable):
 - `added: N` — workflows that would be added, each with full `owner/repo/.../workflow@ref` spec.
 - `skipped: N` — already-present workflows.
 - `failed: N` — each with a line or two of error text, followed by `hint: ...` lines surfaced by `fleet.CollectHints`.
+- On stderr (zerolog), exactly one `compile_strict_resolved` info event names the deploy-time compile-strict policy that will apply on `--apply`. Fields: `repo`, `effective` (bool), `source` (`explicit` | `auto-public` | `auto-private` | `auto-fallback`). When the resolver fell back to fail-secure on a visibility-lookup failure, an additional `compile_strict_lookup_failed` warn event names the truncated reason. Read these before approving — they signal whether `gh aw compile --strict` will run during `--apply`.
 
 Report all of this back to the user faithfully — don't summarize away the failures, don't drop the hints. If there are failures:
 

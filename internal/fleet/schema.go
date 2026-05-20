@@ -1,6 +1,33 @@
 package fleet
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// effectiveCompileStrictReasonMax bounds the length of the truncated raw
+// visibility-lookup error surfaced in the auto-fallback `reason` field so
+// large network errors do not bloat structured logs.
+const effectiveCompileStrictReasonMax = 200
+
+// CompileStrictSource* are the four valid values for
+// DeployResult.CompileStrictSource / UpgradeResult.CompileStrictSource.
+// The empty string is intentionally separate — it signals "resolver did
+// not run" (early-error path) and is not part of this constant set.
+const (
+	CompileStrictSourceExplicit     = "explicit"
+	CompileStrictSourceAutoPublic   = "auto-public"
+	CompileStrictSourceAutoPrivate  = "auto-private"
+	CompileStrictSourceAutoFallback = "auto-fallback"
+)
+
+// VisibilityPublic is the `visibility` value returned by
+// `gh api /repos/<owner>/<repo> --jq .visibility` for a public repo.
+// The auto-detect compile-strict path treats this value as the signal to
+// turn `--strict` ON; any other value (e.g. "private", "internal") turns
+// it OFF. Kept as a named constant so the compile-strict resolver and the
+// `gh-aw-fleet add` info-line printer compare against the same literal.
+const VisibilityPublic = "public"
 
 // SchemaVersion is the fleet config-file (fleet.json / fleet.local.json) format
 // version written into Config.Version. Bumped only on breaking changes to the
@@ -35,6 +62,40 @@ func (c *Config) EffectiveEngine(repo string) string {
 		return spec.Engine
 	}
 	return c.Defaults.Engine
+}
+
+// EffectiveCompileStrict resolves whether `gh aw compile --strict` should run
+// for repo. Returns (effective, source, reason) where source is one of
+// CompileStrictSourceExplicit (operator set RepoSpec.CompileStrict),
+// CompileStrictSourceAutoPublic (visibility lookup returned "public"),
+// CompileStrictSourceAutoPrivate (visibility lookup returned any other value),
+// or CompileStrictSourceAutoFallback (visibility lookup errored — fail-secure
+// to strict ON, reason carries the truncated raw error). The method never
+// returns an error: lookup failures fold into the auto-fallback source so the
+// caller can proceed deterministically. Explicit override skips the
+// visibility lookup entirely (FR-008).
+func (c *Config) EffectiveCompileStrict(
+	ctx context.Context, repo string,
+) (bool, string, string) {
+	if spec, ok := c.Repos[repo]; ok && spec.CompileStrict != nil {
+		return *spec.CompileStrict, CompileStrictSourceExplicit, ""
+	}
+	visibility, err := ghRepoVisibility(ctx, repo)
+	if err != nil {
+		return true, CompileStrictSourceAutoFallback,
+			truncateReason(err.Error(), effectiveCompileStrictReasonMax)
+	}
+	if visibility == VisibilityPublic {
+		return true, CompileStrictSourceAutoPublic, ""
+	}
+	return false, CompileStrictSourceAutoPrivate, ""
+}
+
+func truncateReason(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	return s[:limit]
 }
 
 // Profile is a named bundle of workflows pulled from one or more upstream
@@ -78,8 +139,16 @@ type RepoSpec struct {
 	// does not validate that the named cost center actually exists in the
 	// org's billing UI, and applies no special handling based on which
 	// fleet file (fleet.json vs fleet.local.json) the value appears in.
-	CostCenter          string            `json:"cost_center,omitempty"`
-	Engine              string            `json:"engine,omitempty"`
+	CostCenter string `json:"cost_center,omitempty"`
+	Engine     string `json:"engine,omitempty"`
+	// CompileStrict toggles `gh aw compile --strict` for this repo's deploy
+	// and upgrade pipelines. Tri-state: nil (the default) auto-detects from
+	// repo visibility (public → ON, non-public → OFF, lookup failure →
+	// fail-secure ON); a non-nil value short-circuits the auto-detect and
+	// the visibility lookup is skipped. The field is additive — absence
+	// round-trips byte-identically via HuJson AST mutation and incurs no
+	// `fleet.SchemaVersion` bump.
+	CompileStrict       *bool             `json:"compile_strict,omitempty"`
 	ExtraWorkflows      []ExtraWorkflow   `json:"extra,omitempty"`
 	ExcludeFromProfiles []string          `json:"exclude,omitempty"`
 	Overrides           map[string]string `json:"overrides,omitempty"`
