@@ -1,0 +1,217 @@
+name: install-script
+
+on:
+  pull_request:
+    paths:
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/install-script.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/install-script.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: shellcheck install.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: shellcheck
+        run: shellcheck install.sh
+
+  psscriptanalyzer:
+    name: PSScriptAnalyzer install.ps1
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          $results = Invoke-ScriptAnalyzer -Path install.ps1 -Severity @('Warning', 'Error')
+          if ($results) {
+            $results | Format-List
+            throw "PSScriptAnalyzer reported $($results.Count) issue(s)."
+          }
+
+  smoke-posix:
+    name: smoke install.sh (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install (latest, default dir)
+        run: bash install.sh
+
+      - name: Verify default-dir binary runs
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          gh-aw-fleet --help >/dev/null
+          echo "ok: default-dir install runs"
+
+      - name: Install (custom INSTALL_DIR)
+        env:
+          INSTALL_DIR: ${{ runner.temp }}/bin
+        run: bash install.sh
+
+      - name: Verify custom-dir binary runs
+        run: |
+          "${RUNNER_TEMP}/bin/gh-aw-fleet" --help >/dev/null
+          echo "ok: custom-dir install runs"
+
+      - name: Tamper test (corrupted checksums.txt -> non-zero exit)
+        run: |
+          set -uo pipefail
+          version=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" https://api.github.com/repos/rshade/gh-aw-fleet/releases/latest \
+            | grep -E '^[[:space:]]*"tag_name":' | head -n1 \
+            | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+          version_strip="${version#v}"
+
+          uname_s=$(uname -s); uname_m=$(uname -m)
+          case "$uname_s" in Linux) os=linux ;; Darwin) os=darwin ;; *) exit 1 ;; esac
+          case "$uname_m" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) exit 1 ;; esac
+          archive="gh-aw-fleet_${version_strip}_${os}_${arch}.tar.gz"
+          checksums="gh-aw-fleet_${version_strip}_checksums.txt"
+
+          srv="${RUNNER_TEMP}/tamper-srv"
+          rm -rf "$srv"
+          mkdir -p "$srv/${version}"
+          (cd "$srv/${version}" && \
+            curl -fsSL "https://github.com/rshade/gh-aw-fleet/releases/download/${version}/${archive}" -o "${archive}" && \
+            curl -fsSL "https://github.com/rshade/gh-aw-fleet/releases/download/${version}/${checksums}" -o "${checksums}")
+          sed -i.bak -E "s|^[0-9a-f]+([[:space:]]+${archive})|0000000000000000000000000000000000000000000000000000000000000000\1|" "$srv/${version}/${checksums}"
+          rm -f "$srv/${version}/${checksums}.bak"
+
+          python3 -m http.server -d "$srv" 8765 >/dev/null 2>&1 &
+          srv_pid=$!
+          trap 'kill $srv_pid 2>/dev/null || true' EXIT
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsSL "http://127.0.0.1:8765/${version}/${checksums}" -o /dev/null 2>&1; then break; fi
+            sleep 0.5
+          done
+
+          set +e
+          RELEASE_BASE_URL="http://127.0.0.1:8765" \
+          INSTALL_DIR="${RUNNER_TEMP}/tamper-install" \
+            bash install.sh 2>"${RUNNER_TEMP}/tamper.stderr"
+          rc=$?
+          set -e
+
+          echo "install.sh exit: $rc"
+          cat "${RUNNER_TEMP}/tamper.stderr"
+          if [ "$rc" -eq 0 ]; then
+            echo "FAIL: tampered checksum did not cause non-zero exit"
+            exit 1
+          fi
+          if ! grep -qi checksum "${RUNNER_TEMP}/tamper.stderr"; then
+            echo "FAIL: error message did not mention checksum"
+            exit 1
+          fi
+          echo "ok: tamper test rejected"
+
+  smoke-windows:
+    name: smoke install.ps1
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install (latest, default dir, -NoPath)
+        shell: pwsh
+        run: .\install.ps1 -NoPath
+
+      - name: Verify default-dir binary runs
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'gh-aw-fleet\bin\gh-aw-fleet.exe'
+          & $exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "gh-aw-fleet --help exit=$LASTEXITCODE" }
+          Write-Host 'ok: default-dir install runs'
+
+      - name: Install (custom -InstallDir)
+        shell: pwsh
+        run: .\install.ps1 -NoPath -InstallDir "$env:RUNNER_TEMP\bin"
+
+      - name: Verify custom-dir binary runs
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'bin\gh-aw-fleet.exe'
+          & $exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "gh-aw-fleet --help exit=$LASTEXITCODE" }
+          Write-Host 'ok: custom-dir install runs'
+
+      - name: Tamper test (corrupted checksums.txt -> non-zero exit)
+        shell: pwsh
+        run: |
+          $headers = @{}
+          if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
+          $resp = Invoke-RestMethod -Uri 'https://api.github.com/repos/rshade/gh-aw-fleet/releases/latest' -Headers $headers
+          $version = $resp.tag_name
+          $verStrip = $version.TrimStart('v')
+          $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
+            'X64'   { 'amd64' }
+            'Arm64' { 'arm64' }
+          }
+          $archive   = "gh-aw-fleet_${verStrip}_windows_${arch}.zip"
+          $checksums = "gh-aw-fleet_${verStrip}_checksums.txt"
+
+          $srv = Join-Path $env:RUNNER_TEMP "tamper-srv\$version"
+          New-Item -ItemType Directory -Path $srv -Force | Out-Null
+          $base = "https://github.com/rshade/gh-aw-fleet/releases/download/$version"
+          Invoke-WebRequest -Uri "$base/$archive"   -OutFile (Join-Path $srv $archive)   -UseBasicParsing
+          Invoke-WebRequest -Uri "$base/$checksums" -OutFile (Join-Path $srv $checksums) -UseBasicParsing
+
+          $cksPath = Join-Path $srv $checksums
+          $content = Get-Content -LiteralPath $cksPath -Raw
+          $pattern = '(?m)^[0-9a-f]+(\s+' + [regex]::Escape($archive) + ')'
+          $replaced = [regex]::Replace($content, $pattern, ('0' * 64 + '$1'))
+          Set-Content -LiteralPath $cksPath -Value $replaced -NoNewline
+
+          $srvRoot = Join-Path $env:RUNNER_TEMP 'tamper-srv'
+          $py = Get-Command python -ErrorAction SilentlyContinue
+          if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }
+          if (-not $py) { throw 'python not available for tamper test http server' }
+          $proc = Start-Process -FilePath $py.Source -ArgumentList @('-m','http.server','8765') -WorkingDirectory $srvRoot -PassThru -WindowStyle Hidden
+          try {
+            for ($i = 0; $i -lt 20; $i++) {
+              try {
+                Invoke-WebRequest -Uri "http://127.0.0.1:8765/$version/$checksums" -OutFile $env:TEMP\probe -UseBasicParsing -ErrorAction Stop
+                break
+              } catch { Start-Sleep -Milliseconds 500 }
+            }
+
+            $tamperInstall = Join-Path $env:RUNNER_TEMP 'tamper-install'
+            $rejected = $false
+            $errMsg = ''
+            try {
+              & .\install.ps1 -NoPath -BaseUrl 'http://127.0.0.1:8765' -InstallDir $tamperInstall
+            } catch {
+              $rejected = $true
+              $errMsg = $_.Exception.Message
+              Write-Host "install.ps1 threw: $errMsg"
+            }
+            if (-not $rejected) { throw 'FAIL: tampered checksum did not cause failure' }
+            if ($errMsg -notmatch '(?i)checksum') { throw "FAIL: error did not mention checksum: $errMsg" }
+            Write-Host 'ok: tamper test rejected'
+          }
+          finally {
+            $proc | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
