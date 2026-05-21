@@ -39,50 +39,35 @@ fleet-layer tool existing.
   (EPIC) with children #38–#40, plus #49.
 
 **Status**: v0.1.x → v0.2 satisfied this (#54 / #55 / #56 cost
-prereqs, #37 Layer 1 security scanner). The v0.3 Near-Term lineup
-satisfies it (#57 cost, #49 security). Forward releases should keep one
-of each on the merge queue alongside any feature or correctness work.
+prereqs, #37 Layer 1 security scanner). v0.3's cost half landed
+2026-05-15 (#57 consumption rollup); #49 covers the security half and
+is the headline remaining Near-Term item. v0.4 needs a fresh cost +
+security pair — the most likely candidates are the security-epic
+children (#38–#40) on the security side and a real-failure-triggered
+diagnostic refresh (#53) on the cost side.
 
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
 
-## Immediate Focus (v0.2 → v0.3 transition)
+## Immediate Focus (v0.3 in progress)
 
-The last v0.2 correctness item (#48, sync resume-guard misfire) shipped in
-PR #81 on 2026-05-14, alongside the billing-visibility prerequisites
-(#54 `tier`, #55 `cost_center`) and the HuJson config-comments work (#73)
-that landed earlier in PR #78. **v0.2 is ready to tag.** v0.3 begins with
-the cross-fleet consumption rollup (#57) — see Near-Term Vision below. No
-correctness blockers remain.
+v0.2 is tagged (release-please commit `c416f89`, 2026-05-15). v0.3's
+headline feature — the cross-fleet consumption rollup (#57) — merged in
+PR #83 on 2026-05-15 and is now in `main` awaiting the next release-please
+cut. Two items are now actively in flight: the security default flip
+(#49) closes v0.3's release-composition security half; the one-liner
+installers (#43) advance the contributor pipeline. Promoted together
+on 2026-05-17 via the gate's multi-select path (composition bump
+opened a second slot).
 
-*No active items. Promote #57 (or another Near-Term item) into Immediate
-Focus when v0.3 work starts.*
-
-## Near-Term Vision (v0.3 — billing visibility + operator quality)
-
-The headline v0.3 work is the cross-fleet consumption rollup (#57) — the
-fleet feature the new billing model justifies. All of its prerequisites
-are now landed: #56 (the `api-consumption-report` profile) shipped in
-v0.2, and #54 + #55 (the `tier` / `cost_center` metadata fields) shipped
-in PR #78 on 2026-05-12. #57 is unblocked and is the largest piece in this
-phase. Wrapped around it: a security default flip (#49), packaging (#43,
-gh-extension item), and operator-QoL items.
-
-### Billing visibility (consumption tracking)
-
-- [ ] [#57](https://github.com/rshade/gh-aw-fleet/issues/57) Add
-  `gh-aw-fleet consumption` subcommand for cross-fleet billing rollups
-  `[L]`
-  *The fleet feature the new billing model justifies. Two-layer fetch:
-  discovery via `gh api` discussions (category=audits + tracker marker),
-  data via `aw_info.json` from run artifacts. `--latest` / `--trailing` /
-  `--since` modes; `--by repo|profile|cost-center|workflow` grouping.
-  Ships `cost *float64` placeholder for the future Copilot credit field
-  (tracked separately as #59). Depends on #54 + #55 from Immediate Focus
-  and on #56 (already shipped in v0.2).*
-
-### Distribution + security defaults
-
+- [ ] [#49](https://github.com/rshade/gh-aw-fleet/issues/49) Compile
+  workflows with `--strict` on public repos by default `[S]` `security`
+  *Public repos benefit from the upstream `gh aw` strict-mode validations
+  (e.g., `permissions:` defaults, action-pin checks). Default to
+  `--strict` when the target repo is public; document the auto-flip in
+  the deploy output. Operators on private repos opt in via flag.
+  Promoted by `/roadmap sync` on 2026-05-17 — composition: fills the
+  v0.3 release-composition security half (cost half landed via #57).*
 - [ ] [#43](https://github.com/rshade/gh-aw-fleet/issues/43) Add
   `install.sh` and `install.ps1` one-liner installers `[M]` `community`
   *Replace the four-step manual `gh release download` flow with curl/iwr
@@ -90,13 +75,16 @@ gh-extension item), and operator-QoL items.
   `.goreleaser.yml` `extra_files`) and on `main` for a fallback URL.
   Acceptance: checksum-verified install of `v0.1.0` on
   ubuntu/macos/windows CI runners. Complements, does not replace, the
-  `gh extension` packaging item below.*
-- [ ] [#49](https://github.com/rshade/gh-aw-fleet/issues/49) Compile
-  workflows with `--strict` on public repos by default `[S]` `security`
-  *Public repos benefit from the upstream `gh aw` strict-mode validations
-  (e.g., `permissions:` defaults, action-pin checks). Default to `--strict`
-  when the target repo is public; document the auto-flip in the deploy
-  output. Operators on private repos opt in via flag.*
+  `gh extension` packaging item below. Promoted by `/roadmap sync` on
+  2026-05-17 — slot rationale: highest community-leverage with v0.3
+  composition pair filled.*
+
+## Near-Term Vision (v0.3 — operator quality of life backlog)
+
+Both v0.3 release-composition items (#49 security, #43 community-leverage)
+are now in Immediate Focus. Near-Term is the unlinked operator-QoL
+backlog — open GitHub issues as work picks up, then `/roadmap sync`
+will rank them alongside any new `roadmap/next` items.
 
 ### Operator quality of life
 
@@ -293,6 +281,20 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#57](https://github.com/rshade/gh-aw-fleet/issues/57) Add
+  `gh-aw-fleet consumption` subcommand for cross-fleet billing rollups
+  `[L]`
+  *Shipped 2026-05-15 in PR #83. Read-only fleet-wide aggregator over
+  each repo's `api-consumption-report` output. Two-layer fetch:
+  discovery via `gh api` discussions (`audits` category + tracker
+  marker), data via `aw_info.json` + `run_summary.json` from run
+  artifacts. Three temporal modes (`--latest` / `--trailing Nd` /
+  `--since YYYY-MM-DD`); four group-by axes (`--by
+  repo|profile|cost-center|workflow`). `cost *float64` placeholder ships
+  nil-until-positive — populated when upstream `aw_info.json` `cost`
+  field stabilizes (tracked as #59). The fleet feature the
+  2026-06-01 usage-based Copilot billing transition justifies; satisfies
+  v0.3's release-composition cost half.*
 - [x] [#48](https://github.com/rshade/gh-aw-fleet/issues/48) `sync`
   preflight + apply mis-trigger "refusing to resume" check on
   internally-prepared clones `[S]`
@@ -432,6 +434,14 @@ Any roadmap item that violates these is rejected, not negotiated.
 - **Release-composition labels**: `cost`, `security` (see Release
   Composition Rule above)
 - **Contribution flags**: `community`, `cross-repo`, `spec-first`
+- **Issue metadata convention**: optional `<!-- roadmap-meta -->` HTML
+  block in issue bodies; emitted by `/create-issue` when applicable,
+  parsed by `/roadmap sync` to rank promotion candidates. Schema in
+  [`CONTEXT.md` → Roadmap Sync Behavior →
+  `roadmap-meta` issue-body convention][meta-spec]. Scaffolded in
+  `.github/ISSUE_TEMPLATE/feature_request.md`.
+
+[meta-spec]: ./CONTEXT.md#roadmap-meta-issue-body-convention
 
 > The Near-Term billing-visibility item (#57), the Near-Term
 > distribution / security items (#43, #49), the Future Vision security

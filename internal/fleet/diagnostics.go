@@ -47,6 +47,10 @@ const (
 	DiagSecurityMCPNonStandardHost    = fleetdiag.DiagSecurityMCPNonStandardHost
 	DiagSecurityActionlint            = fleetdiag.DiagSecurityActionlint
 	DiagSecurityFrontmatterParseError = fleetdiag.DiagSecurityFrontmatterParseError
+
+	DiagCompileStrictFailed = fleetdiag.DiagCompileStrictFailed
+	DiagGhAwTooOld          = fleetdiag.DiagGhAwTooOld
+	DiagGhAwMissing         = fleetdiag.DiagGhAwMissing
 )
 
 // Hint is a remediation suggestion keyed by a substring match against
@@ -66,6 +70,29 @@ const billingQuotaHint = "Upstream returned HTTP 402 / Payment Required — a bi
 	"Raise or review the cap at https://github.com/settings/billing/spending_limit " +
 	"(or the org-level equivalent under Organization → Settings → Billing). " +
 	"Cross-repo cost attribution will be available via `gh-aw-fleet consumption` once that subcommand ships."
+
+// ghAwTooOldHint is the single source of truth for the "gh aw lacks
+// --strict" remediation. Three hint-table patterns reach this message
+// (two upstream Cobra/pflag flag-error variants plus the wrapped error
+// runCompileStrictIfNeeded emits when its probe concludes the flag is
+// absent); CompileStrictError.Message for DiagGhAwTooOld also embeds it.
+const ghAwTooOldHint = "Local `gh aw` is too old: `compile --strict` requires minimum v0.68.3. " +
+	"Upgrade with `gh extension upgrade aw`. To bypass for repos that don't need strict compile, " +
+	"set `\"compile_strict\": false` in fleet.local.json."
+
+// compileStrictFailedHint is the single source of truth for the
+// strict-mode validation failure remediation. Two hint-table patterns
+// reach this message ("strict mode validation", "strict mode requires");
+// CompileStrictError.Message for DiagCompileStrictFailed also embeds it.
+const compileStrictFailedHint = "Workflow violates `gh aw compile --strict` validation. " +
+	"Inspect the work-dir clone for the failing workflow markdown and fix the underlying issue, " +
+	"or opt this repo out by setting `\"compile_strict\": false` in fleet.local.json for the repo entry."
+
+// ghAwMissingHint is the single source of truth for the "gh aw binary
+// missing" remediation. Referenced by the "executable file not found"
+// hint-table entry and by CompileStrictError.Message for DiagGhAwMissing.
+const ghAwMissingHint = "The `gh aw` extension binary is missing or broken. " +
+	"Install with `gh extension install github/gh-aw` (or `gh extension upgrade aw` if already installed)."
 
 // Ordered most-specific first; only the first match per input text is emitted.
 //
@@ -117,6 +144,16 @@ var hints = []Hint{
 			"Unlock gpg-agent in your shell (`echo test | gpg -as > /dev/null`) and re-run.",
 		Code: DiagGPGFailure,
 	},
+	{Pattern: "strict mode validation", Message: compileStrictFailedHint, Code: DiagCompileStrictFailed},
+	{Pattern: "strict mode requires", Message: compileStrictFailedHint, Code: DiagCompileStrictFailed},
+	{Pattern: "unknown flag: --strict", Message: ghAwTooOldHint, Code: DiagGhAwTooOld},
+	{Pattern: "unknown long flag '--strict'", Message: ghAwTooOldHint, Code: DiagGhAwTooOld},
+	// "gh aw is too old:" matches the wrapped error runCompileStrictIfNeeded
+	// emits when its probe concludes the flag is absent. Lets
+	// CollectHintDiagnostics(err.Error()) produce the typed diagnostic for
+	// JSON-envelope consumers that only see the wrapped error text.
+	{Pattern: "gh aw is too old:", Message: ghAwTooOldHint, Code: DiagGhAwTooOld},
+	{Pattern: "executable file not found", Message: ghAwMissingHint, Code: DiagGhAwMissing},
 }
 
 // CollectHintDiagnostics scans output text for known error patterns and

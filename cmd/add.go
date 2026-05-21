@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,14 @@ import (
 
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
+
+// ghRepoVisibilityForAdd is the package-level seam printAddCompileStrictInfo
+// uses to resolve repo visibility. Tests override it; production calls
+// fleet.RepoVisibility under the same package-level seam used by Deploy /
+// Upgrade.
+//
+//nolint:gochecknoglobals // test-injection seam mirroring internal/fleet/deploy.go
+var ghRepoVisibilityForAdd = fleet.RepoVisibility
 
 func newAddCmd(flagDir *string) *cobra.Command {
 	var (
@@ -60,6 +69,7 @@ func newAddCmd(flagDir *string) *cobra.Command {
 				return addErr
 			}
 			printAdd(cmd, res)
+			printAddCompileStrictInfo(cmd.Context(), cmd.OutOrStdout(), slug)
 			return nil
 		},
 	}
@@ -112,6 +122,27 @@ func isStdinTerminal() bool {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// printAddCompileStrictInfo prints one stdout info line announcing the
+// deploy-time compile-strict policy that will apply to repo on its next
+// deploy. Silent when the visibility lookup fails (FR-010 suppression).
+// Always returns silently — the add command MUST still exit 0 on lookup
+// error.
+func printAddCompileStrictInfo(ctx context.Context, w io.Writer, repo string) {
+	visibility, err := ghRepoVisibilityForAdd(ctx, repo)
+	if err != nil {
+		return
+	}
+	const publicMsg = `public repo: workflows will be compiled with --strict on next deploy ` +
+		`(auto-on; override with "compile_strict": false in fleet.local.json)`
+	const privateMsg = `private repo: workflows will NOT be compiled with --strict on next deploy ` +
+		`(auto-off; override with "compile_strict": true in fleet.local.json)`
+	if visibility == fleet.VisibilityPublic {
+		fmt.Fprintln(w, publicMsg)
+		return
+	}
+	fmt.Fprintln(w, privateMsg)
 }
 
 func printAdd(cmd *cobra.Command, res *fleet.AddResult) {

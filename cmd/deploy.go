@@ -109,6 +109,11 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 	if res.PRURL != "" {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
+	if res.CompileStrictSource != "" {
+		fmt.Fprintf(w, "  compile-strict: %s (source: %s)\n",
+			compileStrictVerb(apply, res.CompileStrictApplied, res.CompileStrictEffective),
+			res.CompileStrictSource)
+	}
 	emitDeployWarnings(res)
 	if !apply {
 		fmt.Fprintln(w, "\nRe-run with --apply to commit, push, and open the PR.")
@@ -198,7 +203,11 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 		emitHints(res.Repo, fleet.CollectHints(errs...))
 		hints = fleet.CollectHintDiagnostics(errs...)
 	}
-	hints = ensureFailureHint(hints, deployErr)
+	var compileStrictFolded bool
+	warnings, compileStrictFolded = foldCompileStrictError(warnings, deployErr)
+	if !compileStrictFolded {
+		hints = ensureFailureHint(hints, deployErr)
+	}
 
 	if writeErr := writeEnvelope(cmd, commandDeploy, repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr

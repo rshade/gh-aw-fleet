@@ -113,3 +113,80 @@ func TestCollectHintDiagnostics_DedupesWithinAndAcrossInputs(t *testing.T) {
 		t.Errorf("len(got) = %d; want 1 (deduped); got=%+v", len(got), got)
 	}
 }
+
+func TestCollectHints_CompileStrictPatterns(t *testing.T) {
+	cases := []struct {
+		name          string
+		input         string
+		wantCode      string
+		wantSubstring string
+	}{
+		{
+			name:          "strict_mode_validation",
+			input:         "✗ strict mode validation failed for workflow foo.md",
+			wantCode:      DiagCompileStrictFailed,
+			wantSubstring: "\"compile_strict\": false",
+		},
+		{
+			name:          "strict_mode_requires",
+			input:         "error: strict mode requires explicit triggers",
+			wantCode:      DiagCompileStrictFailed,
+			wantSubstring: "\"compile_strict\": false",
+		},
+		{
+			name:          "unknown_flag_strict",
+			input:         "Error: unknown flag: --strict",
+			wantCode:      DiagGhAwTooOld,
+			wantSubstring: "v0.68.3",
+		},
+		{
+			name:          "unknown_long_flag_strict",
+			input:         "pflag: unknown long flag '--strict'",
+			wantCode:      DiagGhAwTooOld,
+			wantSubstring: "gh extension upgrade aw",
+		},
+		{
+			name:          "probe_abort_too_old_wrapped_error",
+			input:         "gh aw is too old: v0.50.0 detected, minimum v0.68.3 required: <hint>",
+			wantCode:      DiagGhAwTooOld,
+			wantSubstring: "gh extension upgrade aw",
+		},
+		{
+			name:          "executable_file_not_found",
+			input:         "exec: \"gh\": executable file not found in $PATH",
+			wantCode:      DiagGhAwMissing,
+			wantSubstring: "gh extension install github/gh-aw",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CollectHintDiagnostics(tc.input)
+			if len(got) != 1 {
+				t.Fatalf("len(got) = %d; want 1; got=%+v", len(got), got)
+			}
+			if got[0].Code != tc.wantCode {
+				t.Errorf("Code = %q; want %q", got[0].Code, tc.wantCode)
+			}
+			if !strings.Contains(got[0].Message, tc.wantSubstring) {
+				t.Errorf("Message = %q; want substring %q", got[0].Message, tc.wantSubstring)
+			}
+		})
+	}
+}
+
+func TestCollectHints_CompileStrictPatterns_NoFalsePositives(t *testing.T) {
+	unrelated := []string{
+		"git push: rejected (non-fast-forward)",
+		"some random output without any matching tokens",
+		"strict transport security policy update", // contains "strict" but not the trigger phrase
+	}
+	for _, in := range unrelated {
+		got := CollectHintDiagnostics(in)
+		for _, d := range got {
+			switch d.Code {
+			case DiagCompileStrictFailed, DiagGhAwTooOld, DiagGhAwMissing:
+				t.Errorf("input %q produced unexpected diagnostic %s: %q", in, d.Code, d.Message)
+			}
+		}
+	}
+}

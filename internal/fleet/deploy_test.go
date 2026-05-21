@@ -797,6 +797,52 @@ func TestGitHasUnpushedCommits(t *testing.T) {
 	}
 }
 
+func TestStageResumeGithubRestagesGeneratedLockfile(t *testing.T) {
+	dir := newTestRepo(t, func(d string) {
+		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("create deploy branch: %v", err)
+		}
+		workflow := filepath.Join(d, ".github", "workflows", "ci.md")
+		if err := os.MkdirAll(filepath.Dir(workflow), 0o755); err != nil {
+			t.Fatalf("mkdir workflow dir: %v", err)
+		}
+		if err := os.WriteFile(workflow, []byte("workflow\n"), 0o644); err != nil {
+			t.Fatalf("write workflow: %v", err)
+		}
+		cmd = exec.Command("git", "add", ".github/workflows/ci.md")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("stage workflow: %v", err)
+		}
+	})
+	lockfile := filepath.Join(dir, ".github", "workflows", "ci.lock.yml")
+	if err := os.WriteFile(lockfile, []byte("compiled\n"), 0o644); err != nil {
+		t.Fatalf("write generated lockfile: %v", err)
+	}
+
+	if err := stageResumeGithub(context.Background(), dir); err != nil {
+		t.Fatalf("stageResumeGithub: %v", err)
+	}
+
+	cmd := exec.Command("git", "diff", "--cached", "--name-only")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git diff --cached: %v", err)
+	}
+	got := string(out)
+	for _, want := range []string{
+		".github/workflows/ci.md",
+		".github/workflows/ci.lock.yml",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("staged paths = %q; want %s", got, want)
+		}
+	}
+}
+
 func TestBuildMissingSecretMessage(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1092,5 +1138,635 @@ func TestPRBodyAppendsSecurityFindings(t *testing.T) {
 	}
 	if !(setup < sec) {
 		t.Errorf("setup-required should appear before security-findings (got indices %d, %d)", setup, sec)
+	}
+}
+
+// compileStrictSeams bundles closure-replacable seam state for one test.
+// Counters let assertions verify each seam was invoked the expected number
+// of times.
+type compileStrictSeams struct {
+	visibility      string
+	visibilityErr   error
+	visibilityCalls int
+	helpOut         string
+	helpErr         error
+	helpCalls       int
+	versionOut      string
+	versionErr      error
+	versionCalls    int
+	compileOut      string
+	compileErr      error
+	compileCalls    int
+}
+
+// installCompileStrictSeams replaces the four package-level seams with
+// counting closures populated from s. Restores originals on test cleanup.
+func installCompileStrictSeams(t *testing.T, s *compileStrictSeams) {
+	t.Helper()
+	origVis := ghRepoVisibility
+	origHelp := ghAwCompileHelp
+	origVer := ghAwVersion
+	origCompile := runGhAwCompileStrict
+	t.Cleanup(func() {
+		ghRepoVisibility = origVis
+		ghAwCompileHelp = origHelp
+		ghAwVersion = origVer
+		runGhAwCompileStrict = origCompile
+	})
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		s.visibilityCalls++
+		return s.visibility, s.visibilityErr
+	}
+	ghAwCompileHelp = func(_ context.Context) (string, error) {
+		s.helpCalls++
+		return s.helpOut, s.helpErr
+	}
+	ghAwVersion = func(_ context.Context) (string, error) {
+		s.versionCalls++
+		return s.versionOut, s.versionErr
+	}
+	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+		s.compileCalls++
+		return s.compileOut, s.compileErr
+	}
+}
+
+// captureZlog redirects the zerolog global logger to buf for the duration of
+// the test. Returns the buffer so callers can inspect emitted events.
+func captureZlog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	orig := zlog.Logger
+	//nolint:reassign // zerolog's documented global-logger-replacement pattern; restored on cleanup
+	zlog.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	t.Cleanup(func() {
+		//nolint:reassign // restore in cleanup
+		zlog.Logger = orig
+	})
+	return &buf
+}
+
+// findZlogEvent scans newline-delimited JSON in buf for the first object
+// whose "event" field equals want. Returns nil when no match.
+func findZlogEvent(t *testing.T, buf *bytes.Buffer, want string) map[string]any {
+	t.Helper()
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		if obj["event"] == want {
+			return obj
+		}
+	}
+	return nil
+}
+
+func TestDeploy_AutoPublicPath_InvokesStrictCompile(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "Usage: gh aw compile [flags]\n  --strict  enable strict validation\n",
+		compileOut: "ok",
+	}
+	installCompileStrictSeams(t, seams)
+	buf := captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if !res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = false; want true")
+	}
+	if res.CompileStrictSource != "auto-public" {
+		t.Errorf("CompileStrictSource = %q; want auto-public", res.CompileStrictSource)
+	}
+	if seams.visibilityCalls != 1 || seams.helpCalls != 1 || seams.compileCalls != 1 {
+		t.Errorf("seam calls: visibility=%d help=%d compile=%d; want 1/1/1",
+			seams.visibilityCalls, seams.helpCalls, seams.compileCalls)
+	}
+	evt := findZlogEvent(t, buf, "compile_strict_resolved")
+	if evt == nil {
+		t.Fatalf("no compile_strict_resolved event; log=%s", buf.String())
+	}
+	if evt["source"] != "auto-public" || evt["effective"] != true {
+		t.Errorf("event fields = %+v; want source=auto-public effective=true", evt)
+	}
+}
+
+func TestDeploy_ExplicitFalseOnPublic_SkipsAll(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{visibility: "public"} // would say "public" if asked
+	installCompileStrictSeams(t, seams)
+	// Override visibility seam with a fails-test-if-invoked closure.
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		t.Fatalf("ghRepoVisibility invoked despite explicit override (FR-008)")
+		return "", nil
+	}
+
+	cfg := &Config{Repos: map[string]RepoSpec{
+		"rshade/test": {CompileStrict: boolPtr(false)},
+	}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = true; want false")
+	}
+	if res.CompileStrictSource != "explicit" {
+		t.Errorf("CompileStrictSource = %q; want explicit", res.CompileStrictSource)
+	}
+	if seams.helpCalls != 0 || seams.compileCalls != 0 {
+		t.Errorf("seams: help=%d compile=%d; want both 0", seams.helpCalls, seams.compileCalls)
+	}
+}
+
+func TestDeploy_ExplicitTrueOnPrivate_InvokesCompile(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		helpOut:    "  --strict  do the thing\n",
+		compileOut: "ok",
+	}
+	installCompileStrictSeams(t, seams)
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		t.Fatalf("ghRepoVisibility invoked despite explicit override (FR-008)")
+		return "", nil
+	}
+
+	cfg := &Config{Repos: map[string]RepoSpec{
+		"rshade/test": {CompileStrict: boolPtr(true)},
+	}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if !res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = false; want true")
+	}
+	if res.CompileStrictSource != "explicit" {
+		t.Errorf("CompileStrictSource = %q; want explicit", res.CompileStrictSource)
+	}
+	if seams.helpCalls != 1 || seams.compileCalls != 1 {
+		t.Errorf("seams: help=%d compile=%d; want 1/1", seams.helpCalls, seams.compileCalls)
+	}
+}
+
+func TestDeploy_VisibilityLookupFails_FailSecureStrictOn(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibilityErr: errors.New("HTTP 403 Forbidden"),
+		helpOut:       "  --strict  enable strict validation\n",
+		compileOut:    "ok",
+	}
+	installCompileStrictSeams(t, seams)
+	buf := captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil (fail-secure proceeds)", err)
+	}
+	if !res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = false; want true")
+	}
+	if res.CompileStrictSource != "auto-fallback" {
+		t.Errorf("CompileStrictSource = %q; want auto-fallback", res.CompileStrictSource)
+	}
+	if seams.compileCalls != 1 {
+		t.Errorf("compile seam calls = %d; want 1", seams.compileCalls)
+	}
+	warn := findZlogEvent(t, buf, "compile_strict_lookup_failed")
+	if warn == nil {
+		t.Fatalf("no compile_strict_lookup_failed event; log=%s", buf.String())
+	}
+	reason, _ := warn["reason"].(string)
+	if !strings.Contains(reason, "403") {
+		t.Errorf("warn.reason = %q; want substring 403", reason)
+	}
+}
+
+func TestDeploy_CompileFails_EmitsDiagCompileStrictFailed(t *testing.T) {
+	cloneDir := t.TempDir()
+	res := &DeployResult{Repo: "rshade/test", CloneDir: cloneDir}
+	const rawStderr = "✗ strict mode validation failed for workflow foo.md"
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "  --strict  do the thing\n",
+		compileOut: rawStderr,
+		compileErr: errors.New("exit 1"),
+	}
+	installCompileStrictSeams(t, seams)
+	_ = captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test")
+	if err == nil {
+		t.Fatal("err = nil; want non-nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "compile_strict") && !strings.Contains(msg, "\"compile_strict\": false") {
+		t.Errorf("err = %q; want hint referencing compile_strict false opt-out", msg)
+	}
+	if !strings.Contains(msg, rawStderr) {
+		t.Errorf("err = %q; want raw compile stderr %q preserved (FR-009)", msg, rawStderr)
+	}
+	if res.CompileStrictApplied {
+		t.Errorf("CompileStrictApplied = true; want false")
+	}
+	if _, statErr := os.Stat(cloneDir); statErr != nil {
+		t.Errorf("clone dir %q removed by helper; FR-009 requires preservation: %v", cloneDir, statErr)
+	}
+}
+
+func TestDeploy_ProbeFlagAbsent_EmitsDiagGhAwTooOld(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "Usage: gh aw compile [flags]\n  --some-other-flag\n",
+		versionOut: "v0.50.0",
+	}
+	installCompileStrictSeams(t, seams)
+	_ = captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test")
+	if err == nil {
+		t.Fatal("err = nil; want non-nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"v0.68.3", "v0.50.0"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("err = %q; want substring %q", msg, want)
+		}
+	}
+	if seams.compileCalls != 0 {
+		t.Errorf("compile seam invoked despite flag-absent probe; calls=%d", seams.compileCalls)
+	}
+}
+
+func TestDeploy_ProbeFailed_EmitsDiagGhAwMissing(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpErr:    errors.New("exec: \"gh\": executable file not found in $PATH"),
+	}
+	installCompileStrictSeams(t, seams)
+	_ = captureZlog(t)
+
+	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+	err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test")
+	if err == nil {
+		t.Fatal("err = nil; want non-nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "gh extension install") {
+		t.Errorf("err = %q; want substring gh extension install", msg)
+	}
+	if seams.compileCalls != 0 {
+		t.Errorf("compile seam invoked despite probe-failed; calls=%d", seams.compileCalls)
+	}
+}
+
+// TestCompileStrictError_TypedExtraction asserts the three failure modes of
+// runCompileStrictIfNeeded each return a *CompileStrictError carrying the
+// expected Code and structured Fields, in line with the contract documented
+// in specs/010-compile-strict-public/contracts/json-envelope.md.
+func TestCompileStrictError_TypedExtraction(t *testing.T) {
+	cases := []struct {
+		name       string
+		seams      *compileStrictSeams
+		wantCode   string
+		wantFields []string // keys that must be present in Fields
+	}{
+		{
+			name: "probe_too_old",
+			seams: &compileStrictSeams{
+				visibility: "public",
+				helpOut:    "Usage: gh aw compile [flags]\n  --some-other-flag\n",
+				versionOut: "v0.50.0",
+			},
+			wantCode:   DiagGhAwTooOld,
+			wantFields: []string{"detected_version", "minimum_version", "repo"},
+		},
+		{
+			name: "probe_missing",
+			seams: &compileStrictSeams{
+				visibility: "public",
+				helpErr:    errors.New("exec: \"gh\": executable file not found in $PATH"),
+			},
+			wantCode:   DiagGhAwMissing,
+			wantFields: []string{"repo"},
+		},
+		{
+			name: "compile_failed",
+			seams: &compileStrictSeams{
+				visibility: "public",
+				helpOut:    "  --strict  do the thing\n",
+				compileOut: "✗ strict mode validation failed",
+				compileErr: errors.New("exit 1"),
+			},
+			wantCode:   DiagCompileStrictFailed,
+			wantFields: []string{"repo", "clone_dir"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+			installCompileStrictSeams(t, tc.seams)
+			_ = captureZlog(t)
+
+			cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
+			err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test")
+			if err == nil {
+				t.Fatal("err = nil; want non-nil")
+			}
+			var cse *CompileStrictError
+			if !errors.As(err, &cse) {
+				t.Fatalf("errors.As(*CompileStrictError) failed; err=%T %v", err, err)
+			}
+			if cse.Code != tc.wantCode {
+				t.Errorf("Code = %q; want %q", cse.Code, tc.wantCode)
+			}
+			for _, key := range tc.wantFields {
+				if _, ok := cse.Fields[key]; !ok {
+					t.Errorf("Fields missing key %q; got %#v", key, cse.Fields)
+				}
+			}
+			if cse.Fields[fieldRepo] != "rshade/test" {
+				t.Errorf("Fields[repo] = %v; want rshade/test", cse.Fields[fieldRepo])
+			}
+		})
+	}
+}
+
+// TestDeployPushGateResume_PopulatesCompileStrictFields verifies the dry-run
+// push-gate resume branch of handleWorkDirResume calls the resolver and
+// populates CompileStrictSource / CompileStrictEffective without mutating the
+// preserved work-dir. CompileStrictApplied stays false in dry-run mode.
+func TestDeployPushGateResume_PopulatesCompileStrictFields(t *testing.T) {
+	// Push-gate is detected when the work-dir has no staged changes but
+	// HEAD is not on any remote branch. newTestRepo gives us exactly that:
+	// a clean tree on a branch with no remotes.
+	dir := newTestRepo(t, func(d string) {
+		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("create deploy branch: %v", err)
+		}
+	})
+
+	// Stub the visibility seam to "public" so the resolver returns
+	// auto-public. Other compile-strict seams should NOT be called on the
+	// dry-run push-gate path — fail the test if any of them fires.
+	origVis := ghRepoVisibility
+	origHelp := ghAwCompileHelp
+	origCompile := runGhAwCompileStrict
+	t.Cleanup(func() {
+		ghRepoVisibility = origVis
+		ghAwCompileHelp = origHelp
+		runGhAwCompileStrict = origCompile
+	})
+	var visCalls int
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		visCalls++
+		return "public", nil
+	}
+	ghAwCompileHelp = func(_ context.Context) (string, error) {
+		t.Fatalf("ghAwCompileHelp invoked on dry-run push-gate resume")
+		return "", nil
+	}
+	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+		t.Fatalf("runGhAwCompileStrict invoked on dry-run push-gate resume")
+		return "", nil
+	}
+
+	// Stub ghAPIJSON so checkActionsSettings doesn't try real network calls.
+	withGhAPIJSON(t, map[string]fakeJSONResponse{
+		"/repos/acme/widgets/actions/permissions": {
+			body: map[string]any{"enabled": true},
+		},
+		"/repos/acme/widgets/actions/permissions/workflow": {
+			body: map[string]any{"default_workflow_permissions": "write"},
+		},
+	})
+	origExists := ghAPIExists
+	t.Cleanup(func() { ghAPIExists = origExists })
+	ghAPIExists = func(_ context.Context, _ string) bool { return true }
+
+	cfg := &Config{
+		Version: SchemaVersion,
+		Repos:   map[string]RepoSpec{"acme/widgets": {Profiles: []string{"default"}}},
+	}
+	res := &DeployResult{Repo: "acme/widgets", CloneDir: dir}
+	_, handled, err := handleWorkDirResume(
+		context.Background(), cfg, "acme/widgets", res,
+		DeployOpts{Apply: false, WorkDir: dir},
+	)
+	if err != nil {
+		t.Fatalf("handleWorkDirResume err = %v; want nil", err)
+	}
+	if !handled {
+		t.Fatal("handled = false; want true (push-gate signal present)")
+	}
+	if res.CompileStrictSource != CompileStrictSourceAutoPublic {
+		t.Errorf("CompileStrictSource = %q; want auto-public (resolver MUST run on push-gate)",
+			res.CompileStrictSource)
+	}
+	if !res.CompileStrictEffective {
+		t.Error("CompileStrictEffective = false; want true (auto-public)")
+	}
+	if res.CompileStrictApplied {
+		t.Error("CompileStrictApplied = true; want false in dry-run mode")
+	}
+	if visCalls != 1 {
+		t.Errorf("ghRepoVisibility calls = %d; want 1", visCalls)
+	}
+}
+
+func TestDeployPushGateResumeApply_RefreshesCompileStrictBeforePush(t *testing.T) {
+	dir := newTestRepo(t, func(d string) {
+		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("create deploy branch: %v", err)
+		}
+		workflow := filepath.Join(d, ".github", "workflows", "ci.md")
+		if err := os.MkdirAll(filepath.Dir(workflow), 0o755); err != nil {
+			t.Fatalf("mkdir workflow dir: %v", err)
+		}
+		if err := os.WriteFile(workflow, []byte("workflow\n"), 0o644); err != nil {
+			t.Fatalf("write workflow: %v", err)
+		}
+		for _, args := range [][]string{
+			{"add", ".github/workflows/ci.md"},
+			{"commit", "-m", "ci(workflows): add 1 agentic workflow via gh-aw-fleet"},
+		} {
+			cmd = exec.Command("git", args...)
+			cmd.Dir = d
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("git %v: %v", args, err)
+			}
+		}
+	})
+	seams := &compileStrictSeams{
+		helpOut: "  --strict  enable strict validation\n",
+	}
+	installCompileStrictSeams(t, seams)
+	runGhAwCompileStrict = func(_ context.Context, dir string) (string, error) {
+		seams.compileCalls++
+		lockfile := filepath.Join(dir, ".github", "workflows", "ci.lock.yml")
+		if err := os.WriteFile(lockfile, []byte("compiled\n"), 0o644); err != nil {
+			return "", err
+		}
+		return "ok", nil
+	}
+
+	cfg := &Config{Repos: map[string]RepoSpec{
+		"acme/widgets": {CompileStrict: boolPtr(true)},
+	}}
+	res := &DeployResult{Repo: "acme/widgets", CloneDir: dir}
+	if err := refreshResumePushCompileStrict(
+		context.Background(), cfg, "acme/widgets", res, "fleet/deploy-test",
+	); err != nil {
+		t.Fatalf("refreshResumePushCompileStrict: %v", err)
+	}
+
+	if !res.CompileStrictApplied {
+		t.Error("CompileStrictApplied = false; want true")
+	}
+	if !res.CompileStrictEffective {
+		t.Error("CompileStrictEffective = false; want true")
+	}
+	if res.CompileStrictSource != CompileStrictSourceExplicit {
+		t.Errorf("CompileStrictSource = %q; want explicit", res.CompileStrictSource)
+	}
+	if seams.compileCalls != 1 {
+		t.Errorf("compile calls = %d; want 1", seams.compileCalls)
+	}
+
+	cmd := exec.Command("git", "status", "--porcelain", "--", ".github/")
+	cmd.Dir = dir
+	status, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git status: %v", err)
+	}
+	if len(status) != 0 {
+		t.Fatalf(".github status = %q; want clean after amend", status)
+	}
+
+	cmd = exec.Command("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git diff-tree HEAD: %v", err)
+	}
+	if !strings.Contains(string(out), ".github/workflows/ci.lock.yml") {
+		t.Errorf("HEAD paths = %q; want refreshed lockfile amended into commit", out)
+	}
+}
+
+func TestDeployPushGateResumeApply_RefreshesPlainCompileAfterOptOut(t *testing.T) {
+	dir := newTestRepo(t, func(d string) {
+		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("create deploy branch: %v", err)
+		}
+		workflow := filepath.Join(d, ".github", "workflows", "ci.md")
+		if err := os.MkdirAll(filepath.Dir(workflow), 0o755); err != nil {
+			t.Fatalf("mkdir workflow dir: %v", err)
+		}
+		if err := os.WriteFile(workflow, []byte("workflow\n"), 0o644); err != nil {
+			t.Fatalf("write workflow: %v", err)
+		}
+		lockfile := filepath.Join(d, ".github", "workflows", "ci.lock.yml")
+		if err := os.WriteFile(lockfile, []byte("strict\n"), 0o644); err != nil {
+			t.Fatalf("write strict lockfile: %v", err)
+		}
+		for _, args := range [][]string{
+			{"add", ".github/workflows/ci.md", ".github/workflows/ci.lock.yml"},
+			{"commit", "-m", "ci(workflows): add 1 agentic workflow via gh-aw-fleet"},
+		} {
+			cmd = exec.Command("git", args...)
+			cmd.Dir = d
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("git %v: %v", args, err)
+			}
+		}
+	})
+
+	origVis := ghRepoVisibility
+	origHelp := ghAwCompileHelp
+	origStrict := runGhAwCompileStrict
+	origPlain := runGhAwCompile
+	t.Cleanup(func() {
+		ghRepoVisibility = origVis
+		ghAwCompileHelp = origHelp
+		runGhAwCompileStrict = origStrict
+		runGhAwCompile = origPlain
+	})
+	ghRepoVisibility = func(_ context.Context, _ string) (string, error) {
+		t.Fatalf("ghRepoVisibility invoked despite explicit compile_strict=false")
+		return "", nil
+	}
+	ghAwCompileHelp = func(_ context.Context) (string, error) {
+		t.Fatalf("ghAwCompileHelp invoked despite explicit compile_strict=false")
+		return "", nil
+	}
+	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+		t.Fatalf("runGhAwCompileStrict invoked despite explicit compile_strict=false")
+		return "", nil
+	}
+	var plainCalls int
+	runGhAwCompile = func(_ context.Context, dir string) (string, error) {
+		plainCalls++
+		lockfile := filepath.Join(dir, ".github", "workflows", "ci.lock.yml")
+		if err := os.WriteFile(lockfile, []byte("plain\n"), 0o644); err != nil {
+			return "", err
+		}
+		return "ok", nil
+	}
+
+	cfg := &Config{Repos: map[string]RepoSpec{
+		"acme/widgets": {CompileStrict: boolPtr(false)},
+	}}
+	res := &DeployResult{Repo: "acme/widgets", CloneDir: dir}
+	if err := refreshResumePushCompileStrict(
+		context.Background(), cfg, "acme/widgets", res, "fleet/deploy-test",
+	); err != nil {
+		t.Fatalf("refreshResumePushCompileStrict: %v", err)
+	}
+
+	if res.CompileStrictApplied {
+		t.Error("CompileStrictApplied = true; want false")
+	}
+	if res.CompileStrictEffective {
+		t.Error("CompileStrictEffective = true; want false")
+	}
+	if res.CompileStrictSource != CompileStrictSourceExplicit {
+		t.Errorf("CompileStrictSource = %q; want explicit", res.CompileStrictSource)
+	}
+	if plainCalls != 1 {
+		t.Errorf("plain compile calls = %d; want 1", plainCalls)
+	}
+
+	lockfile := filepath.Join(dir, ".github", "workflows", "ci.lock.yml")
+	content, err := os.ReadFile(lockfile)
+	if err != nil {
+		t.Fatalf("read lockfile: %v", err)
+	}
+	if string(content) != "plain\n" {
+		t.Errorf("lockfile content = %q; want plain compile output", content)
+	}
+	cmd := exec.Command("git", "status", "--porcelain", "--", ".github/")
+	cmd.Dir = dir
+	status, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git status: %v", err)
+	}
+	if len(status) != 0 {
+		t.Fatalf(".github status = %q; want clean after amend", status)
 	}
 }

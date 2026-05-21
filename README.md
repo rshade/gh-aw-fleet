@@ -440,6 +440,12 @@ Per-repo configuration. Keys:
 - **`profiles`** (required): List of profile names to apply.
 - **`engine`** (optional): AI engine override (e.g., `"gpt-4"`). Defaults
   to `defaults.engine`.
+- **`compile_strict`** (optional): Tri-state toggle for
+  `gh aw compile --strict` on this repo's deploy and upgrade pipelines.
+  Omit to auto-detect from repo visibility (see "Compile-strict resolution"
+  below). Set to `true` to force strict ON regardless of visibility; set to
+  `false` to force strict OFF (e.g., a legacy public repo that has
+  workflows that can't yet pass strict validation).
 - **`extra`** (optional): Additional workflows not from any profile.
   Source can be `"local"` (lives in the target repo) or an upstream repo
   name.
@@ -447,6 +453,67 @@ Per-repo configuration. Keys:
   profile mostly fits but one or two workflows don't).
 - **`overrides`** (optional): Map of workflow name → custom path (if the
   upstream path doesn't match convention).
+
+#### Compile-strict resolution
+
+`gh-aw-fleet deploy` and `gh-aw-fleet upgrade` invoke `gh aw compile --strict`
+on the work-dir clone after `gh aw add` / `gh aw upgrade` succeeds and
+before `git add .github/`. The decision is driven by `RepoSpec.compile_strict`
+with this resolution order (FR-003):
+
+1. **Explicit override** — when `compile_strict` is present in `fleet.json` /
+   `fleet.local.json`, its value wins. The visibility lookup is skipped
+   entirely.
+2. **Auto-detect from visibility** — when `compile_strict` is absent, the
+   tool calls `gh api /repos/<owner>/<repo>` once per invocation and reads
+   the `visibility` field. `"public"` → strict ON; `"private"` or
+   `"internal"` or any other value → strict OFF.
+3. **Fail-secure on lookup failure** — when the visibility lookup errors
+   (HTTP 403/404/5xx, network failure, malformed JSON), the resolver
+   defaults to strict ON and emits one `warn`-level structured log line
+   naming the repo and a truncated reason. Setting `compile_strict`
+   explicitly bypasses this path.
+
+The `--output json` envelope on both Deploy and Upgrade gains three fields:
+
+- `compile_strict_applied` (`bool`) — `true` ONLY when the strict compile
+  ran and exited 0 in this invocation. Always `false` in dry-run mode.
+- `compile_strict_effective` (`bool`) — the resolver's verdict for this
+  repo, independent of whether compile actually ran. In dry-run mode this
+  is the "would apply on `--apply`" signal; in `--apply` mode it equals
+  `compile_strict_applied` unless the probe or compile aborted.
+- `compile_strict_source` (`string`) — one of `"explicit"`, `"auto-public"`,
+  `"auto-private"`, `"auto-fallback"`, or `""` (resolver didn't run —
+  early error path).
+
+**Minimum `gh aw` version**: `v0.68.3` (when `compile --strict` shipped).
+The tool probes `gh aw compile --help` before invoking compile and aborts
+with an actionable diagnostic when `--strict` is absent. Upgrade with
+`gh extension upgrade aw`.
+
+Example `fleet.local.json` snippet:
+
+```jsonc
+{
+  "repos": {
+    "rshade/regular-public-repo": {
+      "profiles": ["default"]
+      // omitted → auto-detect (public → strict ON)
+    },
+    "rshade/gh-aw-fleet": {
+      "profiles": ["default"],
+      "compile_strict": true        // explicit force-on (skips visibility lookup)
+    },
+    "rshade/legacy-public": {
+      "profiles": ["default"],
+      "compile_strict": false       // opt out for a workflow that can't yet be strict
+    }
+  }
+}
+```
+
+See [`specs/010-compile-strict-public/quickstart.md`](specs/010-compile-strict-public/quickstart.md)
+for the operator troubleshooting walkthrough.
 
 ## Bundled Profiles
 

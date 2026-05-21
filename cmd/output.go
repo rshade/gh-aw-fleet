@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -108,6 +109,27 @@ func ensureFailureHint(hints []fleet.Diagnostic, err error) []fleet.Diagnostic {
 		return hints
 	}
 	return append(hints, fleet.HintFromError(err))
+}
+
+// foldCompileStrictError walks err for a *fleet.CompileStrictError and, when
+// present, appends a typed fleet.Diagnostic to warnings (carrying the
+// structured Fields the json-envelope.md warnings[] contract documents:
+// detected_version, minimum_version, repo, clone_dir). Returns the
+// possibly-modified warnings slice and a bool indicating whether the
+// diagnostic was folded in. Callers use the bool to skip the generic
+// ensureFailureHint append so a single root cause doesn't surface twice.
+func foldCompileStrictError(
+	warnings []fleet.Diagnostic, err error,
+) ([]fleet.Diagnostic, bool) {
+	var cse *fleet.CompileStrictError
+	if !errors.As(err, &cse) || cse == nil {
+		return warnings, false
+	}
+	return append(warnings, fleet.Diagnostic{
+		Code:    cse.Code,
+		Message: cse.Message,
+		Fields:  cse.Fields,
+	}), true
 }
 
 // outputMode reads the resolved --output value. PersistentPreRunE has already

@@ -1,5 +1,7 @@
 package fleet
 
+const addToken = "add"
+
 const (
 	engineCopilot = "copilot"
 	engineClaude  = "claude"
