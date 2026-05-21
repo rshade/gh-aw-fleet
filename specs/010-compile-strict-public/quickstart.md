@@ -88,7 +88,7 @@ If the visibility lookup fails (token scope, network), the info line is suppress
 
 ## Troubleshooting
 
-### "GR aw compile --strict failed"
+### "gh aw compile --strict failed"
 
 Your compile step aborted. The error message includes a hint and points you at the work-dir clone:
 
@@ -163,14 +163,20 @@ The deploy proceeds with strict ON (fail-secure). If your repo is private and yo
 
 ## CI integration
 
-If you consume `--output json`, two new fields appear on every Deploy/Upgrade result:
+If you consume `--output json`, three new fields appear on every Deploy/Upgrade result:
 
 ```bash
 gh-aw-fleet deploy rshade/gh-aw-fleet --output json | jq '.result | {
   compile_strict_applied,
+  compile_strict_effective,
   compile_strict_source
 }'
 ```
+
+`compile_strict_effective` is the resolver's verdict regardless of whether
+the compile subprocess actually ran. In dry-run that's the "would apply on
+`--apply`" signal; in `--apply` it matches `compile_strict_applied` unless
+the probe or compile aborted.
 
 Use these to gate on the fail-secure case in your CI:
 

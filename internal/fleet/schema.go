@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 )
 
 // effectiveCompileStrictReasonMax bounds the length of the truncated raw
@@ -91,11 +92,24 @@ func (c *Config) EffectiveCompileStrict(
 	return false, CompileStrictSourceAutoPrivate, ""
 }
 
+// truncateReason bounds s to at most limit bytes, backing up to the
+// nearest rune boundary so a multi-byte UTF-8 sequence is never split mid
+// character. Typical input is ASCII gh-api error text, but a localized OS
+// message or a repo name with non-ASCII could embed multibyte runes; the
+// rune-safe truncation preserves valid UTF-8 in structured log fields.
 func truncateReason(s string, limit int) string {
 	if len(s) <= limit {
 		return s
 	}
-	return s[:limit]
+	out := s[:limit]
+	for len(out) > 0 {
+		r, _ := utf8.DecodeLastRuneInString(out)
+		if r != utf8.RuneError {
+			return out
+		}
+		out = out[:len(out)-1]
+	}
+	return out
 }
 
 // Profile is a named bundle of workflows pulled from one or more upstream

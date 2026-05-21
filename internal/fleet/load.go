@@ -39,7 +39,7 @@ const (
 // replaces the value when the target path already exists, which is the
 // behavior buildTemplatesPatch relies on.
 const (
-	jsonPatchOpAdd       = "add"
+	jsonPatchOpAdd       = addToken
 	jsonPatchMemberOp    = "op"
 	jsonPatchMemberPath  = "path"
 	jsonPatchMemberValue = "value"

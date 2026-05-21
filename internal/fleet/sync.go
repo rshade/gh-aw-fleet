@@ -177,7 +177,7 @@ func pruneDriftFiles(ctx context.Context, res *SyncResult, workflowsDir string) 
 		}
 		res.Pruned = append(res.Pruned, name)
 	}
-	if stageErr := gitCmd(ctx, res.CloneDir, "add", ".github/"); stageErr != nil {
+	if stageErr := gitCmd(ctx, res.CloneDir, addToken, ".github/"); stageErr != nil {
 		return fmt.Errorf("git add after prune: %w", stageErr)
 	}
 	return nil

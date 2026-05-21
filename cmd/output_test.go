@@ -904,3 +904,79 @@ func TestEnvelope_NoNullSlices_AllResultTypes(t *testing.T) {
 func isOptionalJSONSliceField(jsonKey string) bool {
 	return jsonKey == "security_findings"
 }
+
+// TestFoldCompileStrictError verifies the cmd-layer extractor turns a
+// *fleet.CompileStrictError into a structured warnings[] entry matching
+// the contract documented in
+// specs/010-compile-strict-public/contracts/json-envelope.md (Code +
+// Message + Fields). Non-matching errors must leave warnings untouched
+// and return folded=false so callers fall back to ensureFailureHint.
+func TestFoldCompileStrictError(t *testing.T) {
+	t.Run("typed_error_appended_to_warnings", func(t *testing.T) {
+		cse := &fleet.CompileStrictError{
+			Code:    fleet.DiagGhAwTooOld,
+			Message: "Local gh aw is too old (detected v0.50.0; minimum v0.68.3) for rshade/test.",
+			Fields: map[string]any{
+				"repo":             "rshade/test",
+				"detected_version": "v0.50.0",
+				"minimum_version":  "v0.68.3",
+			},
+		}
+		warnings, folded := foldCompileStrictError(nil, cse)
+		if !folded {
+			t.Fatal("folded = false; want true (*CompileStrictError must match)")
+		}
+		if len(warnings) != 1 {
+			t.Fatalf("len(warnings) = %d; want 1", len(warnings))
+		}
+		if warnings[0].Code != fleet.DiagGhAwTooOld {
+			t.Errorf("warnings[0].Code = %q; want %q", warnings[0].Code, fleet.DiagGhAwTooOld)
+		}
+		for _, key := range []string{"repo", "detected_version", "minimum_version"} {
+			if _, ok := warnings[0].Fields[key]; !ok {
+				t.Errorf("warnings[0].Fields missing %q; got %#v", key, warnings[0].Fields)
+			}
+		}
+	})
+
+	t.Run("nil_error_returns_unchanged", func(t *testing.T) {
+		warnings, folded := foldCompileStrictError(nil, nil)
+		if folded {
+			t.Error("folded = true; want false for nil error")
+		}
+		if warnings != nil {
+			t.Errorf("warnings = %v; want nil", warnings)
+		}
+	})
+
+	t.Run("non_matching_error_returns_unchanged", func(t *testing.T) {
+		other := errors.New("git push: rejected")
+		seed := []fleet.Diagnostic{{Code: "existing"}}
+		warnings, folded := foldCompileStrictError(seed, other)
+		if folded {
+			t.Error("folded = true; want false for unrelated error")
+		}
+		if len(warnings) != 1 || warnings[0].Code != "existing" {
+			t.Errorf("warnings = %v; want unchanged seed", warnings)
+		}
+	})
+
+	t.Run("wrapped_error_via_errors_As", func(t *testing.T) {
+		cse := &fleet.CompileStrictError{
+			Code:    fleet.DiagCompileStrictFailed,
+			Message: "compile failed",
+			Fields:  map[string]any{"repo": "rshade/test"},
+		}
+		// Wrap in a deploy-style error: errors.As must still find the typed err.
+		wrapped := fleet.HintFromError(cse)
+		_ = wrapped // sanity: HintFromError yields a Diagnostic, not an error
+		layered := errors.Join(cse, errors.New("another error"))
+		warnings, folded := foldCompileStrictError(nil, layered)
+		if !folded {
+			t.Fatal("folded = false; want true through errors.Join")
+		}
+		if len(warnings) != 1 || warnings[0].Code != fleet.DiagCompileStrictFailed {
+			t.Errorf("warnings = %v; want single DiagCompileStrictFailed", warnings)
+		}
+	})
+}

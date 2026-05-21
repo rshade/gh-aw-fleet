@@ -110,11 +110,9 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
 	if res.CompileStrictSource != "" {
-		if res.CompileStrictApplied {
-			fmt.Fprintf(w, "  compile-strict: applied (source: %s)\n", res.CompileStrictSource)
-		} else {
-			fmt.Fprintf(w, "  compile-strict: skipped (source: %s)\n", res.CompileStrictSource)
-		}
+		fmt.Fprintf(w, "  compile-strict: %s (source: %s)\n",
+			compileStrictVerb(apply, res.CompileStrictApplied, res.CompileStrictEffective),
+			res.CompileStrictSource)
 	}
 	emitDeployWarnings(res)
 	if !apply {
@@ -205,7 +203,11 @@ func emitDeployEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.
 		emitHints(res.Repo, fleet.CollectHints(errs...))
 		hints = fleet.CollectHintDiagnostics(errs...)
 	}
-	hints = ensureFailureHint(hints, deployErr)
+	var compileStrictFolded bool
+	warnings, compileStrictFolded = foldCompileStrictError(warnings, deployErr)
+	if !compileStrictFolded {
+		hints = ensureFailureHint(hints, deployErr)
+	}
 
 	if writeErr := writeEnvelope(cmd, commandDeploy, repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr

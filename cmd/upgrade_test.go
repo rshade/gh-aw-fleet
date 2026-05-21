@@ -17,7 +17,7 @@ func TestPrintUpgradeEmitsWarningsForNoChanges(t *testing.T) {
 	buf := captureUpgradeWarnings(t, func(cmd *cobra.Command) {
 		printUpgrade(cmd, upgradeResultWithFinding(func(res *fleet.UpgradeResult) {
 			res.NoChanges = true
-		}))
+		}), false)
 	})
 	assertUpgradeWarning(t, buf)
 }
@@ -26,7 +26,7 @@ func TestPrintUpgradeEmitsWarningsForConflicts(t *testing.T) {
 	buf := captureUpgradeWarnings(t, func(cmd *cobra.Command) {
 		printUpgrade(cmd, upgradeResultWithFinding(func(res *fleet.UpgradeResult) {
 			res.Conflicts = []string{".github/workflows/test.md"}
-		}))
+		}), false)
 	})
 	assertUpgradeWarning(t, buf)
 }
@@ -35,7 +35,7 @@ func TestPrintUpgradeEmitsWarningsForChangedFiles(t *testing.T) {
 	buf := captureUpgradeWarnings(t, func(cmd *cobra.Command) {
 		printUpgrade(cmd, upgradeResultWithFinding(func(res *fleet.UpgradeResult) {
 			res.ChangedFiles = []string{".github/workflows/test.md"}
-		}))
+		}), false)
 	})
 	assertUpgradeWarning(t, buf)
 }

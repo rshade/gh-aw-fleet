@@ -8,7 +8,7 @@ This contract documents the additive surface added to the `--output json` envelo
 
 ## Top-level `result` extension
 
-The `result` object emitted by `deploy` and `upgrade` (when invoked with `--output json`) gains two new fields:
+The `result` object emitted by `deploy` and `upgrade` (when invoked with `--output json`) gains three new fields:
 
 ```json
 {
@@ -28,6 +28,7 @@ The `result` object emitted by `deploy` and `upgrade` (when invoked with `--outp
     "security_findings": null,
 
     "compile_strict_applied": true,
+    "compile_strict_effective": true,
     "compile_strict_source": "auto-public"
   }
 }
@@ -40,7 +41,16 @@ The `result` object emitted by `deploy` and `upgrade` (when invoked with `--outp
 | Value | Meaning |
 |-------|---------|
 | `true` | `gh aw compile --strict` was invoked AND completed successfully in this Deploy/Upgrade run. |
-| `false` | Compile was either skipped (Effective resolved to `false`), aborted by the FR-016 probe, aborted by compile failure, or the resolver never ran (early-error path). Consumers MUST cross-reference `compile_strict_source` to disambiguate. |
+| `false` | Compile was either skipped (Effective resolved to `false`), aborted by the FR-016 probe, aborted by compile failure, or the resolver never ran (early-error path). Always `false` in dry-run regardless of resolver verdict. Consumers MUST cross-reference `compile_strict_source` and `compile_strict_effective` to disambiguate. |
+
+### `compile_strict_effective` (`bool`)
+
+| Value | Meaning |
+|-------|---------|
+| `true` | The resolver determined strict-mode should apply for this repo. In `--apply` mode this matches `compile_strict_applied` unless the probe or compile aborted. In dry-run mode this is the "would apply on `--apply`" signal. |
+| `false` | The resolver determined strict-mode should be skipped (auto-private or explicit `compile_strict: false`). |
+
+`compile_strict_source == ""` means the resolver never ran and consumers MUST treat `compile_strict_effective` as not applicable.
 
 ### `compile_strict_source` (`string`)
 
@@ -86,7 +96,7 @@ gh-aw-fleet deploy <repo> --output json | jq 'select(.result.compile_strict_appl
 
 - Pre-feature consumers that read `result` as a flat object and ignore unknown keys: **unaffected**.
 - Pre-feature consumers using `jq` paths like `.result.added` or `.result.pr_url`: **unaffected**.
-- Pre-feature consumers asserting exact `result` field counts (uncommon): **affected** — they will see two additional fields and should be relaxed to "fields ≥ N."
+- Pre-feature consumers asserting exact `result` field counts (uncommon): **affected** — they will see three additional fields (`compile_strict_applied`, `compile_strict_effective`, `compile_strict_source`) and should be relaxed to "fields ≥ N."
 - The new fields appear in EVERY `deploy` / `upgrade` envelope from this release forward, even when the resolver didn't run (defaults: `false` / `""`).
 
 ## Warnings array (`warnings[]`)

@@ -144,7 +144,11 @@ func emitSyncEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.Sy
 		emitHints(res.Repo, fleet.CollectHints(errs...))
 		hints = fleet.CollectHintDiagnostics(errs...)
 	}
-	hints = ensureFailureHint(hints, syncErr)
+	var compileStrictFolded bool
+	warnings, compileStrictFolded = foldCompileStrictError(warnings, syncErr)
+	if !compileStrictFolded {
+		hints = ensureFailureHint(hints, syncErr)
+	}
 
 	if writeErr := writeEnvelope(cmd, commandSync, repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr

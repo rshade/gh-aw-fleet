@@ -28,7 +28,7 @@ WRN compile-strict visibility lookup failed; defaulting to strict ON event=compi
 
 After the existing `runAdd` loop completes (filling `res.Added` / `res.Skipped` / `res.Failed`) and BEFORE `git add .github/`:
 
-1. The resolver runs (if it hasn't already during preflight) and populates `res.CompileStrictApplied` / `res.CompileStrictSource`.
+1. The resolver runs (if it hasn't already during preflight) and populates `res.CompileStrictApplied` / `res.CompileStrictEffective` / `res.CompileStrictSource`.
 2. If `Effective == false`, skip to step 5. No probe, no compile.
 3. The probe (FR-016) runs: `gh aw compile --help`.
    - `flag-present` → continue to step 4.
@@ -57,13 +57,13 @@ When deploy resumes via `--work-dir <path>` (interrupted prior run), the resolve
 
 Symmetric to `deploy` above. The probe + compile step runs after `runUpgrade` succeeds (and after `runUpdate` if also run, when applicable) and before `git add .github/`. All five failure-mode entries in the table above apply identically.
 
-The `UpgradeResult` envelope (when `--output json`) gains the same two fields as `DeployResult`.
+The `UpgradeResult` envelope (when `--output json`) gains the same three fields as `DeployResult`.
 
 ## `gh-aw-fleet sync <repo>` — no direct changes
 
 Sync's `applyDeployOrPrune` path delegates to `Deploy`, which inherits the compile step transitively. No new code in `sync.go`. Sync's drift-only / dry-run paths do not produce `.lock.yml` changes and therefore do not invoke compile.
 
-`SyncResult.Deploy` (the embedded `DeployResult`) gains the two new fields via the underlying `DeployResult` extension. Operators reading `SyncResult` via `--output json` see them at `.result.deploy.compile_strict_applied` / `.result.deploy.compile_strict_source`.
+`SyncResult.Deploy` (the embedded `DeployResult`) gains the three new fields via the underlying `DeployResult` extension. Operators reading `SyncResult` via `--output json` see them at `.result.deploy.compile_strict_applied` / `.result.deploy.compile_strict_effective` / `.result.deploy.compile_strict_source`.
 
 ## `gh-aw-fleet add <owner/repo>` — new behavior
 
@@ -89,7 +89,7 @@ This info line is on stdout (it's expected behavior, not a warning), distinct fr
 
 ```jsonc
 {
-  "schema_version": 1,
+  "version": 1,
   "repos": {
     "rshade/gh-aw-fleet": {
       "profiles": ["default"],

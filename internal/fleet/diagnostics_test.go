@@ -146,6 +146,12 @@ func TestCollectHints_CompileStrictPatterns(t *testing.T) {
 			wantSubstring: "gh extension upgrade aw",
 		},
 		{
+			name:          "probe_abort_too_old_wrapped_error",
+			input:         "gh aw is too old: v0.50.0 detected, minimum v0.68.3 required: <hint>",
+			wantCode:      DiagGhAwTooOld,
+			wantSubstring: "gh extension upgrade aw",
+		},
+		{
 			name:          "executable_file_not_found",
 			input:         "exec: \"gh\": executable file not found in $PATH",
 			wantCode:      DiagGhAwMissing,

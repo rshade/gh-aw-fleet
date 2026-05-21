@@ -75,7 +75,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 	return cmd
 }
 
-func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult) {
+func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult, apply bool) {
 	if res == nil {
 		return
 	}
@@ -115,12 +115,29 @@ func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult) {
 		fmt.Fprintf(w, "  PR:      %s\n", res.PRURL)
 	}
 	if res.CompileStrictSource != "" {
-		if res.CompileStrictApplied {
-			fmt.Fprintf(w, "  compile-strict: applied (source: %s)\n", res.CompileStrictSource)
-		} else {
-			fmt.Fprintf(w, "  compile-strict: skipped (source: %s)\n", res.CompileStrictSource)
-		}
+		fmt.Fprintf(w, "  compile-strict: %s (source: %s)\n",
+			compileStrictVerb(apply, res.CompileStrictApplied, res.CompileStrictEffective),
+			res.CompileStrictSource)
 	}
+}
+
+// compileStrictVerb renders the human-readable verb for the
+// `compile-strict:` status line shared by deploy and upgrade. In --apply
+// mode it reports the outcome ("applied"/"skipped"); in dry-run mode it
+// reports the intent the resolver would carry out on --apply
+// ("would apply"/"would skip") — driven by CompileStrictEffective because
+// CompileStrictApplied is always false in dry-run.
+func compileStrictVerb(apply, applied, effective bool) string {
+	if apply {
+		if applied {
+			return "applied"
+		}
+		return "skipped"
+	}
+	if effective {
+		return "would apply"
+	}
+	return "would skip"
 }
 
 // emitUpgradeWarnings emits one stderr Warn line per security finding. The
@@ -227,7 +244,7 @@ func runUpgradeSingle(
 	if jsonMode {
 		return emitUpgradeEnvelope(cmd, repo, apply, res, upErr)
 	}
-	printUpgrade(cmd, res)
+	printUpgrade(cmd, res, apply)
 	return upErr
 }
 
@@ -245,7 +262,11 @@ func emitUpgradeEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet
 			hints = fleet.CollectHintDiagnostics(res.OutputLog)
 		}
 	}
-	hints = ensureFailureHint(hints, upErr)
+	var compileStrictFolded bool
+	warnings, compileStrictFolded = foldCompileStrictError(warnings, upErr)
+	if !compileStrictFolded {
+		hints = ensureFailureHint(hints, upErr)
+	}
 	if writeErr := writeEnvelope(cmd, commandUpgrade, repo, apply, res, warnings, hints); writeErr != nil {
 		return writeErr
 	}

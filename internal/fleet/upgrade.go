@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	zlog "github.com/rs/zerolog/log"
-
 	"github.com/rshade/gh-aw-fleet/internal/fleet/security"
 )
 
@@ -55,8 +53,19 @@ type UpgradeResult struct {
 	// invoked AND exited 0 during this Upgrade run. False covers both
 	// "resolver said skip" and "resolver said apply but probe/compile
 	// aborted." Consumers MUST cross-reference CompileStrictSource to
-	// disambiguate.
+	// disambiguate. In dry-run mode this field is always false even when
+	// strict would apply on --apply; cross-reference CompileStrictEffective
+	// for the would-apply intent.
 	CompileStrictApplied bool `json:"compile_strict_applied"`
+
+	// CompileStrictEffective is the resolver's effective verdict for this
+	// repo, independent of whether `gh aw compile --strict` actually ran.
+	// In dry-run mode this is the "would apply on --apply" signal; in
+	// --apply mode it equals CompileStrictApplied unless probe/compile
+	// aborted (in which case Effective=true and Applied=false). Empty
+	// CompileStrictSource means the resolver never ran and this field MUST
+	// be treated as not applicable.
+	CompileStrictEffective bool `json:"compile_strict_effective"`
 
 	// CompileStrictSource discriminates why CompileStrictApplied has its
 	// value. One of "explicit" (operator override via RepoSpec.CompileStrict),
@@ -72,6 +81,9 @@ func (r *UpgradeResult) SetCompileStrictSource(s string) { r.CompileStrictSource
 
 // SetCompileStrictApplied implements compileStrictResult.
 func (r *UpgradeResult) SetCompileStrictApplied(b bool) { r.CompileStrictApplied = b }
+
+// SetCompileStrictEffective implements compileStrictResult.
+func (r *UpgradeResult) SetCompileStrictEffective(b bool) { r.CompileStrictEffective = b }
 
 // WorkCloneDir implements compileStrictResult.
 func (r *UpgradeResult) WorkCloneDir() string { return r.CloneDir }
@@ -129,21 +141,9 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 	if !opts.Apply {
 		// Dry-run path: resolve and log the would-be policy without invoking
 		// the probe or the compile subprocess (cli-semantics.md §Dry-run mode).
-		effective, source, reason := cfg.EffectiveCompileStrict(ctx, repo)
+		effective, source := logCompileStrictResolution(ctx, cfg, repo)
 		res.CompileStrictSource = source
-		zlog.Info().
-			Str("event", "compile_strict_resolved").
-			Str(fieldRepo, repo).
-			Bool("effective", effective).
-			Str("source", source).
-			Msg("compile-strict resolution")
-		if source == CompileStrictSourceAutoFallback {
-			zlog.Warn().
-				Str("event", "compile_strict_lookup_failed").
-				Str(fieldRepo, repo).
-				Str("reason", reason).
-				Msg("compile-strict visibility lookup failed; defaulting to strict ON")
-		}
+		res.CompileStrictEffective = effective
 		return res, nil
 	}
 
@@ -161,7 +161,7 @@ func createUpgradePR(ctx context.Context, res *UpgradeResult) (*UpgradeResult, e
 	if branchErr := gitCmd(ctx, res.CloneDir, "checkout", "-b", branch); branchErr != nil {
 		return res, fmt.Errorf("create branch: %w", branchErr)
 	}
-	if addErr := gitCmd(ctx, res.CloneDir, "add", ".github/"); addErr != nil {
+	if addErr := gitCmd(ctx, res.CloneDir, addToken, ".github/"); addErr != nil {
 		return res, fmt.Errorf("git add: %w", addErr)
 	}
 	msg := upgradeCommitMessage(res)

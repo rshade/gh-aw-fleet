@@ -474,10 +474,14 @@ with this resolution order (FR-003):
    naming the repo and a truncated reason. Setting `compile_strict`
    explicitly bypasses this path.
 
-The `--output json` envelope on both Deploy and Upgrade gains two fields:
+The `--output json` envelope on both Deploy and Upgrade gains three fields:
 
 - `compile_strict_applied` (`bool`) — `true` ONLY when the strict compile
-  ran and exited 0.
+  ran and exited 0 in this invocation. Always `false` in dry-run mode.
+- `compile_strict_effective` (`bool`) — the resolver's verdict for this
+  repo, independent of whether compile actually ran. In dry-run mode this
+  is the "would apply on `--apply`" signal; in `--apply` mode it equals
+  `compile_strict_applied` unless the probe or compile aborted.
 - `compile_strict_source` (`string`) — one of `"explicit"`, `"auto-public"`,
   `"auto-private"`, `"auto-fallback"`, or `""` (resolver didn't run —
   early error path).
