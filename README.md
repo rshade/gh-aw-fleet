@@ -172,8 +172,66 @@ and `gh`.
 
 ### Install
 
-**Option 1 — Download a release binary (recommended).** Pre-built binaries
-are published for Linux, macOS, and Windows on amd64 and arm64:
+**Option 1 — One-liner installer (recommended).** Fetches the installer
+from the latest release's assets (immutable, pinned to a tagged version);
+the installer downloads the matching release archive for your OS/arch,
+verifies its SHA-256 against the release's `checksums.txt`, and drops the
+binary in your install directory.
+
+```bash
+# Linux / macOS — installs to $HOME/.local/bin
+curl -sSfL \
+  https://github.com/rshade/gh-aw-fleet/releases/latest/download/install.sh \
+  | bash
+```
+
+```powershell
+# Windows (PowerShell) — installs to %LOCALAPPDATA%\gh-aw-fleet\bin
+iwr -UseBasicParsing https://github.com/rshade/gh-aw-fleet/releases/latest/download/install.ps1 `
+  | iex
+```
+
+The release-asset URL is the recommended path — it pins to a tagged
+installer, not a moving `main`. If you're on a release that predates the
+installer assets and `releases/latest/download/install.*` 404s, fall back
+to the `main`-branch installer:
+
+```bash
+# Fallback — fetches install.sh from main
+curl -sSfL \
+  https://raw.githubusercontent.com/rshade/gh-aw-fleet/main/install.sh \
+  | bash
+```
+
+```powershell
+# Fallback — fetches install.ps1 from main
+iwr -UseBasicParsing https://raw.githubusercontent.com/rshade/gh-aw-fleet/main/install.ps1 `
+  | iex
+```
+
+Either way, the installer still installs a tagged release binary by
+default: the latest release unless you pin one.
+
+Customizing the install:
+
+- POSIX env vars — `VERSION=v0.2.0` pins a specific release (default:
+  latest); `INSTALL_DIR=/usr/local/bin` overrides the default location.
+- PowerShell parameters — `-Version v0.2.0` pins a release;
+  `-InstallDir <path>` overrides the install directory; `-NoPath` skips the
+  user-scope PATH update.
+
+PowerShell parameters require invoking the downloaded script as a
+`ScriptBlock`:
+
+```powershell
+$installer = [ScriptBlock]::Create(
+  (iwr -UseBasicParsing https://github.com/rshade/gh-aw-fleet/releases/latest/download/install.ps1).Content
+)
+& $installer -Version v0.2.0 -InstallDir "$env:LOCALAPPDATA\gh-aw-fleet\bin" -NoPath
+```
+
+**Option 2 — Manual release download.** Pre-built binaries are published
+for Linux, macOS, and Windows on amd64 and arm64:
 
 ```bash
 # Example: Linux amd64
@@ -186,13 +244,13 @@ See the
 [latest release](https://github.com/rshade/gh-aw-fleet/releases/latest)
 for all available platform archives and checksums.
 
-**Option 2 — `go install`.** Installs into `$(go env GOPATH)/bin`:
+**Option 3 — `go install`.** Installs into `$(go env GOPATH)/bin`:
 
 ```bash
 go install github.com/rshade/gh-aw-fleet@latest
 ```
 
-**Option 3 — Build from source.** For contributors and anyone working off
+**Option 4 — Build from source.** For contributors and anyone working off
 `main`:
 
 ```bash
@@ -202,10 +260,13 @@ go build -o gh-aw-fleet .
 ```
 
 > **Note on examples below:** all command examples use bare `gh-aw-fleet`
-> (assumes the binary is on your `PATH`, which is the case for Options 1
-> and 2). If you built from source via Option 3 and didn't install the
-> binary, prefix every `gh-aw-fleet` command with `./` to run it from the
-> build directory.
+> and assume the binary is on your `PATH`. Option 1 installs to
+> `$HOME/.local/bin` by default — make sure that's on your PATH. Option 3
+> installs to `$(go env GOPATH)/bin`, which is not automatically on PATH —
+> add it yourself if `which gh-aw-fleet` comes back empty. Option 2 lets
+> you pick the destination. If you built from source via Option 4 and
+> didn't install the binary, prefix every `gh-aw-fleet` command with `./`
+> to run it from the build directory.
 
 ### Example Workflow
 

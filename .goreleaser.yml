@@ -41,6 +41,9 @@ snapshot:
 # attaches binary artifacts + checksums to that existing release.
 release:
   mode: append
+  extra_files:
+    - glob: ./install.sh
+    - glob: ./install.ps1
 
 changelog:
   disable: true
