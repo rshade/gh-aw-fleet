@@ -40,11 +40,12 @@ fleet-layer tool existing.
 
 **Status**: v0.1.x → v0.2 satisfied this (#54 / #55 / #56 cost
 prereqs, #37 Layer 1 security scanner). v0.3's cost half landed
-2026-05-15 (#57 consumption rollup); #49 covers the security half and
-is the headline remaining Near-Term item. v0.4 needs a fresh cost +
-security pair — the most likely candidates are the security-epic
-children (#38–#40) on the security side and a real-failure-triggered
-diagnostic refresh (#53) on the cost side.
+2026-05-15 (#57 consumption rollup); v0.3's security half landed
+2026-05-21 (#49 `--strict` default on public repos) — both
+composition slots filled, release-please cut imminent. v0.4 needs a
+fresh cost + security pair — the most likely candidates are the
+security-epic children (#38–#40) on the security side and a
+real-failure-triggered diagnostic refresh (#53) on the cost side.
 
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
@@ -52,37 +53,29 @@ changes) is exempt — the rule applies to feature-bearing releases.
 ## Immediate Focus (v0.3 in progress)
 
 v0.2 is tagged (release-please commit `c416f89`, 2026-05-15). v0.3's
-headline feature — the cross-fleet consumption rollup (#57) — merged in
-PR #83 on 2026-05-15 and is now in `main` awaiting the next release-please
-cut. Two items are now actively in flight: the security default flip
-(#49) closes v0.3's release-composition security half; the one-liner
-installers (#43) advance the contributor pipeline. Promoted together
-on 2026-05-17 via the gate's multi-select path (composition bump
-opened a second slot).
+release-composition pair both landed: cost half via #57 (consumption
+rollup, 2026-05-15) and security half via #49 (`--strict` default on
+public repos, 2026-05-21, PR #88). The release-please cut is queued.
+The one-liner installers (#43) remain in flight — the contributor-
+pipeline lever that advances v0.3's community-leverage half.
 
-- [ ] [#49](https://github.com/rshade/gh-aw-fleet/issues/49) Compile
-  workflows with `--strict` on public repos by default `[S]` `security`
-  *Public repos benefit from the upstream `gh aw` strict-mode validations
-  (e.g., `permissions:` defaults, action-pin checks). Default to
-  `--strict` when the target repo is public; document the auto-flip in
-  the deploy output. Operators on private repos opt in via flag.
-  Promoted by `/roadmap sync` on 2026-05-17 — composition: fills the
-  v0.3 release-composition security half (cost half landed via #57).*
 - [ ] [#43](https://github.com/rshade/gh-aw-fleet/issues/43) Add
   `install.sh` and `install.ps1` one-liner installers `[M]` `community`
   *Replace the four-step manual `gh release download` flow with curl/iwr
   one-liners. Ship both scripts as release assets (via
   `.goreleaser.yml` `extra_files`) and on `main` for a fallback URL.
-  Acceptance: checksum-verified install of `v0.1.0` on
-  ubuntu/macos/windows CI runners. Complements, does not replace, the
-  `gh extension` packaging item below. Promoted by `/roadmap sync` on
-  2026-05-17 — slot rationale: highest community-leverage with v0.3
-  composition pair filled.*
+  Acceptance: checksum-verified install on ubuntu/macos/windows CI
+  runners; tamper test asserts non-zero exit on corrupted
+  `checksums.txt`. Complements, does not replace, the `gh extension`
+  packaging item below. Promoted by `/roadmap sync` on 2026-05-17 —
+  slot rationale: highest community-leverage with v0.3 composition
+  pair filled.*
 
 ## Near-Term Vision (v0.3 — operator quality of life backlog)
 
-Both v0.3 release-composition items (#49 security, #43 community-leverage)
-are now in Immediate Focus. Near-Term is the unlinked operator-QoL
+v0.3's release-composition pair has landed: #49 (security, 2026-05-21)
+and #57 (cost, 2026-05-15). #43 (community-leverage, install scripts)
+remains in Immediate Focus. Near-Term is the unlinked operator-QoL
 backlog — open GitHub issues as work picks up, then `/roadmap sync`
 will rank them alongside any new `roadmap/next` items.
 
@@ -281,6 +274,13 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#49](https://github.com/rshade/gh-aw-fleet/issues/49) Compile
+  workflows with `--strict` on public repos by default `[S]` `security`
+  *Shipped 2026-05-21 in PR #88. Auto-flips `gh aw compile --strict`
+  on when the target repo is public (queried via `gh api`); operators
+  on private repos remain opt-in via flag. Closes v0.3's release-
+  composition security half. Pairs with #57 on the cost half — the
+  composition pair the v0.3 release-please cut now ships.*
 - [x] [#57](https://github.com/rshade/gh-aw-fleet/issues/57) Add
   `gh-aw-fleet consumption` subcommand for cross-fleet billing rollups
   `[L]`
