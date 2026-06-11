@@ -915,11 +915,11 @@ func TestFoldCompileStrictError(t *testing.T) {
 	t.Run("typed_error_appended_to_warnings", func(t *testing.T) {
 		cse := &fleet.CompileStrictError{
 			Code:    fleet.DiagGhAwTooOld,
-			Message: "Local gh aw is too old (detected v0.50.0; minimum v0.68.3) for rshade/test.",
+			Message: "Local gh aw is too old (detected v0.50.0; minimum v0.79.2) for rshade/test.",
 			Fields: map[string]any{
 				"repo":             "rshade/test",
 				"detected_version": "v0.50.0",
-				"minimum_version":  "v0.68.3",
+				"minimum_version":  "v0.79.2",
 			},
 		}
 		warnings, folded := foldCompileStrictError(nil, cse)

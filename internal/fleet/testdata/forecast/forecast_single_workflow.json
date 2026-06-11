@@ -1,0 +1,58 @@
+{
+  "as_of": "2026-06-10T11:53:18Z",
+  "period": "month",
+  "workflows": [
+    {
+      "active_triggers": null,
+      "avg_aic": 137.494,
+      "avg_duration_seconds": 366,
+      "concurrency_limit": 0,
+      "history_days": 30,
+      "monte_carlo": {
+        "is_reliable": false,
+        "iterations": 10000,
+        "mean_projected_aic": 209.32,
+        "p10_projected_aic": 0,
+        "p50_projected_aic": 137.494,
+        "p90_projected_aic": 549.976,
+        "std_dev_aic": 242.695
+      },
+      "monthly_monte_carlo": {
+        "is_reliable": false,
+        "iterations": 10000,
+        "mean_projected_aic": 208.317,
+        "p10_projected_aic": 0,
+        "p50_projected_aic": 137.494,
+        "p90_projected_aic": 549.976,
+        "std_dev_aic": 237.915
+      },
+      "monthly_projected_aic": 137.494,
+      "observed_runs_per_period": 1,
+      "p50_aic_per_run": 137.494,
+      "p95_aic_per_run": 137.494,
+      "period": "month",
+      "projected_aic": 137.494,
+      "run_samples": [
+        {
+          "aic": 137.494,
+          "date": "2026-06-09",
+          "run_id": 27188261773,
+          "run_url": "https://github.com/rshade/finfocus/actions/runs/27188261773"
+        }
+      ],
+      "sampled_runs": 1,
+      "success_rate": 1,
+      "weekly_monte_carlo": {
+        "is_reliable": false,
+        "iterations": 10000,
+        "mean_projected_aic": 49.112,
+        "p10_projected_aic": 0,
+        "p50_projected_aic": 0,
+        "p90_projected_aic": 137.494,
+        "std_dev_aic": 90.934
+      },
+      "weekly_projected_aic": 32.082,
+      "workflow_id": "Code Simplifier"
+    }
+  ]
+}

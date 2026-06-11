@@ -189,15 +189,19 @@ func ParseGroupBy(s string) (GroupByKind, error) {
 // not at fetch time — a freshly-parsed report carries empty Profile and
 // CostCenter strings until AggregateConsumption populates them.
 type ConsumptionReport struct {
-	Repo            string                `json:"repo"`
-	Date            time.Time             `json:"date"`
-	RunID           int64                 `json:"run_id"`
-	GitHubAPICalls  int                   `json:"github_api_calls"`
-	SafeOutputCalls int                   `json:"safe_output_calls"`
-	Cost            *float64              `json:"cost,omitempty"`
-	PerWorkflow     []WorkflowConsumption `json:"per_workflow"`
-	Profile         string                `json:"profile,omitempty"`
-	CostCenter      string                `json:"cost_center,omitempty"`
+	Repo            string    `json:"repo"`
+	Date            time.Time `json:"date"`
+	RunID           int64     `json:"run_id"`
+	GitHubAPICalls  int       `json:"github_api_calls"`
+	SafeOutputCalls int       `json:"safe_output_calls"`
+	// AIC is the AI-credit spend under the Copilot model (logs source only;
+	// nil under the artifact source, which has no AIC field). USD Cost is
+	// derived as AIC * 0.01.
+	AIC         *float64              `json:"aic,omitempty"`
+	Cost        *float64              `json:"cost,omitempty"`
+	PerWorkflow []WorkflowConsumption `json:"per_workflow"`
+	Profile     string                `json:"profile,omitempty"`
+	CostCenter  string                `json:"cost_center,omitempty"`
 }
 
 // WorkflowConsumption is one row in the per-workflow breakdown table. Used
@@ -208,6 +212,7 @@ type WorkflowConsumption struct {
 	Runs         int      `json:"runs"`
 	APICalls     int      `json:"api_calls"`
 	AvgDurationS float64  `json:"avg_duration_s"`
+	AIC          *float64 `json:"aic,omitempty"`
 	Cost         *float64 `json:"cost,omitempty"`
 }
 
@@ -225,6 +230,7 @@ type ConsumptionGroup struct {
 	Key             string   `json:"key"`
 	GitHubAPICalls  int      `json:"github_api_calls"`
 	SafeOutputCalls int      `json:"safe_output_calls"`
+	AIC             *float64 `json:"aic,omitempty"`
 	Cost            *float64 `json:"cost,omitempty"`
 	ReportCount     int      `json:"report_count"`
 }
@@ -236,6 +242,7 @@ type ConsumptionResult struct {
 	LoadedFrom string                `json:"loaded_from"`
 	FetchMode  string                `json:"fetch_mode"`
 	GroupBy    string                `json:"group_by"`
+	Source     string                `json:"source,omitempty"`
 	Groups     []ConsumptionGroup    `json:"groups"`
 	TopBurners []WorkflowConsumption `json:"top_burners"`
 }
@@ -430,6 +437,70 @@ func newSoftDiagnostic(repo, msg string) *Diagnostic {
 // Artifact-fetch seam + implementation
 // ---------------------------------------------------------------------------
 
+// artifactRef is one entry of a run's artifact listing (the subset consumed:
+// numeric id and name). Decoded from `gh api .../actions/runs/{id}/artifacts`.
+type artifactRef struct {
+	// ID is the artifact's numeric identifier used to build the /zip path.
+	ID int64 `json:"id"`
+	// Name is the GitHub Actions artifact name (e.g. "activation").
+	Name string `json:"name"`
+}
+
+// awInfoArtifactNames lists the artifact names that carry aw_info.json, most
+// preferred first. gh-aw v5+ bundles aw_info.json inside the multi-file
+// "activation" artifact; pre-v5 used a single-file "aw-info" artifact. The
+// "aw_info" underscore form is kept last as a defensive fallback. Verified
+// against a captured live run artifact (rshade/finfocus run 27241899611).
+//
+//nolint:gochecknoglobals // immutable name-precedence table; Go has no const slices.
+var awInfoArtifactNames = []string{artifactNameActivation, artifactNameAWInfo, "aw_info"}
+
+// artifactNameActivation is the gh-aw v5+ multi-file artifact that bundles
+// aw_info.json (see awInfoArtifactNames).
+const artifactNameActivation = "activation"
+
+// artifactNameAWInfo is the pre-v5 single-file artifact that carried
+// aw_info.json (see awInfoArtifactNames).
+const artifactNameAWInfo = "aw-info"
+
+// runSummaryArtifactNames lists the artifact names that may carry
+// run_summary.json, most preferred first. Standard agentic runs do not upload
+// one (run_summary.json is a local `gh aw audit` cache); when absent the
+// per-workflow breakdown is simply empty.
+//
+//nolint:gochecknoglobals // immutable name-precedence table; Go has no const slices.
+var runSummaryArtifactNames = []string{"run_summary", "run-summary"}
+
+// selectArtifactIDs picks the aw_info and run_summary artifact IDs from a run's
+// artifact listing, honoring the precedence in awInfoArtifactNames /
+// runSummaryArtifactNames (earlier entries win when a run carries more than one
+// candidate). The returned awInfoID and runSummaryID are 0 when that kind is
+// absent.
+func selectArtifactIDs(artifacts []artifactRef) (int64, int64) {
+	var awInfoID, runSummaryID int64
+	bestAW, bestRS := -1, -1
+	for _, a := range artifacts {
+		if r := nameRank(awInfoArtifactNames, a.Name); r >= 0 && (bestAW < 0 || r < bestAW) {
+			awInfoID, bestAW = a.ID, r
+		}
+		if r := nameRank(runSummaryArtifactNames, a.Name); r >= 0 && (bestRS < 0 || r < bestRS) {
+			runSummaryID, bestRS = a.ID, r
+		}
+	}
+	return awInfoID, runSummaryID
+}
+
+// nameRank returns the index of name in names, or -1 when absent. Lower index
+// means higher precedence.
+func nameRank(names []string, name string) int {
+	for i, n := range names {
+		if n == name {
+			return i
+		}
+	}
+	return -1
+}
+
 //nolint:gochecknoglobals // test-injection seam for gh api run-artifact fetch
 var ghRunArtifactAPI = func(ctx context.Context, repo string, runID int64) (artifactPayload, error) {
 	listPath := fmt.Sprintf("repos/%s/actions/runs/%d/artifacts", repo, runID)
@@ -439,23 +510,12 @@ var ghRunArtifactAPI = func(ctx context.Context, repo string, runID int64) (arti
 		return artifactPayload{}, ghErr(err)
 	}
 	var listing struct {
-		Artifacts []struct {
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"artifacts"`
+		Artifacts []artifactRef `json:"artifacts"`
 	}
 	if decodeErr := json.Unmarshal(listOut, &listing); decodeErr != nil {
 		return artifactPayload{}, fmt.Errorf("decode gh api artifacts list: %w", decodeErr)
 	}
-	var awInfoID, runSummaryID int64
-	for _, a := range listing.Artifacts {
-		switch a.Name {
-		case "aw_info":
-			awInfoID = a.ID
-		case "run_summary":
-			runSummaryID = a.ID
-		}
-	}
+	awInfoID, runSummaryID := selectArtifactIDs(listing.Artifacts)
 	out := artifactPayload{}
 	if awInfoID != 0 {
 		dec, decErr := downloadAndDecodeAWInfo(ctx, repo, awInfoID)
@@ -508,7 +568,12 @@ func downloadAndDecodeRunSummary(ctx context.Context, repo string, artifactID in
 
 func downloadArtifactZip(ctx context.Context, repo string, artifactID int64) ([]byte, error) {
 	path := fmt.Sprintf("repos/%s/actions/artifacts/%d/zip", repo, artifactID)
-	cmd := exec.CommandContext(ctx, "gh", "api", "-H", "Accept: application/octet-stream", path)
+	// The artifact /zip endpoint replies with a 302 to blob storage; `gh api`
+	// follows it and streams the zip body. Do NOT send
+	// `Accept: application/octet-stream` — GitHub now rejects that on this
+	// endpoint with HTTP 415 ("Must accept 'application/json'"). The default
+	// `gh api` Accept header negotiates the redirect correctly.
+	cmd := exec.CommandContext(ctx, "gh", "api", path)
 	out, err := runLoggedOutput(cmd, "gh", "api", map[string]string{fieldPath: path})
 	if err != nil {
 		return nil, ghErr(err)
@@ -517,9 +582,9 @@ func downloadArtifactZip(ctx context.Context, repo string, artifactID int64) ([]
 }
 
 // readZipFile pulls one file by basename out of an in-memory zip body. The
-// upstream gh-aw convention nests files under directories matching the
-// artifact name (aw_info/aw_info.json, run_summary/run_summary.json), so we
-// match on basename rather than full path.
+// artifact /zip body holds files at the archive root (e.g. the "activation"
+// artifact carries aw_info.json directly), but we match on basename suffix so
+// any future nesting still resolves.
 func readZipFile(body []byte, basename string) ([]byte, error) {
 	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
@@ -666,7 +731,14 @@ func AggregateConsumption(
 	cfg *Config,
 	mode FetchMode,
 	by GroupByKind,
+	source SourceKind,
 ) (*ConsumptionResult, []Diagnostic, error) {
+	if source == SourceLogs {
+		if err := ensureLogsSourceGhAwVersion(ctx); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	now := time.Now().UTC()
 	repoNames := make([]string, 0, len(cfg.Repos))
 	for r := range cfg.Repos {
@@ -682,7 +754,7 @@ func AggregateConsumption(
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, diags, ctxErr
 		}
-		repoReports, repoDiags := collectRepoReports(ctx, repo, mode, now)
+		repoReports, repoDiags := collectReportsForSource(ctx, repo, mode, source, now)
 		diags = append(diags, repoDiags...)
 		spec := cfg.Repos[repo]
 		if by == GroupByProfile && len(spec.Profiles) == 0 && len(repoReports) > 0 {
@@ -703,13 +775,44 @@ func AggregateConsumption(
 		LoadedFrom: cfg.LoadedFrom,
 		FetchMode:  formatFetchMode(mode),
 		GroupBy:    by.String(),
+		Source:     source.String(),
 		Groups:     materializeGroups(groups),
 		TopBurners: buildTopBurners(allReports),
+	}
+	if hint := sourceEmptyDataHint(source, result.Groups); hint != nil {
+		diags = append(diags, *hint)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return result, diags, ctxErr
 	}
 	return result, diags, nil
+}
+
+// allCostNil reports whether every group's rolled-up Cost is nil — the
+// expected state for a Copilot-engine fleet (see nilCostDiag). Called only
+// when len(groups) > 0 so an all-nil empty result does not trigger the hint.
+func allCostNil(groups []ConsumptionGroup) bool {
+	for i := range groups {
+		if groups[i].Cost != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// nilCostDiag explains an entirely empty COST column: the Copilot engine bills
+// in AI credits / premium requests, not USD, so gh-aw's aw_info.json reports no
+// positive cost and normalizeCost (Decision 6) collapses every value to nil. A
+// populated COST column requires an engine that emits total_cost_usd — e.g. the
+// Claude engine with a metered Anthropic key. Emitted once per run, fleet-wide
+// (no repo field), only when reports were found but none carried a cost.
+func nilCostDiag() Diagnostic {
+	msg := "Cost is unavailable for every report. Workflows on the GitHub Copilot " +
+		"engine are billed in AI credits / premium requests, which gh-aw does not " +
+		"report as USD — so the COST column stays empty. A populated cost requires " +
+		"an engine that emits total_cost_usd (e.g. the Claude engine with a metered " +
+		"Anthropic key)."
+	return Diagnostic{Code: DiagHint, Message: msg, Fields: map[string]any{fieldHint: msg}}
 }
 
 // collectRepoReports runs discovery + filter + fetch for one repo and
@@ -824,13 +927,14 @@ func addReportToGroups(groups map[string]*ConsumptionGroup, rep *ConsumptionRepo
 func addToGroup(groups map[string]*ConsumptionGroup, key string, rep *ConsumptionReport) {
 	g, ok := groups[key]
 	if !ok {
-		g = &ConsumptionGroup{Key: key, Cost: zeroIfPresent(rep.Cost)}
+		g = &ConsumptionGroup{Key: key, Cost: zeroIfPresent(rep.Cost), AIC: zeroIfPresent(rep.AIC)}
 		groups[key] = g
 	}
 	g.GitHubAPICalls += rep.GitHubAPICalls
 	g.SafeOutputCalls += rep.SafeOutputCalls
 	g.ReportCount++
 	mergeCost(g, rep.Cost)
+	mergeAIC(g, rep.AIC)
 }
 
 // addWorkflowToGroup folds one workflow's per-row consumption into the
@@ -844,12 +948,13 @@ func addToGroup(groups map[string]*ConsumptionGroup, key string, rep *Consumptio
 func addWorkflowToGroup(groups map[string]*ConsumptionGroup, wf WorkflowConsumption, _ *ConsumptionReport) {
 	g, ok := groups[wf.Workflow]
 	if !ok {
-		g = &ConsumptionGroup{Key: wf.Workflow, Cost: zeroIfPresent(wf.Cost)}
+		g = &ConsumptionGroup{Key: wf.Workflow, Cost: zeroIfPresent(wf.Cost), AIC: zeroIfPresent(wf.AIC)}
 		groups[wf.Workflow] = g
 	}
 	g.GitHubAPICalls += wf.APICalls
 	g.ReportCount++
 	mergeCost(g, wf.Cost)
+	mergeAIC(g, wf.AIC)
 }
 
 // zeroIfPresent returns a pointer-to-zero when src is non-nil so the group
@@ -863,18 +968,27 @@ func zeroIfPresent(src *float64) *float64 {
 	return &z
 }
 
-// mergeCost implements the all-or-nothing rule: if any contributing report
-// has nil Cost, the group's Cost stays nil. Otherwise the values accumulate.
-func mergeCost(g *ConsumptionGroup, src *float64) {
-	if g.Cost == nil {
+// mergeFloat implements the all-or-nothing accumulation rule on a *float64
+// group field: once the field is nil — or a contributing report's value is nil
+// — the field stays nil; otherwise values accumulate. Shared by the Cost and
+// AIC rollups so both honor identical nil semantics.
+func mergeFloat(dst **float64, src *float64) {
+	if *dst == nil {
 		return
 	}
 	if src == nil {
-		g.Cost = nil
+		*dst = nil
 		return
 	}
-	*g.Cost += *src
+	**dst += *src
 }
+
+// mergeCost applies the all-or-nothing rule to the group's Cost.
+func mergeCost(g *ConsumptionGroup, src *float64) { mergeFloat(&g.Cost, src) }
+
+// mergeAIC applies the all-or-nothing rule to the group's AIC. AIC is populated
+// only under the logs source; the artifact source leaves it nil throughout.
+func mergeAIC(g *ConsumptionGroup, src *float64) { mergeFloat(&g.AIC, src) }
 
 // materializeGroups sorts the map by Key ascending and returns the slice
 // for the ConsumptionResult envelope.
@@ -921,6 +1035,9 @@ type workflowAcc struct {
 	costSum       float64
 	costPresent   bool
 	costMissing   bool
+	aicSum        float64
+	aicPresent    bool
+	aicMissing    bool
 	durationNum   float64
 	durationDenom int
 }
@@ -953,6 +1070,12 @@ func accumulateWorkflowTotals(reports []*ConsumptionReport) map[string]*workflow
 			a.apiCalls += wf.APICalls
 			a.durationNum += wf.AvgDurationS * float64(wf.Runs)
 			a.durationDenom += wf.Runs
+			if wf.AIC == nil {
+				a.aicMissing = true
+			} else {
+				a.aicSum += *wf.AIC
+				a.aicPresent = true
+			}
 			if wf.Cost == nil {
 				a.costMissing = true
 				continue
@@ -979,6 +1102,10 @@ func materializeTopBurners(totals map[string]*workflowAcc) ([]WorkflowConsumptio
 			wc.Cost = &cost
 		} else {
 			allCostPresent = false
+		}
+		if a.aicPresent && !a.aicMissing {
+			aic := a.aicSum
+			wc.AIC = &aic
 		}
 		out = append(out, wc)
 	}

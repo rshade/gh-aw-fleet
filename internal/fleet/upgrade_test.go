@@ -170,7 +170,7 @@ func TestUpgrade_ProbeFlagAbsent_EmitsDiagGhAwTooOld(t *testing.T) {
 	if err == nil {
 		t.Fatal("err = nil; want non-nil")
 	}
-	for _, want := range []string{"v0.68.3", "v0.50.0"} {
+	for _, want := range []string{"v0.79.2", "v0.50.0"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("err = %q; want substring %q", err.Error(), want)
 		}

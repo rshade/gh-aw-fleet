@@ -137,7 +137,7 @@ func TestCollectHints_CompileStrictPatterns(t *testing.T) {
 			name:          "unknown_flag_strict",
 			input:         "Error: unknown flag: --strict",
 			wantCode:      DiagGhAwTooOld,
-			wantSubstring: "v0.68.3",
+			wantSubstring: "v0.79.2",
 		},
 		{
 			name:          "unknown_long_flag_strict",

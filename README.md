@@ -30,9 +30,12 @@ lands on 2026-06-01—every deployed workflow consumes credits at metered rates,
 and per-repo tools (`gh aw`, the GitHub Actions UI) can't see across the fleet
 to tell you where the credits went. The same `fleet.json` that declares which
 repos get which workflows is also the natural place to attribute consumption:
-by repo, by profile, or by cost center. A `consumption` subcommand for that
-rollup is in flight
-([#57](https://github.com/rshade/gh-aw-fleet/issues/57)); see
+by repo, by profile, or by cost center. The `consumption` subcommand does
+exactly that — `gh-aw-fleet consumption` (default `--source logs`) reads
+AI-credit (AIC) usage from `gh aw logs --json` per agentic workflow and rolls it
+up `--by repo|profile|cost-center|workflow`, with USD derived as AIC × $0.01. It
+needs no deployed reporting workflow ([#57](https://github.com/rshade/gh-aw-fleet/issues/57),
+[#103](https://github.com/rshade/gh-aw-fleet/issues/103)); see
 [ROADMAP.md](ROADMAP.md) for the broader billing-readiness arc.
 
 ## Who is this for?
@@ -79,7 +82,7 @@ manipulation.
 **3. Pin-per-profile.** Each profile declares a `sources` map keyed by
 upstream repository (e.g., `github/gh-aw`, `githubnext/agentics`), each
 with its own ref. The shipped `default` profile pins `github/gh-aw` to a
-tagged release (e.g. `v0.68.3`) and `githubnext/agentics` to a specific
+tagged release (e.g. `v0.79.2`) and `githubnext/agentics` to a specific
 commit SHA — never `main`, since moving refs are forbidden by the
 [project constitution](CONTEXT.md). A profile advances atomically: bumping
 one source ref re-pins every workflow in that profile sourced from that
@@ -123,11 +126,11 @@ and `gh`.
   either `github/gh-aw` (compiler + dogfooding workflows) or
   `githubnext/agentics` (the curated library). Each profile pins each
   source to a specific ref.
-- **Pin** — a fixed reference (tag like `v0.68.3` or commit SHA) that
+- **Pin** — a fixed reference (tag like `v0.79.2` or commit SHA) that
   locks a source to a known-good version. Moving refs like `main` are
   forbidden by the [project constitution](CONTEXT.md).
 - **Spec** — an `owner/repo/path@ref` string (e.g.,
-  `github/gh-aw/.github/workflows/audit-workflows.md@v0.68.3`) that
+  `github/gh-aw/.github/workflows/audit-workflows.md@v0.79.2`) that
   uniquely identifies one workflow at one version. The tool resolves
   profile + source + workflow name → spec, then passes it to `gh aw add`.
 - **Reconcile** — compute the diff between desired state (`fleet.json`)
@@ -163,10 +166,11 @@ and `gh`.
   and `workflow` scopes
 - `gh aw` extension installed: `gh extension install github/gh-aw` —
   install a tagged release matching the `github/gh-aw` ref in your
-  `fleet.json` (the shipped `default` profile uses `v0.68.3`). Avoid
-  `main`: it often contains unreleased features that break this tool. To
-  upgrade later, `gh extension upgrade gh-aw` and verify the new tag still
-  matches your fleet pin.
+  `fleet.json` (the shipped `default` profile uses `v0.79.2`). Because
+  v0.79.x are tagged as pre-releases, pin the install explicitly:
+  `gh extension install github/gh-aw --pin v0.79.2` — a bare
+  `gh extension upgrade aw` stops at the latest *stable* (v0.77.5). Avoid
+  `main`: it often contains unreleased features that break this tool.
 - Go 1.25.8+ **only if** installing via `go install` or building from
   source
 
@@ -343,6 +347,7 @@ gh-aw-fleet status -o json \
 | `deploy <repo>` | Deploy the declared workflow set via `gh aw add` + PR |
 | `sync <repo>` | Reconcile to declared profile (add missing, flag drift) |
 | `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade` |
+| `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD` |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
 | `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones) |
 
@@ -428,7 +433,7 @@ Example fragment:
     "default": {
       "description": "Baseline every tracked repo gets.",
       "sources": {
-        "github/gh-aw": { "ref": "v0.68.3" },
+        "github/gh-aw": { "ref": "v0.79.2" },
         "githubnext/agentics": {
           "ref": "96b9d4c39aa22359c0b38265927eadb31dcf4e2a"
         }
@@ -476,10 +481,10 @@ Example:
   "version": 1,
   "profiles": {
     "default": {
-      // Pinned to v0.68.3 because v0.69.0 broke the `mount-as-clis`
-      // frontmatter property and broke deploys for ~half the fleet.
+      // Pinned to the v0.79.2 tag — never `main`, which ships unreleased
+      // features like `mount-as-clis` that break the installed CLI.
       "sources": {
-        "github/gh-aw": { "ref": "v0.68.3" },
+        "github/gh-aw": { "ref": "v0.79.2" },
       },
       "workflows": [
         { "name": "audit-workflows", "source": "github/gh-aw" },
@@ -547,10 +552,12 @@ The `--output json` envelope on both Deploy and Upgrade gains three fields:
   `"auto-private"`, `"auto-fallback"`, or `""` (resolver didn't run —
   early error path).
 
-**Minimum `gh aw` version**: `v0.68.3` (when `compile --strict` shipped).
-The tool probes `gh aw compile --help` before invoking compile and aborts
-with an actionable diagnostic when `--strict` is absent. Upgrade with
-`gh extension upgrade aw`.
+**Minimum `gh aw` version**: `v0.79.2` (the FinOps baseline floor; `compile
+--strict` itself has shipped since `v0.68.3`). The tool probes `gh aw compile
+--help` before invoking compile and aborts with an actionable diagnostic when
+`--strict` is absent. Install with `gh extension install github/gh-aw --pin
+v0.79.2` — v0.79.x are pre-releases, so a bare `gh extension upgrade aw` stops
+at the latest stable.
 
 Example `fleet.local.json` snippet:
 
@@ -700,6 +707,38 @@ in your installed CLI. Either upgrade the CLI
 (`gh extension upgrade gh-aw`), or — preferably — pin the source ref in
 `fleet.json` to a tagged release and run
 `gh-aw-fleet sync --apply --force <repo>` to re-pin.
+
+### `agentics-maintenance.yml`: `string should not be empty [syntax-check]`
+
+`gh aw` generates `.github/workflows/agentics-maintenance.yml` (the
+scheduled cleanup/maintenance workflow) with an empty `workflow_dispatch`
+choice option — `operation: ''`. That empty value is **semantically
+required**: the workflow's scheduled jobs gate on `inputs.operation == ''`.
+But `actionlint`'s `syntax-check` rule — run by `gh aw compile --strict`,
+which public repos default to — rejects empty strings, so a strict compile
+fails:
+
+```text
+.github/workflows/agentics-maintenance.yml:46:13: string should not be empty [syntax-check]
+```
+
+The workflow file is marked **`DO NOT EDIT`** (it's regenerated by
+`gh aw compile`), so don't patch it — the edit would be overwritten. Instead
+suppress the one error in a separate `actionlint` config that `gh aw compile`
+never touches. Add `.github/actionlint.yaml` to the repo:
+
+```yaml
+paths:
+  .github/workflows/agentics-maintenance.yml:
+    ignore:
+      - 'string should not be empty'
+```
+
+`actionlint` reads this whether your CI runs it via `gh aw compile --strict`
+or standalone, and the scope (one file, one error pattern) masks nothing
+else. The suppression survives `gh aw compile` regenerating the workflow.
+This is an upstream `gh-aw` generator/validator inconsistency — the CLI emits
+a file its own strict check rejects.
 
 ### Resuming after a partial failure
 
