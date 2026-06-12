@@ -19,6 +19,7 @@ type consumptionFlags struct {
 	trailing string
 	since    string
 	by       string
+	source   string
 }
 
 // newConsumptionCmd builds the cobra command for `gh-aw-fleet consumption`.
@@ -42,7 +43,12 @@ Temporal modes (mutually exclusive):
   --since YYYY-MM-DD              all reports on or after the given date
 
 Grouping axis:
-  --by repo|profile|cost-center|workflow   (default: repo)`,
+  --by repo|profile|cost-center|workflow   (default: repo)
+
+Data source:
+  --source logs        AI credits from gh aw logs --json per workflow (default;
+                       needs no deployed api-consumption-report workflow)
+  --source artifacts   legacy: api-consumption-report discussions + run artifacts`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runConsumption(cmd, flagDir, &flags)
 		},
@@ -51,6 +57,7 @@ Grouping axis:
 	cmd.Flags().StringVar(&flags.trailing, "trailing", "", "Trailing window like 7d")
 	cmd.Flags().StringVar(&flags.since, "since", "", "Since date in YYYY-MM-DD")
 	cmd.Flags().StringVar(&flags.by, "by", "repo", "Group-by axis: repo|profile|cost-center|workflow")
+	cmd.Flags().StringVar(&flags.source, "source", "logs", "Data source: logs|artifacts")
 	cmd.MarkFlagsMutuallyExclusive("latest", "trailing", "since")
 	return cmd
 }
@@ -62,6 +69,14 @@ func runConsumption(cmd *cobra.Command, flagDir *string, flags *consumptionFlags
 	jsonMode := outputMode(cmd) == outputJSON
 
 	by, err := fleet.ParseGroupBy(flags.by)
+	if err != nil {
+		if jsonMode {
+			return preResultFailureEnvelope(cmd, commandConsumption, "", false, err)
+		}
+		return err
+	}
+
+	source, err := fleet.ParseSource(flags.source)
 	if err != nil {
 		if jsonMode {
 			return preResultFailureEnvelope(cmd, commandConsumption, "", false, err)
@@ -86,7 +101,7 @@ func runConsumption(cmd *cobra.Command, flagDir *string, flags *consumptionFlags
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "  (loaded %s)\n", cfg.LoadedFrom)
 
-	res, warnings, err := fleet.AggregateConsumption(cmd.Context(), cfg, mode, by)
+	res, warnings, err := fleet.AggregateConsumption(cmd.Context(), cfg, mode, by, source)
 	if err != nil {
 		if jsonMode {
 			return preResultFailureEnvelope(cmd, commandConsumption, "", false, err)
@@ -136,10 +151,10 @@ func emitConsumptionWarnings(warnings []fleet.Diagnostic) {
 // top-burners footer to cmd.OutOrStdout().
 func renderConsumptionText(cmd *cobra.Command, by fleet.GroupByKind, res *fleet.ConsumptionResult) error {
 	tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tabPadding, ' ', 0)
-	fmt.Fprintf(tw, "%s\tAPI_CALLS\tSAFE_WRITES\tCOST\tREPORTS\n", byColumnHeader(by))
+	fmt.Fprintf(tw, "%s\tAPI_CALLS\tSAFE_WRITES\tAIC\tCOST\tREPORTS\n", byColumnHeader(by))
 	for _, g := range res.Groups {
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%s\t%d\n",
-			g.Key, g.GitHubAPICalls, g.SafeOutputCalls, formatCost(g.Cost), g.ReportCount)
+		fmt.Fprintf(tw, "%s\t%d\t%d\t%s\t%s\t%d\n",
+			g.Key, g.GitHubAPICalls, g.SafeOutputCalls, formatAIC(g.AIC), formatCost(g.Cost), g.ReportCount)
 	}
 	if err := tw.Flush(); err != nil {
 		return err
@@ -150,10 +165,10 @@ func renderConsumptionText(cmd *cobra.Command, by fleet.GroupByKind, res *fleet.
 	fmt.Fprintln(cmd.OutOrStdout())
 	fmt.Fprintln(cmd.OutOrStdout(), "TOP 10 BURNERS:")
 	bt := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tabPadding, ' ', 0)
-	fmt.Fprintln(bt, "WORKFLOW\tRUNS\tAPI_CALLS\tAVG_DURATION\tCOST")
+	fmt.Fprintln(bt, "WORKFLOW\tRUNS\tAPI_CALLS\tAVG_DURATION\tAIC\tCOST")
 	for _, w := range res.TopBurners {
-		fmt.Fprintf(bt, "%s\t%d\t%d\t%.1fs\t%s\n",
-			w.Workflow, w.Runs, w.APICalls, w.AvgDurationS, formatCost(w.Cost))
+		fmt.Fprintf(bt, "%s\t%d\t%d\t%.1fs\t%s\t%s\n",
+			w.Workflow, w.Runs, w.APICalls, w.AvgDurationS, formatAIC(w.AIC), formatCost(w.Cost))
 	}
 	return bt.Flush()
 }
@@ -179,4 +194,13 @@ func formatCost(c *float64) string {
 		return "-"
 	}
 	return fmt.Sprintf("$%.2f", *c)
+}
+
+// formatAIC renders an AI-credit total as %.2f when populated, else "-". No "$"
+// prefix — AIC is credits, not dollars (the derived USD lives in the COST column).
+func formatAIC(a *float64) string {
+	if a == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%.2f", *a)
 }

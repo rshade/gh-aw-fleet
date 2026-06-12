@@ -76,9 +76,9 @@ const billingQuotaHint = "Upstream returned HTTP 402 / Payment Required — a bi
 // (two upstream Cobra/pflag flag-error variants plus the wrapped error
 // runCompileStrictIfNeeded emits when its probe concludes the flag is
 // absent); CompileStrictError.Message for DiagGhAwTooOld also embeds it.
-const ghAwTooOldHint = "Local `gh aw` is too old: `compile --strict` requires minimum v0.68.3. " +
-	"Upgrade with `gh extension upgrade aw`. To bypass for repos that don't need strict compile, " +
-	"set `\"compile_strict\": false` in fleet.local.json."
+const ghAwTooOldHint = "Local `gh aw` is too old: `compile --strict` is unavailable and this fleet requires minimum v0.79.2. " +
+	"Install it with `gh extension install github/gh-aw --pin v0.79.2` (v0.79.x are pre-releases, so a bare `gh extension upgrade aw` stops at the latest stable). " +
+	"To bypass for repos that don't need strict compile, set `\"compile_strict\": false` in fleet.local.json."
 
 // compileStrictFailedHint is the single source of truth for the
 // strict-mode validation failure remediation. Two hint-table patterns
@@ -102,7 +102,7 @@ var hints = []Hint{
 		Pattern: "Unknown property: mount-as-clis",
 		Message: "Workflow uses `mount-as-clis`, an unreleased gh-aw feature. " +
 			"`gh extension upgrade gh-aw` if your CLI is out of date; if already latest, " +
-			"the upstream is ahead of the release — pin the source to a tagged release (e.g. `@v0.68.3`) " +
+			"the upstream is ahead of the release — pin the source to a tagged release (e.g. `@v0.79.2`) " +
 			"via `fleet sync --apply --force`.",
 		Code: DiagUnknownProperty,
 	},

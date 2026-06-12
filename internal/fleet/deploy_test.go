@@ -1396,7 +1396,7 @@ func TestDeploy_ProbeFlagAbsent_EmitsDiagGhAwTooOld(t *testing.T) {
 		t.Fatal("err = nil; want non-nil")
 	}
 	msg := err.Error()
-	for _, want := range []string{"v0.68.3", "v0.50.0"} {
+	for _, want := range []string{"v0.79.2", "v0.50.0"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("err = %q; want substring %q", msg, want)
 		}
@@ -1768,5 +1768,87 @@ func TestDeployPushGateResumeApply_RefreshesPlainCompileAfterOptOut(t *testing.T
 	}
 	if len(status) != 0 {
 		t.Fatalf(".github status = %q; want clean after amend", status)
+	}
+}
+
+// TestRelocateNestedDotGitHub covers the gh-aw-add path-bug workaround: a
+// skill materialized under .github/workflows/.github/ must be lifted up to
+// .github/, merging into any existing tree, with the nested dir removed.
+func TestRelocateNestedDotGitHub(t *testing.T) {
+	writeFile := func(t *testing.T, path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("relocates mis-nested skill and merges into existing .github", func(t *testing.T) {
+		clone := t.TempDir()
+		// Pre-existing legit file under .github/ that must survive the merge.
+		writeFile(t, filepath.Join(clone, ".github/workflows/api-consumption-report.md"), "report")
+		// Mis-placed skill at the doubled path.
+		writeFile(t, filepath.Join(clone, ".github/workflows/.github/skills/jqschema/SKILL.md"), "skill")
+
+		moved, err := relocateNestedDotGitHub(clone)
+		if err != nil {
+			t.Fatalf("relocateNestedDotGitHub: %v", err)
+		}
+		if !moved {
+			t.Fatal("moved = false; want true")
+		}
+		// Skill now resolves at the path the report's ../skills import expects.
+		if !fileExists(filepath.Join(clone, ".github/skills/jqschema/SKILL.md")) {
+			t.Error("skill not relocated to .github/skills/jqschema/SKILL.md")
+		}
+		// The doubled tree is gone.
+		if fileExists(filepath.Join(clone, ".github/workflows/.github")) {
+			t.Error(".github/workflows/.github not removed")
+		}
+		// The pre-existing workflow file is untouched.
+		if !fileExists(filepath.Join(clone, ".github/workflows/api-consumption-report.md")) {
+			t.Error("pre-existing workflow file was clobbered")
+		}
+	})
+
+	t.Run("no nested tree is a no-op", func(t *testing.T) {
+		clone := t.TempDir()
+		writeFile(t, filepath.Join(clone, ".github/workflows/foo.md"), "x")
+		moved, err := relocateNestedDotGitHub(clone)
+		if err != nil {
+			t.Fatalf("relocateNestedDotGitHub: %v", err)
+		}
+		if moved {
+			t.Error("moved = true; want false when no nested tree exists")
+		}
+	})
+}
+
+// TestEnsureInit_SkipsWhenMarkerPresent covers both the current
+// (agentic-workflows.agent.md) and legacy (agentic-workflows.md) init markers:
+// either present means the repo is already initialized and `gh aw init` must
+// not run. Only the skip paths are exercised so the test never shells out to
+// gh aw.
+func TestEnsureInit_SkipsWhenMarkerPresent(t *testing.T) {
+	for _, marker := range initMarkerPaths {
+		t.Run(marker, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, marker)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("agent setup\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			ran, err := ensureInit(context.Background(), dir)
+			if err != nil {
+				t.Fatalf("ensureInit: %v", err)
+			}
+			if ran {
+				t.Errorf("ensureInit ran gh aw init despite marker %q present; want skip", marker)
+			}
+		})
 	}
 }

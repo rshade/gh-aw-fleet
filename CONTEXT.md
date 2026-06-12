@@ -58,7 +58,10 @@ even when technically feasible.
   in test contexts must be hard-stopped from passing `--apply`.
 - **Pin `gh aw` sources to released tags, never to `main`.** Upstream `main`
   often contains unreleased features that break the installed CLI; we pin
-  conservatively in `profiles/default.json` and bump deliberately.
+  conservatively in `profiles/default.json` and bump deliberately. The current
+  documented/CI floor is `v0.79.2`; install it with
+  `gh extension install github/gh-aw --pin v0.79.2` (v0.79.x are tagged as
+  pre-releases, so a bare `gh extension upgrade aw` stops at the latest stable).
 
 ### Conventions
 

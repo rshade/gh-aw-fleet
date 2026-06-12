@@ -245,6 +245,18 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	engine := cfg.EffectiveEngine(repo)
 	addResolvedWorkflows(ctx, res, resolved, opts, engine)
 
+	// Work around a gh aw add path bug (observed v0.79.2): a workflow that
+	// imports a skill via a repo-relative path (e.g. ../skills/jqschema/SKILL.md)
+	// has that skill materialized one level too deep under
+	// .github/workflows/.github/ instead of .github/, so the import fails to
+	// resolve and gh aw add's own compile aborts before writing the .lock.yml.
+	// Relocate the tree, then recompile the affected workflows so their lock
+	// files exist for the commit. Runs in dry-run too, so the dry-run reflects
+	// reality.
+	if err = fixMisplacedSkillImports(ctx, res, repo, engine); err != nil {
+		return res, err
+	}
+
 	// Check that the engine secret exists on the target repo regardless of dry-run/apply.
 	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
 	res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
@@ -532,9 +544,24 @@ func prepareClone(ctx context.Context, repo, explicit string) (string, error) {
 	return dir, nil
 }
 
+// initMarkerPaths are the repo-relative files whose presence proves a repo was
+// already initialized for gh-aw. gh-aw renamed the agent marker from
+// agentic-workflows.md to agentic-workflows.agent.md across versions; we accept
+// either so a repo initialized by an older CLI is not re-initialized. That
+// matters because `gh aw init` in newer CLIs fails on repos predating the
+// .github/aw dispatcher-skill layout.
+//
+//nolint:gochecknoglobals // immutable marker list; Go has no const slices.
+var initMarkerPaths = []string{
+	".github/agents/agentic-workflows.agent.md",
+	".github/agents/agentic-workflows.md",
+}
+
 func ensureInit(ctx context.Context, dir string) (bool, error) {
-	if fileExists(filepath.Join(dir, ".github/agents/agentic-workflows.agent.md")) {
-		return false, nil
+	for _, marker := range initMarkerPaths {
+		if fileExists(filepath.Join(dir, marker)) {
+			return false, nil
+		}
 	}
 	cmd := exec.CommandContext(ctx, "gh", "aw", "init")
 	cmd.Dir = dir
@@ -544,6 +571,101 @@ func ensureInit(ctx context.Context, dir string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// fixMisplacedSkillImports relocates a mis-nested .github/workflows/.github
+// tree up to .github/ and, when a relocation occurred, recompiles the
+// just-added workflows so their lock files exist. No-op when nothing was
+// mis-placed. See the call site in Deploy for the upstream gh aw add bug this
+// works around.
+func fixMisplacedSkillImports(ctx context.Context, res *DeployResult, repo, engine string) error {
+	moved, err := relocateNestedDotGitHub(res.CloneDir)
+	if err != nil {
+		return fmt.Errorf("relocate nested .github: %w", err)
+	}
+	if !moved {
+		return nil
+	}
+	zlog.Warn().
+		Str("event", "relocated_nested_github").
+		Str(fieldRepo, repo).
+		Str(fieldCloneDir, res.CloneDir).
+		Msg("moved mis-placed skill imports from .github/workflows/.github up to .github (gh aw add path bug); recompiling affected workflows")
+	return recompileAddedWorkflows(ctx, res, engine)
+}
+
+// relocateNestedDotGitHub moves every file under
+// <cloneDir>/.github/workflows/.github/ up to <cloneDir>/.github/, merging into
+// existing directories, then removes the emptied nested tree. Returns whether
+// any file was moved; a missing nested tree is a no-op returning false. Files
+// are collected before any move so the walk is not mutated mid-iteration.
+func relocateNestedDotGitHub(cloneDir string) (bool, error) {
+	nested := filepath.Join(cloneDir, ".github", "workflows", ".github")
+	info, err := os.Stat(nested)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+	var files []string
+	walkErr := filepath.WalkDir(nested, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return false, walkErr
+	}
+	target := filepath.Join(cloneDir, ".github")
+	for _, src := range files {
+		rel, relErr := filepath.Rel(nested, src)
+		if relErr != nil {
+			return true, relErr
+		}
+		dst := filepath.Join(target, rel)
+		if mkErr := os.MkdirAll(filepath.Dir(dst), 0o750); mkErr != nil {
+			return true, mkErr
+		}
+		if rnErr := os.Rename(src, dst); rnErr != nil {
+			return true, rnErr
+		}
+	}
+	if rmErr := os.RemoveAll(nested); rmErr != nil {
+		return len(files) > 0, rmErr
+	}
+	return len(files) > 0, nil
+}
+
+// recompileAddedWorkflows runs `gh aw compile` on each workflow this deploy
+// added, regenerating the .lock.yml that gh aw add failed to write when a
+// mis-placed skill import broke its in-process compile. It MUST forward the
+// same engine override gh aw add used (--engine) — without it, compile re-reads
+// the workflow's native frontmatter engine (e.g. `engine: claude`) and silently
+// reverts the deploy's intended engine, producing a lock that demands the wrong
+// secret at runtime.
+func recompileAddedWorkflows(ctx context.Context, res *DeployResult, engine string) error {
+	for _, w := range res.Added {
+		mdPath := filepath.Join(".github", "workflows", w.Name+".md")
+		args := []string{"aw", "compile", mdPath}
+		if engine != "" {
+			args = append(args, "--engine", engine)
+		}
+		cmd := exec.CommandContext(ctx, "gh", args...)
+		cmd.Dir = res.CloneDir
+		out, err := runLoggedCombined(cmd, "gh", "aw compile", map[string]string{fieldCloneDir: res.CloneDir})
+		if err != nil {
+			return fmt.Errorf("gh aw compile %s: %w: %s", mdPath, err, strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
 }
 
 func runAdd(ctx context.Context, dir, spec, engine string, force bool) (string, error) {
@@ -858,10 +980,12 @@ func (r *DeployResult) SetCompileStrictEffective(b bool) { r.CompileStrictEffect
 // WorkCloneDir implements compileStrictResult.
 func (r *DeployResult) WorkCloneDir() string { return r.CloneDir }
 
-// CompileStrictMinVersion is the lowest `gh aw` release that ships the
-// `compile --strict` flag. Surfaced in CompileStrictError.Fields and in
-// the operator-facing diagnostic message so consumers can gate on it.
-const CompileStrictMinVersion = "v0.68.3"
+// CompileStrictMinVersion is the minimum `gh aw` release this fleet
+// supports. The probed `compile --strict` gate has shipped since v0.68.3,
+// but the documented/CI floor is v0.79.2 (the FinOps baseline; see #108).
+// Surfaced in CompileStrictError.Fields and in the operator-facing
+// diagnostic message so consumers can gate on it.
+const CompileStrictMinVersion = "v0.79.2"
 
 // logCompileStrictResolution resolves the effective compile-strict policy
 // for repo and emits the FR-006 info log line plus the FR-007 warn line on

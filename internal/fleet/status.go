@@ -72,7 +72,7 @@ type RepoStatus struct {
 type WorkflowDrift struct {
 	// Name is the workflow basename, no .md suffix (e.g. "audit").
 	Name string `json:"name"`
-	// DesiredRef is the literal ref string from fleet.json (e.g. "v0.68.3").
+	// DesiredRef is the literal ref string from fleet.json (e.g. "v0.79.2").
 	DesiredRef string `json:"desired_ref"`
 	// ActualRef is the literal ref segment of the installed `source:`
 	// frontmatter (the part after "@"). May be a tag, branch, or SHA.

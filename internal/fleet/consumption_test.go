@@ -437,7 +437,13 @@ func TestAggregateConsumption_GroupByRepo(t *testing.T) {
 			return artifactPayload{}
 		},
 	)
-	res, _, err := AggregateConsumption(context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByRepo)
+	res, _, err := AggregateConsumption(
+		context.Background(),
+		cfg,
+		FetchMode{Kind: FetchLatest},
+		GroupByRepo,
+		SourceArtifacts,
+	)
 	if err != nil {
 		t.Fatalf("AggregateConsumption: %v", err)
 	}
@@ -616,7 +622,13 @@ func TestAggregateConsumption_GroupByProfile(t *testing.T) {
 			})
 		},
 	)
-	res, _, err := AggregateConsumption(context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByProfile)
+	res, _, err := AggregateConsumption(
+		context.Background(),
+		cfg,
+		FetchMode{Kind: FetchLatest},
+		GroupByProfile,
+		SourceArtifacts,
+	)
 	if err != nil {
 		t.Fatalf("AggregateConsumption: %v", err)
 	}
@@ -663,7 +675,13 @@ func TestAggregateConsumption_GroupByCostCenter(t *testing.T) {
 			return synthArtifact(100, 5, nil, []synthWorkflow{{Name: "wf", Runs: 1, APICalls: 100}})
 		},
 	)
-	res, _, err := AggregateConsumption(context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByCostCenter)
+	res, _, err := AggregateConsumption(
+		context.Background(),
+		cfg,
+		FetchMode{Kind: FetchLatest},
+		GroupByCostCenter,
+		SourceArtifacts,
+	)
 	if err != nil {
 		t.Fatalf("AggregateConsumption: %v", err)
 	}
@@ -713,7 +731,13 @@ func TestAggregateConsumption_GroupByWorkflow(t *testing.T) {
 			return synthArtifact(600, 30, fptr(3.0), workflows)
 		},
 	)
-	res, _, err := AggregateConsumption(context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByWorkflow)
+	res, _, err := AggregateConsumption(
+		context.Background(),
+		cfg,
+		FetchMode{Kind: FetchLatest},
+		GroupByWorkflow,
+		SourceArtifacts,
+	)
 	if err != nil {
 		t.Fatalf("AggregateConsumption: %v", err)
 	}
@@ -767,7 +791,13 @@ func TestAggregateConsumption_TopBurnersFullTen(t *testing.T) {
 			return synthArtifact(120000, 50, nil, workflows)
 		},
 	)
-	res, _, err := AggregateConsumption(context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByRepo)
+	res, _, err := AggregateConsumption(
+		context.Background(),
+		cfg,
+		FetchMode{Kind: FetchLatest},
+		GroupByRepo,
+		SourceArtifacts,
+	)
 	if err != nil {
 		t.Fatalf("AggregateConsumption: %v", err)
 	}
@@ -810,11 +840,472 @@ func TestAggregateConsumption_TopBurnersFewer(t *testing.T) {
 			})
 		},
 	)
-	res, _, err := AggregateConsumption(context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByRepo)
+	res, _, err := AggregateConsumption(
+		context.Background(),
+		cfg,
+		FetchMode{Kind: FetchLatest},
+		GroupByRepo,
+		SourceArtifacts,
+	)
 	if err != nil {
 		t.Fatalf("AggregateConsumption: %v", err)
 	}
 	if len(res.TopBurners) != 3 {
 		t.Errorf("len(TopBurners) = %d; want 3 (no padding to 10)", len(res.TopBurners))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// selectArtifactIDs — real gh-aw artifact names (activation / aw-info)
+// ---------------------------------------------------------------------------
+
+func TestSelectArtifactIDs(t *testing.T) {
+	tests := []struct {
+		name        string
+		artifacts   []artifactRef
+		wantAWInfo  int64
+		wantRunSumm int64
+	}{
+		{
+			name: "v5 activation + run_summary",
+			artifacts: []artifactRef{
+				{ID: 11, Name: "agent"},
+				{ID: 12, Name: "activation"},
+				{ID: 13, Name: "run_summary"},
+			},
+			wantAWInfo:  12,
+			wantRunSumm: 13,
+		},
+		{
+			name:        "legacy aw-info (dash)",
+			artifacts:   []artifactRef{{ID: 20, Name: "aw-info"}},
+			wantAWInfo:  20,
+			wantRunSumm: 0,
+		},
+		{
+			name: "activation wins over aw-info when both present",
+			artifacts: []artifactRef{
+				{ID: 31, Name: "aw-info"},
+				{ID: 32, Name: "activation"},
+			},
+			wantAWInfo:  32,
+			wantRunSumm: 0,
+		},
+		{
+			name:        "underscore fallback still matched",
+			artifacts:   []artifactRef{{ID: 40, Name: "aw_info"}},
+			wantAWInfo:  40,
+			wantRunSumm: 0,
+		},
+		{
+			name: "no aw_info artifact present",
+			artifacts: []artifactRef{
+				{ID: 50, Name: "agent"},
+				{ID: 51, Name: "detection"},
+			},
+			wantAWInfo:  0,
+			wantRunSumm: 0,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotAW, gotRS := selectArtifactIDs(tc.artifacts)
+			if gotAW != tc.wantAWInfo {
+				t.Errorf("awInfoID = %d; want %d", gotAW, tc.wantAWInfo)
+			}
+			if gotRS != tc.wantRunSumm {
+				t.Errorf("runSummaryID = %d; want %d", gotRS, tc.wantRunSumm)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// nil-cost hint — Copilot AI-Credits model emits no USD cost
+// ---------------------------------------------------------------------------
+
+func hasNilCostHint(diags []Diagnostic) bool {
+	for _, d := range diags {
+		if d.Code == DiagHint && strings.Contains(d.Message, "Cost is unavailable for every report") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAggregateConsumption_NilCostHint(t *testing.T) {
+	cfg := &Config{
+		LoadedFrom: "fleet.local.json",
+		Profiles:   map[string]Profile{"default": {Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}}},
+		Repos:      map[string]RepoSpec{"a/one": {Profiles: []string{"default"}}},
+	}
+
+	t.Run("all-nil cost emits the hint", func(t *testing.T) {
+		stubFleet(t,
+			func(_ string) []discussionJSON { return []discussionJSON{synthDiscussion()} },
+			func(_ string, _ int64) artifactPayload {
+				return synthArtifact(100, 5, nil, []synthWorkflow{
+					{Name: "wf", Runs: 1, APICalls: 100, AvgDuration: 9},
+				})
+			},
+		)
+		_, diags, err := AggregateConsumption(
+			context.Background(),
+			cfg,
+			FetchMode{Kind: FetchLatest},
+			GroupByRepo,
+			SourceArtifacts,
+		)
+		if err != nil {
+			t.Fatalf("AggregateConsumption: %v", err)
+		}
+		if !hasNilCostHint(diags) {
+			t.Errorf("expected nil-cost hint when every group has nil cost; diags=%v", diags)
+		}
+	})
+
+	t.Run("present cost suppresses the hint", func(t *testing.T) {
+		stubFleet(t,
+			func(_ string) []discussionJSON { return []discussionJSON{synthDiscussion()} },
+			func(_ string, _ int64) artifactPayload {
+				return synthArtifact(100, 5, fptr(1.25), []synthWorkflow{
+					{Name: "wf", Runs: 1, APICalls: 100, AvgDuration: 9, Cost: fptr(1.25)},
+				})
+			},
+		)
+		_, diags, err := AggregateConsumption(
+			context.Background(),
+			cfg,
+			FetchMode{Kind: FetchLatest},
+			GroupByRepo,
+			SourceArtifacts,
+		)
+		if err != nil {
+			t.Fatalf("AggregateConsumption: %v", err)
+		}
+		if hasNilCostHint(diags) {
+			t.Errorf("did not expect nil-cost hint when a group has positive cost; diags=%v", diags)
+		}
+	})
+
+	t.Run("no reports does not emit the hint", func(t *testing.T) {
+		stubFleet(t,
+			func(_ string) []discussionJSON { return nil },
+			func(_ string, _ int64) artifactPayload { return artifactPayload{} },
+		)
+		_, diags, err := AggregateConsumption(
+			context.Background(),
+			cfg,
+			FetchMode{Kind: FetchLatest},
+			GroupByRepo,
+			SourceArtifacts,
+		)
+		if err != nil {
+			t.Fatalf("AggregateConsumption: %v", err)
+		}
+		if hasNilCostHint(diags) {
+			t.Errorf("did not expect nil-cost hint when no reports were discovered; diags=%v", diags)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Logs source (#103) — gh aw logs --json AIC rollup
+// ---------------------------------------------------------------------------
+
+func TestParseSource(t *testing.T) {
+	for _, tc := range []struct {
+		in      string
+		want    SourceKind
+		wantErr bool
+	}{
+		{"logs", SourceLogs, false},
+		{"artifacts", SourceArtifacts, false},
+		{"bogus", 0, true},
+	} {
+		got, err := ParseSource(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("ParseSource(%q): want error", tc.in)
+			}
+			continue
+		}
+		if err != nil || got != tc.want {
+			t.Errorf("ParseSource(%q) = %v, %v", tc.in, got, err)
+		}
+	}
+	if SourceLogs.String() != "logs" || SourceArtifacts.String() != "artifacts" {
+		t.Errorf("String() mismatch: %q %q", SourceLogs.String(), SourceArtifacts.String())
+	}
+}
+
+func TestLogsWindowArgs(t *testing.T) {
+	since := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		mode FetchMode
+		want string
+	}{
+		{"latest", FetchMode{Kind: FetchLatest}, "-c 5"},
+		{"trailing", FetchMode{Kind: FetchTrailing, Days: 7}, "--start-date -7d -c 1000"},
+		{"since", FetchMode{Kind: FetchSince, Since: since}, "--start-date 2026-04-01 -c 1000"},
+	}
+	for _, tc := range cases {
+		got := strings.Join(logsWindowArgs(tc.mode), " ")
+		if got != tc.want {
+			t.Errorf("%s: logsWindowArgs = %q; want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func mustReadLogsPayload(t *testing.T, name string) logsPayload {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "logs", name))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	var p logsPayload
+	if err := json.Unmarshal(b, &p); err != nil {
+		t.Fatalf("decode %s: %v", name, err)
+	}
+	return p
+}
+
+func withLogsStubs(
+	t *testing.T,
+	workflows func(repo string) ([]workflowRef, error),
+	logs func(repo, workflow string, mode FetchMode) (logsPayload, error),
+) {
+	t.Helper()
+	prevW, prevL, prevV := ghWorkflowsAPI, ghLogsAPI, ghAwVersion
+	t.Cleanup(func() { ghWorkflowsAPI, ghLogsAPI, ghAwVersion = prevW, prevL, prevV })
+	ghWorkflowsAPI = func(_ context.Context, repo string) ([]workflowRef, error) { return workflows(repo) }
+	ghLogsAPI = func(_ context.Context, repo, workflow string, mode FetchMode) (logsPayload, error) {
+		return logs(repo, workflow, mode)
+	}
+	ghAwVersion = func(_ context.Context) (string, error) { return logsSourceMinVersion, nil }
+}
+
+func hasNilAICHint(diags []Diagnostic) bool {
+	for _, d := range diags {
+		if d.Code == DiagHint && strings.Contains(d.Message, "No AI-credit data found") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAggregateConsumption_LogsSource(t *testing.T) {
+	cfg := &Config{
+		LoadedFrom: "fleet.local.json",
+		Profiles:   map[string]Profile{"default": {Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}}},
+		Repos:      map[string]RepoSpec{"a/one": {Profiles: []string{"default"}}},
+	}
+	// Very wide window so the 2026 fixture runs are always in-window.
+	wide := FetchMode{Kind: FetchTrailing, Days: 100000}
+	oneWorkflow := func(_ string) ([]workflowRef, error) {
+		return []workflowRef{{Name: "WF One", Path: ".github/workflows/wf-one.lock.yml"}}, nil
+	}
+
+	t.Run("rich logs → AIC populated, COST = AIC*0.01", func(t *testing.T) {
+		rich := mustReadLogsPayload(t, "logs_with_aic.json")
+		withLogsStubs(t, oneWorkflow,
+			func(_, _ string, _ FetchMode) (logsPayload, error) { return rich, nil })
+		res, diags, err := AggregateConsumption(context.Background(), cfg, wide, GroupByRepo, SourceLogs)
+		if err != nil {
+			t.Fatalf("AggregateConsumption: %v", err)
+		}
+		if res.Source != "logs" {
+			t.Errorf("Source = %q; want logs", res.Source)
+		}
+		if len(res.Groups) != 1 {
+			t.Fatalf("groups = %d; want 1", len(res.Groups))
+		}
+		g := res.Groups[0]
+		if g.AIC == nil {
+			t.Fatal("AIC nil; want populated from logs_with_aic fixture")
+		}
+		// 125.75499 + 137.49432 + 260.16342 = 523.41273 (the failed run omits aic).
+		if *g.AIC < 523.0 || *g.AIC > 524.0 {
+			t.Errorf("AIC = %v; want ~523.41", *g.AIC)
+		}
+		if g.Cost == nil || *g.Cost != *g.AIC*aicToUSDRate {
+			t.Errorf("Cost = %v; want AIC*%.2f = %v", g.Cost, aicToUSDRate, *g.AIC*aicToUSDRate)
+		}
+		if hasNilAICHint(diags) {
+			t.Errorf("did not expect nil-AIC hint when AIC is populated; diags=%v", diags)
+		}
+	})
+
+	t.Run("all-failure repo → AIC nil + hint", func(t *testing.T) {
+		fail := mustReadLogsPayload(t, "logs_all_failures.json")
+		withLogsStubs(t, oneWorkflow,
+			func(_, _ string, _ FetchMode) (logsPayload, error) { return fail, nil })
+		res, diags, err := AggregateConsumption(context.Background(), cfg, wide, GroupByRepo, SourceLogs)
+		if err != nil {
+			t.Fatalf("AggregateConsumption: %v", err)
+		}
+		if len(res.Groups) != 1 {
+			t.Fatalf("groups = %d; want 1 (failed runs still produce a report)", len(res.Groups))
+		}
+		if res.Groups[0].AIC != nil {
+			t.Errorf("AIC = %v; want nil for an all-failure repo", *res.Groups[0].AIC)
+		}
+		if !hasNilAICHint(diags) {
+			t.Errorf("expected nil-AIC hint for an all-failure repo; diags=%v", diags)
+		}
+	})
+
+	t.Run("per-workflow fan-out calls logs once per workflow", func(t *testing.T) {
+		rich := mustReadLogsPayload(t, "logs_with_aic.json")
+		var calls []string
+		withLogsStubs(t,
+			func(_ string) ([]workflowRef, error) {
+				return []workflowRef{
+					{Name: "Beta", Path: ".github/workflows/b.lock.yml"},
+					{Name: "Alpha", Path: ".github/workflows/a.lock.yml"},
+				}, nil
+			},
+			func(_, workflow string, _ FetchMode) (logsPayload, error) {
+				calls = append(calls, workflow)
+				return rich, nil
+			})
+		_, _, err := AggregateConsumption(context.Background(), cfg, wide, GroupByWorkflow, SourceLogs)
+		if err != nil {
+			t.Fatalf("AggregateConsumption: %v", err)
+		}
+		// Sorted fan-out: Alpha before Beta.
+		if len(calls) != 2 || calls[0] != "Alpha" || calls[1] != "Beta" {
+			t.Errorf("logs fan-out calls = %v; want [Alpha Beta]", calls)
+		}
+	})
+}
+
+func TestAggregateConsumption_LogsSourceRejectsOldGhAw(t *testing.T) {
+	cfg := &Config{
+		LoadedFrom: "fleet.local.json",
+		Profiles:   map[string]Profile{"default": {Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}}},
+		Repos:      map[string]RepoSpec{"a/one": {Profiles: []string{"default"}}},
+	}
+	prevW, prevL, prevV := ghWorkflowsAPI, ghLogsAPI, ghAwVersion
+	t.Cleanup(func() { ghWorkflowsAPI, ghLogsAPI, ghAwVersion = prevW, prevL, prevV })
+	var workflowCalls, logsCalls int
+	ghAwVersion = func(_ context.Context) (string, error) { return "v0.77.5", nil }
+	ghWorkflowsAPI = func(_ context.Context, _ string) ([]workflowRef, error) {
+		workflowCalls++
+		return nil, nil
+	}
+	ghLogsAPI = func(_ context.Context, _, _ string, _ FetchMode) (logsPayload, error) {
+		logsCalls++
+		return logsPayload{}, nil
+	}
+
+	res, diags, err := AggregateConsumption(
+		context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByRepo, SourceLogs,
+	)
+	if err == nil {
+		t.Fatal("AggregateConsumption: err nil; want old gh-aw version error")
+	}
+	if res != nil {
+		t.Fatalf("res = %#v; want nil when version gate fails", res)
+	}
+	if diags != nil {
+		t.Fatalf("diags = %#v; want nil when version gate fails", diags)
+	}
+	for _, want := range []string{"v0.77.5", logsSourceMinVersion, "--source artifacts"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %q; want substring %q", err.Error(), want)
+		}
+	}
+	if workflowCalls != 0 || logsCalls != 0 {
+		t.Errorf("version gate did not short-circuit: workflowCalls=%d logsCalls=%d", workflowCalls, logsCalls)
+	}
+}
+
+func TestAggregateConsumption_LogsSourceSafeWritesUsesFilteredRuns(t *testing.T) {
+	cfg := &Config{
+		LoadedFrom: "fleet.local.json",
+		Profiles:   map[string]Profile{"default": {Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}}},
+		Repos:      map[string]RepoSpec{"a/one": {Profiles: []string{"default"}}},
+	}
+	oneWorkflow := func(_ string) ([]workflowRef, error) {
+		return []workflowRef{{Name: "WF One", Path: ".github/workflows/wf-one.lock.yml"}}, nil
+	}
+	olderAIC, latestAIC := 1.0, 2.0
+	payload := logsPayload{
+		Summary: logsSummary{TotalSafeItems: 99},
+		Runs: []logsRun{
+			{
+				RunID:          1,
+				AIC:            &olderAIC,
+				GitHubAPICalls: 7,
+				SafeItemsCount: 40,
+				ActionMinutes:  1,
+				CreatedAt:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+			},
+			{
+				RunID:          2,
+				AIC:            &latestAIC,
+				GitHubAPICalls: 3,
+				SafeItemsCount: 2,
+				ActionMinutes:  1,
+				CreatedAt:      time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	withLogsStubs(t, oneWorkflow,
+		func(_, _ string, _ FetchMode) (logsPayload, error) { return payload, nil })
+
+	res, _, err := AggregateConsumption(
+		context.Background(), cfg, FetchMode{Kind: FetchLatest}, GroupByRepo, SourceLogs,
+	)
+	if err != nil {
+		t.Fatalf("AggregateConsumption: %v", err)
+	}
+	if len(res.Groups) != 1 {
+		t.Fatalf("groups = %d; want 1", len(res.Groups))
+	}
+	g := res.Groups[0]
+	if g.SafeOutputCalls != 2 {
+		t.Errorf("SAFE_WRITES = %d; want 2 from latest run, not summary total 99", g.SafeOutputCalls)
+	}
+	if g.GitHubAPICalls != 3 {
+		t.Errorf("API_CALLS = %d; want 3 from latest run", g.GitHubAPICalls)
+	}
+	if g.AIC == nil || *g.AIC != latestAIC {
+		t.Errorf("AIC = %v; want %v from latest run", g.AIC, latestAIC)
+	}
+}
+
+func TestCompareVersionTokens(t *testing.T) {
+	cases := []struct {
+		name    string
+		a       string
+		b       string
+		want    int
+		wantErr bool
+	}{
+		{"equal", "v0.79.2", "v0.79.2", 0, false},
+		{"patch greater", "v0.79.3", "v0.79.2", 1, false},
+		{"minor lower", "v0.77.5", "v0.79.2", -1, false},
+		{"major greater", "v1.0.0", "v0.79.2", 1, false},
+		{"invalid", "0.79.2", "v0.79.2", 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := compareVersionTokens(tc.a, tc.b)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("compareVersionTokens(%q, %q): err nil; want error", tc.a, tc.b)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("compareVersionTokens(%q, %q): %v", tc.a, tc.b, err)
+			}
+			if got != tc.want {
+				t.Errorf("compareVersionTokens(%q, %q) = %d; want %d", tc.a, tc.b, got, tc.want)
+			}
+		})
 	}
 }

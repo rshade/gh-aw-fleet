@@ -22,7 +22,7 @@ Response (subset consumed):
   "artifacts": [
     {
       "id": 1234567890,
-      "name": "aw_info",
+      "name": "activation",
       "archive_download_url": "https://api.github.com/repos/owner/name/actions/artifacts/1234567890/zip"
     },
     {
@@ -34,25 +34,25 @@ Response (subset consumed):
 }
 ```
 
-We select artifacts whose `name` is `"aw_info"` or `"run_summary"` (exact match). If `aw_info` is absent → emit a `DiagHint` warning `"Run #{id} on {repo} has no aw_info artifact — possibly older format; skipping"` and return `nil, nil` (caller skips this report). If `run_summary` is absent we proceed with an empty per-workflow breakdown (the rollup row still has the aw_info totals).
+**Artifact names (verified 2026-06-09 against rshade/finfocus run 27241899611):** the artifact carrying `aw_info.json` is named **`activation`** (gh-aw v5+, multi-file: `aw_info.json` + `prompt.txt` + `github_rate_limits.jsonl`) or **`aw-info`** (legacy single-file, note the dash) — **never `aw_info`** (underscore). `selectArtifactIDs` matches the precedence list `["activation", "aw-info", "aw_info"]` (earliest wins), with `aw_info` retained only as a defensive fallback. `run_summary` (or `run-summary`) is rarely present — `run_summary.json` is a local `gh aw audit` cache, not normally uploaded; when absent we proceed with an empty per-workflow breakdown.
 
 ### Step 2 — download and unzip
 
 For each selected artifact:
 
 ```bash
-gh api "repos/{owner}/{name}/actions/artifacts/{artifact_id}/zip" \
-  -H "Accept: application/octet-stream"
+gh api "repos/{owner}/{name}/actions/artifacts/{artifact_id}/zip"
 ```
+
+> Do **not** send `-H "Accept: application/octet-stream"` — GitHub now rejects it on the `/zip` endpoint with **HTTP 415** ("Must accept 'application/json'"). The endpoint replies with a 302 to blob storage and the default `gh api` Accept header follows it correctly.
 
 The response body is a zip archive (bytes). Unzip in-memory:
 
 ```go
 zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
-// Inside the archive, the JSON files are named without further nesting:
-//   aw_info/aw_info.json
-//   run_summary/run_summary.json
-// (Upstream gh-aw convention. Verify against a captured fixture.)
+// Files sit at the archive root (the "activation" zip carries aw_info.json
+// directly). readZipFile matches on basename suffix, so any future nesting
+// (e.g. aw-info/aw_info.json) still resolves.
 ```
 
 If the archive cannot be read (truncated, not a zip) → wrap as a generic error and propagate; the caller emits `DiagHint` with the wrapped message.
@@ -97,6 +97,8 @@ type awInfoPayload struct {
     Cost *float64 `json:"cost,omitempty"`
 }
 ```
+
+> **⚠ Known gap (discovered 2026-06-09, pending verification against a live `api-consumption-report` run).** A *regular* agentic run's `aw_info.json` (verified: finfocus run 27241899611) is engine/run metadata only — `engine_id`, `model`, `workflow_name`, `run_id`, `cli_version` — and carries **none** of `github_rate_limit_usage`, `safe_outputs`, or `cost`. Rate-limit data lives in a sibling `github_rate_limits.jsonl` (per-snapshot `used` counter); safe-outputs in `safe-output-items.jsonl`; the fleet-wide aggregate in the report's published **discussion body**. It is not yet confirmed whether the `api-consumption-report` run *itself* uploads an `aw_info.json`/`run_summary.json` carrying these fields. If it does not, the artifact path yields zeros and the data source should move to the discussion-body table. Resolve once a real report run exists.
 
 Cost-field post-processing:
 

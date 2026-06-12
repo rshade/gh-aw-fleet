@@ -52,7 +52,7 @@ const (
 	DiagCompileStrictFailed = "compile_strict_failed"
 	// DiagGhAwTooOld fires when `gh aw compile --help` does not advertise the
 	// `--strict` flag — the installed `gh aw` extension predates the minimum
-	// supported version (v0.68.3). The hint names `gh extension upgrade aw`.
+	// supported version (v0.79.2). The hint names `gh extension upgrade aw`.
 	DiagGhAwTooOld = "gh_aw_too_old"
 	// DiagGhAwMissing fires when the `gh aw compile --help` probe itself fails
 	// (binary not found or exec error). The hint names

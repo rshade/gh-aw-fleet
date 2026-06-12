@@ -2,6 +2,8 @@ package fleet
 
 const addToken = "add"
 
+const logsToken = "logs"
+
 const (
 	engineCopilot = "copilot"
 	engineClaude  = "claude"
