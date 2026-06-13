@@ -1309,3 +1309,77 @@ func TestCompareVersionTokens(t *testing.T) {
 		})
 	}
 }
+
+func TestScopeToRepos(t *testing.T) {
+	base := &Config{
+		LoadedFrom: "fleet.local.json",
+		Profiles: map[string]Profile{
+			"default": {Sources: map[string]SourcePin{}, Workflows: []ProfileWorkflow{}},
+		},
+		Repos: map[string]RepoSpec{
+			"a/one":   {Profiles: []string{"default"}},
+			"b/two":   {Profiles: []string{"default"}},
+			"c/three": {Profiles: []string{"default"}},
+		},
+	}
+
+	t.Run("empty names returns config unchanged", func(t *testing.T) {
+		got, err := ScopeToRepos(base, nil)
+		if err != nil {
+			t.Fatalf("err = %v; want nil", err)
+		}
+		if got != base {
+			t.Errorf("empty names should return the same config pointer")
+		}
+	})
+
+	t.Run("valid subset filters repos and preserves the rest", func(t *testing.T) {
+		got, err := ScopeToRepos(base, []string{"a/one", "c/three"})
+		if err != nil {
+			t.Fatalf("err = %v; want nil", err)
+		}
+		if len(got.Repos) != 2 {
+			t.Fatalf("len(Repos) = %d; want 2", len(got.Repos))
+		}
+		for _, want := range []string{"a/one", "c/three"} {
+			if _, ok := got.Repos[want]; !ok {
+				t.Errorf("scoped config missing %q", want)
+			}
+		}
+		if _, ok := got.Repos["b/two"]; ok {
+			t.Errorf("b/two should have been excluded from the scoped config")
+		}
+		if got.LoadedFrom != base.LoadedFrom {
+			t.Errorf("LoadedFrom = %q; want %q (preserved)", got.LoadedFrom, base.LoadedFrom)
+		}
+		if _, ok := got.Profiles["default"]; !ok {
+			t.Errorf("Profiles not preserved in scoped config")
+		}
+		if len(base.Repos) != 3 {
+			t.Errorf("original config mutated: len(base.Repos) = %d; want 3", len(base.Repos))
+		}
+	})
+
+	t.Run("single unknown repo errors via ErrRepoNotTracked naming the config file", func(t *testing.T) {
+		_, err := ScopeToRepos(base, []string{"x/missing"})
+		if err == nil {
+			t.Fatal("err = nil; want error for unknown repo")
+		}
+		got := err.Error()
+		if !strings.Contains(got, "x/missing") || !strings.Contains(got, base.LoadedFrom) {
+			t.Errorf("err = %q; want it to name %q and %q", got, "x/missing", base.LoadedFrom)
+		}
+	})
+
+	t.Run("unknown repo errors and names every offender", func(t *testing.T) {
+		_, err := ScopeToRepos(base, []string{"a/one", "x/missing", "y/gone"})
+		if err == nil {
+			t.Fatal("err = nil; want error for unknown repos")
+		}
+		for _, want := range []string{"x/missing", "y/gone"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("err = %q; want it to name %q", err, want)
+			}
+		}
+	})
+}

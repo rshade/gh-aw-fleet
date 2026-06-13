@@ -713,6 +713,39 @@ func inProgressIncludedDiag(ref reportRef) *Diagnostic {
 // Aggregation — AggregateConsumption
 // ---------------------------------------------------------------------------
 
+// ScopeToRepos returns a shallow copy of cfg whose Repos map is restricted to
+// the named repos, preserving Profiles, Defaults, and LoadedFrom so profile
+// and cost-center grouping still resolve against the full fleet definition. An
+// empty names slice returns cfg unchanged (the whole-fleet default). When a
+// single requested repo is absent it returns ErrRepoNotTracked (which names the
+// config file to edit), matching deploy/sync/upgrade; when several are absent it
+// lists every offender.
+func ScopeToRepos(cfg *Config, names []string) (*Config, error) {
+	if len(names) == 0 {
+		return cfg, nil
+	}
+	scoped := make(map[string]RepoSpec, len(names))
+	var missing []string
+	for _, n := range names {
+		spec, ok := cfg.Repos[n]
+		if !ok {
+			missing = append(missing, n)
+			continue
+		}
+		scoped[n] = spec
+	}
+	switch len(missing) {
+	case 0:
+	case 1:
+		return nil, ErrRepoNotTracked(missing[0], cfg.LoadedFrom)
+	default:
+		return nil, fmt.Errorf("repos not tracked in fleet config: %s", strings.Join(missing, ", "))
+	}
+	out := *cfg
+	out.Repos = scoped
+	return &out, nil
+}
+
 // AggregateConsumption walks every repo in cfg in sorted order, discovers
 // each repo's consumption reports, applies the temporal/status filter,
 // fetches the matching run artifacts, and assembles a ConsumptionResult

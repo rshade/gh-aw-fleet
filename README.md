@@ -33,7 +33,10 @@ repos get which workflows is also the natural place to attribute consumption:
 by repo, by profile, or by cost center. The `consumption` subcommand does
 exactly that — `gh-aw-fleet consumption` (default `--source logs`) reads
 AI-credit (AIC) usage from `gh aw logs --json` per agentic workflow and rolls it
-up `--by repo|profile|cost-center|workflow`, with USD derived as AIC × $0.01. It
+up `--by repo|profile|cost-center|workflow`, with USD derived as AIC × $0.01.
+Pass one or more repos by name (`gh-aw-fleet consumption rshade/finfocus --by
+workflow`) to scope the rollup and drill into a single repo's per-workflow
+spend; omit them for the whole fleet. It
 needs no deployed reporting workflow ([#57](https://github.com/rshade/gh-aw-fleet/issues/57),
 [#103](https://github.com/rshade/gh-aw-fleet/issues/103)); see
 [ROADMAP.md](ROADMAP.md) for the broader billing-readiness arc.
