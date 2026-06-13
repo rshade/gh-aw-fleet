@@ -1,0 +1,8 @@
+{
+  "managed": false,
+  "fleet": "rshade/gh-aw-fleet",
+  "gh_aw_version": "v0.79.2",
+  "cli_version": "v0.79.2",
+  "profiles": [],
+  "deployed_at": "2026-06-11T01:39:27Z"
+}

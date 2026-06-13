@@ -102,6 +102,7 @@ If the user said "deploy immediately":
 - Invoke the `fleet-deploy` flow with the newly registered repo.
 - Explicit note in the turn: "Repo registered. Running dry-run now."
 - Then follow `fleet-deploy`'s three-turn pattern.
+- Note that the first deploy will write `.github/aw/fleet-manifest.json` into the repo to track the fleet's version provenance; subsequent deploys will use this manifest to skip redundant init operations when the `github/gh-aw` source pin hasn't changed.
 
 If the user said "register only":
 

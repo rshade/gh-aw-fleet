@@ -36,12 +36,13 @@ var EngineSecrets = map[string]EngineSecretInfo{
 
 // DeployOpts controls deploy behavior.
 type DeployOpts struct {
-	Apply         bool // false = dry-run (default); true = commit + push + PR
-	Force         bool // pass --force to gh aw add
-	Branch        string
-	PRTitle       string
-	WorkDir       string // if set, use this clone path; otherwise tmp.
-	InternalClone bool   // WorkDir was prepared by this process; not a user resume request.
+	Apply          bool // false = dry-run (default); true = commit + push + PR
+	Force          bool // pass --force to gh aw add
+	Branch         string
+	PRTitle        string
+	WorkDir        string // if set, use this clone path; otherwise tmp.
+	InternalClone  bool   // WorkDir was prepared by this process; not a user resume request.
+	InitAlreadyRan bool   // caller already ran gh aw init on WorkDir during this operation.
 }
 
 // DeployResult aggregates what happened for a single-repo deploy.
@@ -237,9 +238,14 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 			"(--work-dir %s has no resume signals; running fresh pipeline)\n", opts.WorkDir)
 	}
 
-	res.InitWasRun, err = ensureInit(ctx, res.CloneDir)
-	if err != nil {
-		return res, fmt.Errorf("gh aw init: %w", err)
+	fleetPin := resolvedGhAwPin(cfg, repo)
+	if opts.InitAlreadyRan {
+		res.InitWasRun = true
+	} else {
+		res.InitWasRun, err = ensureInit(ctx, res.CloneDir, fleetPin)
+		if err != nil {
+			return res, fmt.Errorf("gh aw init: %w", err)
+		}
 	}
 
 	engine := cfg.EffectiveEngine(repo)
@@ -274,6 +280,10 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 
 	if compileErr := runCompileStrictIfNeeded(ctx, res, cfg, repo); compileErr != nil {
 		return res, compileErr
+	}
+
+	if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
+		return res, manifestErr
 	}
 
 	staged, err := hasStagedOrUnstagedWorkflowChanges(ctx, res.CloneDir)
@@ -343,6 +353,9 @@ func handleWorkDirResume(
 		}
 		if compileErr := refreshResumeCompileStrict(ctx, cfg, repo, res); compileErr != nil {
 			return res, true, compileErr
+		}
+		if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
+			return res, true, manifestErr
 		}
 		out, prErr := createDeployPR(ctx, res, repo, opts, branch)
 		return out, true, prErr
@@ -462,14 +475,18 @@ func refreshResumeCompileStrict(ctx context.Context, cfg *Config, repo string, r
 }
 
 // refreshResumePushCompileStrict re-runs the current compile-strict policy
-// before pushing a branch that was previously committed but not pushed. If
-// the compile rerun changes .github/, the unpushed commit is amended so the
-// pushed branch matches the policy reported in the result fields.
+// and refreshes the fleet manifest before pushing a branch that was previously
+// committed but not pushed. If either step changes .github/, the unpushed
+// commit is amended so the pushed branch matches the reported policy and
+// records the current manifest.
 func refreshResumePushCompileStrict(
 	ctx context.Context, cfg *Config, repo string, res *DeployResult, branch string,
 ) error {
 	if compileErr := refreshResumeCompileStrict(ctx, cfg, repo, res); compileErr != nil {
 		return compileErr
+	}
+	if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
+		return manifestErr
 	}
 	changed, err := hasStagedOrUnstagedWorkflowChanges(ctx, res.CloneDir)
 	if err != nil {
@@ -488,6 +505,15 @@ func refreshResumePushCompileStrict(
 				"  git push -u origin %s",
 			amendErr, res.CloneDir, branch,
 		)
+	}
+	return nil
+}
+
+func writeDeployManifest(ctx context.Context, cfg *Config, repo, cloneDir string) error {
+	cliVer, _ := ghAwVersion(ctx)
+	m := buildManifest(cfg, repo, cliVer)
+	if _, writeErr := writeManifestIfNeeded(cloneDir, m); writeErr != nil {
+		return fmt.Errorf("write fleet manifest: %w", writeErr)
 	}
 	return nil
 }
@@ -544,22 +570,17 @@ func prepareClone(ctx context.Context, repo, explicit string) (string, error) {
 	return dir, nil
 }
 
-// initMarkerPaths are the repo-relative files whose presence proves a repo was
-// already initialized for gh-aw. gh-aw renamed the agent marker from
-// agentic-workflows.md to agentic-workflows.agent.md across versions; we accept
-// either so a repo initialized by an older CLI is not re-initialized. That
-// matters because `gh aw init` in newer CLIs fails on repos predating the
-// .github/aw dispatcher-skill layout.
-//
-//nolint:gochecknoglobals // immutable marker list; Go has no const slices.
-var initMarkerPaths = []string{
-	".github/agents/agentic-workflows.agent.md",
-	".github/agents/agentic-workflows.md",
-}
-
-func ensureInit(ctx context.Context, dir string) (bool, error) {
-	for _, marker := range initMarkerPaths {
-		if fileExists(filepath.Join(dir, marker)) {
+// ensureInit ensures the target clone has been initialized for gh-aw. It
+// supersedes the former initMarkerPaths file-check: rather than asking "has
+// init ever run?", it asks "has init run at the fleet's current gh-aw version?"
+// If fleetGhAwVersion is non-empty and the clone's fleet manifest records that
+// exact version, init is skipped — the artifacts are already current. Otherwise
+// (no manifest, unreadable manifest, or version mismatch) gh aw init runs to
+// refresh init artifacts to the current version.
+func ensureInit(ctx context.Context, dir, fleetGhAwVersion string) (bool, error) {
+	if fleetGhAwVersion != "" {
+		m, _ := readManifestFromClone(dir)
+		if m != nil && m.GhAwVersion == fleetGhAwVersion {
 			return false, nil
 		}
 	}

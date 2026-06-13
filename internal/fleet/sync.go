@@ -55,7 +55,9 @@ func Sync(ctx context.Context, cfg *Config, repo string, opts SyncOpts) (*SyncRe
 		defer os.RemoveAll(res.CloneDir)
 	}
 
-	if _, initErr := ensureInit(ctx, res.CloneDir); initErr != nil {
+	fleetPin := resolvedGhAwPin(cfg, repo)
+	initRan, initErr := ensureInit(ctx, res.CloneDir, fleetPin)
+	if initErr != nil {
 		return res, fmt.Errorf("gh aw init: %w", initErr)
 	}
 
@@ -67,12 +69,12 @@ func Sync(ctx context.Context, cfg *Config, repo string, opts SyncOpts) (*SyncRe
 	}
 
 	if opts.Apply {
-		if applyErr := applyDeployOrPrune(ctx, cfg, repo, res, opts, workflowsDir); applyErr != nil {
+		if applyErr := applyDeployOrPrune(ctx, cfg, repo, res, opts, workflowsDir, initRan); applyErr != nil {
 			res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
 			return res, applyErr
 		}
 	} else if len(res.Missing) > 0 {
-		if preErr := runPreflight(ctx, cfg, repo, res, opts); preErr != nil {
+		if preErr := runPreflight(ctx, cfg, repo, res, opts, initRan); preErr != nil {
 			res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
 			return res, preErr
 		}
@@ -142,7 +144,7 @@ func computeDriftAndMissing(res *SyncResult, resolved []ResolvedWorkflow, workfl
 // then either delegate to Deploy (for missing workflows) or commit/push pruned
 // deletions standalone.
 func applyDeployOrPrune(
-	ctx context.Context, cfg *Config, repo string, res *SyncResult, opts SyncOpts, workflowsDir string,
+	ctx context.Context, cfg *Config, repo string, res *SyncResult, opts SyncOpts, workflowsDir string, initRan bool,
 ) error {
 	if opts.Prune && len(res.Drift) > 0 {
 		if pruneErr := pruneDriftFiles(ctx, res, workflowsDir); pruneErr != nil {
@@ -152,10 +154,11 @@ func applyDeployOrPrune(
 
 	if len(res.Missing) > 0 {
 		deployOpts := DeployOpts{
-			Apply:         true,
-			Force:         opts.Force,
-			WorkDir:       res.CloneDir,
-			InternalClone: opts.WorkDir == "",
+			Apply:          true,
+			Force:          opts.Force,
+			WorkDir:        res.CloneDir,
+			InternalClone:  opts.WorkDir == "",
+			InitAlreadyRan: initRan,
 		}
 		var deployErr error
 		res.Deploy, deployErr = Deploy(ctx, cfg, repo, deployOpts)
@@ -163,6 +166,12 @@ func applyDeployOrPrune(
 	}
 
 	if opts.Prune && len(res.Pruned) > 0 {
+		if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
+			return manifestErr
+		}
+		if stageErr := gitCmd(ctx, res.CloneDir, addToken, ".github/"); stageErr != nil {
+			return fmt.Errorf("git add manifest after prune: %w", stageErr)
+		}
 		return commitAndPushPrune(ctx, res)
 	}
 	return nil
@@ -198,12 +207,13 @@ func commitAndPushPrune(ctx context.Context, res *SyncResult) error {
 
 // runPreflight calls Deploy with Apply=false to surface compilation failures
 // for missing workflows during a dry-run sync.
-func runPreflight(ctx context.Context, cfg *Config, repo string, res *SyncResult, opts SyncOpts) error {
+func runPreflight(ctx context.Context, cfg *Config, repo string, res *SyncResult, opts SyncOpts, initRan bool) error {
 	deployOpts := DeployOpts{
-		Apply:         false,
-		Force:         opts.Force,
-		WorkDir:       res.CloneDir,
-		InternalClone: opts.WorkDir == "",
+		Apply:          false,
+		Force:          opts.Force,
+		WorkDir:        res.CloneDir,
+		InternalClone:  opts.WorkDir == "",
+		InitAlreadyRan: initRan,
 	}
 	var err error
 	res.DeployPreflight, err = Deploy(ctx, cfg, repo, deployOpts)

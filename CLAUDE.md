@@ -1,6 +1,8 @@
 @AGENTS.md
 
 ## Active Technologies
+- Go 1.25.8 (from `go.mod`) + stdlib (`encoding/json`, `os`, `path/filepath`, `time`). **No new direct dependencies** — constitution §Third-Party Dependencies. (011-fleet-manifest)
+- JSON files written into target-repo clones (`os.WriteFile`); read in `status` via `ghAPIRaw` (existing seam). (011-fleet-manifest)
 
 **Language**: Go 1.25.8 (per `go.mod`) across all slices below.
 

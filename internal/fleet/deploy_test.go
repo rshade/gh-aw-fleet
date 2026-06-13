@@ -1585,6 +1585,101 @@ func TestDeployPushGateResume_PopulatesCompileStrictFields(t *testing.T) {
 	}
 }
 
+func TestDeployCommitGateResumeApply_WritesManifestBeforeCommit(t *testing.T) {
+	dir := newTestRepo(t, func(d string) {
+		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("create deploy branch: %v", err)
+		}
+		workflow := filepath.Join(d, ".github", "workflows", "ci.md")
+		if err := os.MkdirAll(filepath.Dir(workflow), 0o755); err != nil {
+			t.Fatalf("mkdir workflow dir: %v", err)
+		}
+		if err := os.WriteFile(workflow, []byte("workflow\n"), 0o644); err != nil {
+			t.Fatalf("write workflow: %v", err)
+		}
+	})
+
+	withGhAPIJSON(t, map[string]fakeJSONResponse{
+		"/repos/acme/widgets/actions/permissions": {
+			body: map[string]any{"enabled": true},
+		},
+		"/repos/acme/widgets/actions/permissions/workflow": {
+			body: map[string]any{"default_workflow_permissions": "write"},
+		},
+	})
+	origVersion := ghAwVersion
+	origCompile := runGhAwCompile
+	t.Cleanup(func() {
+		ghAwVersion = origVersion
+		runGhAwCompile = origCompile
+	})
+	ghAwVersion = func(_ context.Context) (string, error) {
+		return "v0.79.2", nil
+	}
+	runGhAwCompile = func(_ context.Context, _ string) (string, error) {
+		return "ok", nil
+	}
+
+	cfg := &Config{
+		Version: SchemaVersion,
+		Profiles: map[string]Profile{
+			"default": {
+				Sources: map[string]SourcePin{
+					"githubnext/agentics": {Ref: "v1.0.0"},
+				},
+				Workflows: []ProfileWorkflow{
+					{Name: "ci", Source: "githubnext/agentics"},
+				},
+			},
+		},
+		Repos: map[string]RepoSpec{
+			"acme/widgets": {
+				Profiles:      []string{"default"},
+				CompileStrict: boolPtr(false),
+			},
+		},
+	}
+	res := &DeployResult{Repo: "acme/widgets", CloneDir: dir}
+	_, handled, err := handleWorkDirResume(
+		context.Background(), cfg, "acme/widgets", res,
+		DeployOpts{Apply: true, WorkDir: dir},
+	)
+	if !handled {
+		t.Fatal("handled = false; want true (commit-gate signal present)")
+	}
+	if err == nil || !strings.Contains(err.Error(), "git push") {
+		t.Fatalf("err = %v, want git push failure after commit", err)
+	}
+
+	manifestPath := filepath.Join(dir, FleetManifestPath)
+	data, readErr := os.ReadFile(manifestPath)
+	if readErr != nil {
+		t.Fatalf("read manifest: %v", readErr)
+	}
+	var manifest FleetManifest
+	if parseErr := json.Unmarshal(data, &manifest); parseErr != nil {
+		t.Fatalf("parse manifest: %v", parseErr)
+	}
+	if !manifest.Managed {
+		t.Error("Manifest.Managed = false, want true")
+	}
+	if !slices.Equal(manifest.Profiles, []string{"default"}) {
+		t.Errorf("Manifest.Profiles = %v, want [default]", manifest.Profiles)
+	}
+
+	cmd := exec.Command("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+	cmd.Dir = dir
+	out, diffErr := cmd.Output()
+	if diffErr != nil {
+		t.Fatalf("git diff-tree HEAD: %v", diffErr)
+	}
+	if !strings.Contains(string(out), FleetManifestPath) {
+		t.Errorf("HEAD paths = %q; want manifest committed", out)
+	}
+}
+
 func TestDeployPushGateResumeApply_RefreshesCompileStrictBeforePush(t *testing.T) {
 	dir := newTestRepo(t, func(d string) {
 		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")
@@ -1826,29 +1921,59 @@ func TestRelocateNestedDotGitHub(t *testing.T) {
 	})
 }
 
-// TestEnsureInit_SkipsWhenMarkerPresent covers both the current
-// (agentic-workflows.agent.md) and legacy (agentic-workflows.md) init markers:
-// either present means the repo is already initialized and `gh aw init` must
-// not run. Only the skip paths are exercised so the test never shells out to
-// gh aw.
-func TestEnsureInit_SkipsWhenMarkerPresent(t *testing.T) {
-	for _, marker := range initMarkerPaths {
-		t.Run(marker, func(t *testing.T) {
-			dir := t.TempDir()
-			path := filepath.Join(dir, marker)
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, []byte("agent setup\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			ran, err := ensureInit(context.Background(), dir)
-			if err != nil {
-				t.Fatalf("ensureInit: %v", err)
-			}
-			if ran {
-				t.Errorf("ensureInit ran gh aw init despite marker %q present; want skip", marker)
-			}
-		})
+// TestEnsureInit_SkipsWhenManifestVersionMatches verifies that ensureInit
+// returns (false, nil) without shelling out to gh aw init when the clone
+// already contains a fleet manifest whose GhAwVersion matches the
+// fleetGhAwVersion argument. The initMarkerPaths file-check has been
+// superseded by this manifest-based comparison; see ensureInit godoc.
+func TestEnsureInit_SkipsWhenManifestVersionMatches(t *testing.T) {
+	dir := t.TempDir()
+	m := &FleetManifest{
+		Managed:     true,
+		Fleet:       "rshade/gh-aw-fleet",
+		GhAwVersion: "v0.79.2",
+		CLIVersion:  "v0.79.2",
+		Profiles:    []string{"default"},
+	}
+	if err := writeManifestToClone(dir, m); err != nil {
+		t.Fatalf("writeManifestToClone: %v", err)
+	}
+
+	ran, err := ensureInit(context.Background(), dir, "v0.79.2")
+	if err != nil {
+		t.Fatalf("ensureInit: %v", err)
+	}
+	if ran {
+		t.Error("ensureInit ran gh aw init despite manifest version match; want skip")
 	}
 }
+
+// TestEnsureInit_RunsWhenFleetVersionEmpty verifies that ensureInit does NOT
+// skip when fleetGhAwVersion is empty (the repo has no github/gh-aw workflow
+// declared), even if a manifest is present. The empty-version case falls
+// through to the gh aw init exec path, so this test only confirms the skip
+// guard is bypassed — it does not invoke gh aw init.
+func TestEnsureInit_RunsWhenFleetVersionEmpty(t *testing.T) {
+	dir := t.TempDir()
+	// Write a manifest — but pass an empty fleet version so the guard fires.
+	m := &FleetManifest{
+		Managed:     true,
+		Fleet:       "rshade/gh-aw-fleet",
+		GhAwVersion: "v0.79.2",
+		CLIVersion:  "v0.79.2",
+		Profiles:    []string{"default"},
+	}
+	if err := writeManifestToClone(dir, m); err != nil {
+		t.Fatalf("writeManifestToClone: %v", err)
+	}
+	// With an empty fleetGhAwVersion the guard is skipped and ensureInit
+	// falls through to exec("gh", "aw", "init"). We do not have gh aw
+	// available in the test environment, so we only verify that ensureInit
+	// does NOT return (false, nil) — any error or (true, nil) is acceptable.
+	ran, err := ensureInit(context.Background(), dir, "")
+	if !ran && err == nil {
+		t.Error("ensureInit returned (false, nil) for empty fleetGhAwVersion; expected exec to run")
+	}
+}
+
+// T004: manifest write integration tests require live gh aw CLI; unit coverage is in manifest_test.go
