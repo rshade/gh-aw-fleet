@@ -58,6 +58,8 @@ The output includes (as applicable):
 - `failed: N` — each with a line or two of error text, followed by `hint: ...` lines surfaced by `fleet.CollectHints`.
 - On stderr (zerolog), exactly one `compile_strict_resolved` info event names the deploy-time compile-strict policy that will apply on `--apply`. Fields: `repo`, `effective` (bool), `source` (`explicit` | `auto-public` | `auto-private` | `auto-fallback`). When the resolver fell back to fail-secure on a visibility-lookup failure, an additional `compile_strict_lookup_failed` warn event names the truncated reason. Read these before approving — they signal whether `gh aw compile --strict` will run during `--apply`.
 
+**Init refresh**: The first deploy after a `github/gh-aw` pin advance (or for repos never fleet-deployed) will run `gh aw init` and produce a larger PR diff including init artifacts. Subsequent deploys at the same version skip init via manifest version comparison.
+
 Report all of this back to the user faithfully — don't summarize away the failures, don't drop the hints. If there are failures:
 
 1. Show each failed workflow's exact error text (it came from `gh aw add` via the tool's `condense()`).

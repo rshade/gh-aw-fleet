@@ -165,6 +165,8 @@ type recordingFetcher struct {
 
 	repoOrderMu sync.Mutex
 	repoOrder   map[string][]string
+
+	manifestBodies map[string]string
 }
 
 func (f *recordingFetcher) listWorkflowsDir(_ context.Context, repo string) ([]string, error) {
@@ -202,12 +204,21 @@ func (f *recordingFetcher) fetchWorkflowBody(_ context.Context, repo, file strin
 	return "", nil
 }
 
+func (f *recordingFetcher) fetchManifestBody(_ context.Context, repo string) (string, error) {
+	f.mu.Lock()
+	f.calls = append(f.calls, fmt.Sprintf("manifest:%s", repo))
+	body := f.manifestBodies[repo]
+	f.mu.Unlock()
+	return body, nil
+}
+
 func newRecordingFetcher() *recordingFetcher {
 	return &recordingFetcher{
-		listings:  map[string][]string{},
-		bodies:    map[string]map[string]string{},
-		listErr:   map[string]error{},
-		repoOrder: map[string][]string{},
+		listings:       map[string][]string{},
+		bodies:         map[string]map[string]string{},
+		listErr:        map[string]error{},
+		repoOrder:      map[string][]string{},
+		manifestBodies: map[string]string{},
 	}
 }
 
@@ -298,9 +309,9 @@ func TestStatus_FleetWide_AllStates(t *testing.T) {
 		t.Errorf("expected repo_inaccessible diagnostic for rshade/errored; got %#v", diags)
 	}
 
-	// (h): only listWorkflowsDir / fetchWorkflowBody were called.
+	// (h): only listWorkflowsDir / fetchWorkflowBody / fetchManifestBody were called.
 	for _, call := range fetcher.calls {
-		if !startsWithAny(call, "list:", "fetch:") {
+		if !startsWithAny(call, "list:", "fetch:", "manifest:") {
 			t.Errorf("unexpected call recorded: %q", call)
 		}
 	}
@@ -651,4 +662,106 @@ func sameDirEntries(a, b []os.DirEntry) bool {
 	sort.Strings(an)
 	sort.Strings(bn)
 	return reflect.DeepEqual(an, bn)
+}
+
+func TestStatus_VersionDrift(t *testing.T) {
+	// Load manifest fixtures.
+	currentManifest, err := os.ReadFile("testdata/manifest/current.json")
+	if err != nil {
+		t.Fatalf("read current.json: %v", err)
+	}
+	behindManifest, err := os.ReadFile("testdata/manifest/behind.json")
+	if err != nil {
+		t.Fatalf("read behind.json: %v", err)
+	}
+	malformedManifest, err := os.ReadFile("testdata/manifest/malformed.json")
+	if err != nil {
+		t.Fatalf("read malformed.json: %v", err)
+	}
+	managedFalseManifest, err := os.ReadFile("testdata/manifest/managed_false.json")
+	if err != nil {
+		t.Fatalf("read managed_false.json: %v", err)
+	}
+
+	cfg := &Config{
+		Version: SchemaVersion,
+		Profiles: map[string]Profile{
+			"default": {
+				Sources: map[string]SourcePin{
+					"github/gh-aw": {Ref: "v0.79.2"},
+				},
+				Workflows: []ProfileWorkflow{
+					{Name: "test", Source: "github/gh-aw"},
+				},
+			},
+		},
+		Repos: map[string]RepoSpec{
+			"owner/current":       {Profiles: []string{"default"}},
+			"owner/behind":        {Profiles: []string{"default"}},
+			"owner/no-manifest":   {Profiles: []string{"default"}},
+			"owner/malformed":     {Profiles: []string{"default"}},
+			"owner/managed-false": {Profiles: []string{"default"}},
+		},
+	}
+
+	fetcher := newRecordingFetcher()
+	fetcher.manifestBodies = map[string]string{
+		"owner/current":       string(currentManifest),
+		"owner/behind":        string(behindManifest),
+		"owner/no-manifest":   "",
+		"owner/malformed":     string(malformedManifest),
+		"owner/managed-false": string(managedFalseManifest),
+	}
+
+	res, _, err := Status(context.Background(), cfg, StatusOpts{fetcher: fetcher})
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("Status returned nil result")
+	}
+	if len(res.Repos) != 5 {
+		t.Fatalf("len(res.Repos) = %d; want 5", len(res.Repos))
+	}
+
+	byRepo := map[string]RepoStatus{}
+	for _, r := range res.Repos {
+		byRepo[r.Repo] = r
+	}
+
+	tests := []struct {
+		repo                string
+		wantState           string
+		wantRecordedVersion string
+		wantExpectedVersion string
+	}{
+		{"owner/current", VersionDriftCurrent, "v0.79.2", "v0.79.2"},
+		{"owner/behind", VersionDriftBehind, "v0.68.3", "v0.79.2"},
+		{"owner/no-manifest", VersionDriftUnmanaged, "", "v0.79.2"},
+		{"owner/malformed", VersionDriftUnmanaged, "", "v0.79.2"},
+		{"owner/managed-false", VersionDriftUnmanaged, "", "v0.79.2"},
+	}
+
+	for _, tt := range tests {
+		rs, ok := byRepo[tt.repo]
+		if !ok {
+			t.Errorf("repo %q missing from result", tt.repo)
+			continue
+		}
+		if rs.VersionDrift == nil {
+			t.Errorf("%s: VersionDrift is nil", tt.repo)
+			continue
+		}
+		if rs.VersionDrift.State != tt.wantState {
+			t.Errorf("%s: State = %q; want %q", tt.repo, rs.VersionDrift.State, tt.wantState)
+		}
+		if rs.VersionDrift.RecordedVersion != tt.wantRecordedVersion {
+			t.Errorf("%s: RecordedVersion = %q; want %q",
+				tt.repo, rs.VersionDrift.RecordedVersion, tt.wantRecordedVersion)
+		}
+		if rs.VersionDrift.ExpectedVersion != tt.wantExpectedVersion {
+			t.Errorf("%s: ExpectedVersion = %q; want %q",
+				tt.repo, rs.VersionDrift.ExpectedVersion, tt.wantExpectedVersion)
+		}
+	}
 }

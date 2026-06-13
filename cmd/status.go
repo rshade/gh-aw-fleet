@@ -76,6 +76,17 @@ func statusExitCode(res *fleet.StatusResult) error {
 	return nil
 }
 
+// formatVersionDrift formats the VersionDrift field for tabwriter output.
+func formatVersionDrift(vd *fleet.VersionDrift) string {
+	if vd == nil {
+		return "n/a"
+	}
+	if vd.State == fleet.VersionDriftBehind {
+		return "behind (was: " + vd.RecordedVersion + ", want: " + vd.ExpectedVersion + ")"
+	}
+	return vd.State
+}
+
 // printStatus renders the text-mode tabwriter summary plus per-repo
 // detail blocks for any repo that is not aligned.
 func printStatus(cmd *cobra.Command, res *fleet.StatusResult, diags []fleet.Diagnostic) {
@@ -87,15 +98,17 @@ func printStatus(cmd *cobra.Command, res *fleet.StatusResult, diags []fleet.Diag
 	emitStatusWarnings(diags)
 
 	tw := tabwriter.NewWriter(w, 0, 0, statusTabPadding, ' ', 0)
-	fmt.Fprintln(tw, "REPO\tSTATE\tMISSING\tEXTRA\tDRIFTED\tUNPINNED")
+	fmt.Fprintln(tw, "REPO\tSTATE\tMISSING\tEXTRA\tDRIFTED\tUNPINNED\tVERSION_DRIFT")
 	for _, r := range res.Repos {
+		versionDriftStr := formatVersionDrift(r.VersionDrift)
 		if r.DriftState == fleet.DriftStateErrored {
-			fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\t-\n", r.Repo, r.DriftState)
+			fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\t-\t%s\n", r.Repo, r.DriftState, versionDriftStr)
 			continue
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%d\n",
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%d\t%s\n",
 			r.Repo, r.DriftState,
 			len(r.Missing), len(r.Extra), len(r.Drifted), len(r.Unpinned),
+			versionDriftStr,
 		)
 	}
 	_ = tw.Flush()

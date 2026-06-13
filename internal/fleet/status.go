@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 // Drift states emitted on RepoStatus.DriftState. The closed set of values
@@ -65,6 +67,11 @@ type RepoStatus struct {
 	Unpinned []string `json:"unpinned"`
 	// ErrorMessage is empty unless DriftState == DriftStateErrored.
 	ErrorMessage string `json:"error_message"`
+	// VersionDrift reports the manifest-based version-drift state for this repo.
+	// Nil only when DriftState == DriftStateErrored and the manifest fetch could
+	// not be attempted. Non-nil for all successfully-queried repos, including those
+	// where the manifest is absent (State == VersionDriftUnmanaged).
+	VersionDrift *VersionDrift `json:"version_drift,omitempty"`
 }
 
 // WorkflowDrift describes one workflow whose installed source ref differs
@@ -88,6 +95,9 @@ type statusJob struct {
 	// reference, etc.). When non-nil, the worker short-circuits to an errored
 	// RepoStatus rather than fetching anything.
 	resolveErr error
+	// expectedVersion is the fleet's current github/gh-aw source pin for this repo,
+	// resolved from the fleet config. Empty when no gh-aw-sourced workflows exist.
+	expectedVersion string
 }
 
 // statusFetcher is the seam between Status() and the gh api primitives,
@@ -96,6 +106,7 @@ type statusJob struct {
 type statusFetcher interface {
 	listWorkflowsDir(ctx context.Context, repo string) ([]string, error)
 	fetchWorkflowBody(ctx context.Context, repo, file string) (string, error)
+	fetchManifestBody(ctx context.Context, repo string) (string, error)
 }
 
 // statusWorkerPoolSize is the number of concurrent repo workers
@@ -154,6 +165,27 @@ func (ghStatusFetcher) fetchWorkflowBody(ctx context.Context, repo, file string)
 	body, err := ghAPIRaw(ctx, fmt.Sprintf("/repos/%s/contents/.github/workflows/%s", repo, file))
 	if err != nil {
 		return "", fmt.Errorf("fetch %s/%s: %w", repo, file, err)
+	}
+	return body, nil
+}
+
+// fetchManifestBody fetches the raw JSON body of the fleet manifest from the
+// repo's default branch. Returns ("", nil) when the file does not exist (404)
+// or when any other error occurs — both cases are treated as unmanaged by the
+// caller. Fail-open: a transient network error must not abort status for the
+// whole fleet.
+func (ghStatusFetcher) fetchManifestBody(ctx context.Context, repo string) (string, error) {
+	path := fmt.Sprintf("/repos/%s/contents/%s", repo, FleetManifestPath)
+	body, err := ghAPIRaw(ctx, path)
+	if err != nil {
+		if isGitHubNotFound(err) {
+			return "", nil
+		}
+		zlog.Debug().
+			Str(fieldRepo, repo).
+			Err(err).
+			Msg("manifest fetch skipped")
+		return "", nil
 	}
 	return body, nil
 }
@@ -230,9 +262,10 @@ func buildStatusJobs(cfg *Config, repos []string) []statusJob {
 	for _, repo := range repos {
 		declared, err := cfg.ResolveRepoWorkflows(repo)
 		jobs = append(jobs, statusJob{
-			repo:       repo,
-			declared:   declared,
-			resolveErr: err,
+			repo:            repo,
+			declared:        declared,
+			resolveErr:      err,
+			expectedVersion: resolvedGhAwPin(cfg, repo),
 		})
 	}
 	return jobs
@@ -290,7 +323,7 @@ func processJob(ctx context.Context, fetcher statusFetcher, job statusJob) RepoS
 	if job.resolveErr != nil {
 		return computeDrift(job.repo, nil, nil, nil, job.resolveErr)
 	}
-	return processRepo(ctx, fetcher, job.repo, job.declared)
+	return processRepo(ctx, fetcher, job.repo, job.declared, job.expectedVersion)
 }
 
 // processRepo fetches the repo's workflow listing and the bodies needed to
@@ -298,7 +331,7 @@ func processJob(ctx context.Context, fetcher statusFetcher, job statusJob) RepoS
 // within one repo are serial. Per FR-009, a single fetch failure surfaces
 // as an errored RepoStatus rather than partial drift.
 func processRepo(
-	ctx context.Context, fetcher statusFetcher, repo string, declared []ResolvedWorkflow,
+	ctx context.Context, fetcher statusFetcher, repo string, declared []ResolvedWorkflow, expectedVersion string,
 ) RepoStatus {
 	listing, err := fetcher.listWorkflowsDir(ctx, repo)
 	if err != nil {
@@ -340,7 +373,11 @@ func processRepo(
 		bodies[file] = body
 	}
 
-	return computeDrift(repo, declared, listing, bodies, nil)
+	rs := computeDrift(repo, declared, listing, bodies, nil)
+	manifestBody, _ := fetcher.fetchManifestBody(ctx, repo)
+	manifest, _ := parseManifestJSON(manifestBody)
+	rs.VersionDrift = computeVersionDrift(manifest, expectedVersion)
+	return rs
 }
 
 // computeDrift is the pure, table-testable diff function. Given the
