@@ -933,12 +933,13 @@ var ghAwVersionRE = regexp.MustCompile(`v\d+\.\d+\.\d+`)
 
 // ghAwVersion runs `gh aw --version` and returns the parsed semver token
 // (e.g. "v0.72.1") or an empty string when parsing fails. The wrapped error
-// is non-nil only on exec failure.
+// is non-nil only on exec failure. Uses CombinedOutput because `gh aw
+// --version` prints the version line to stderr, not stdout.
 //
 //nolint:gochecknoglobals // test-injection seam mirroring ghAPIExists/ghAPIJSON
 var ghAwVersion = func(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "aw", "--version")
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", err
 	}

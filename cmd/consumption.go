@@ -29,9 +29,13 @@ func newConsumptionCmd(flagDir *string) *cobra.Command {
 	var flags consumptionFlags
 
 	cmd := &cobra.Command{
-		Use:   commandConsumption,
+		Use:   commandConsumption + " [repo...]",
 		Short: "Aggregate api-consumption-report output across the fleet",
 		Long: `Aggregate api-consumption-report output across the fleet.
+
+Pass one or more repos (owner/name) to scope the rollup to just those repos;
+with no args it covers the whole fleet. Combine with --by workflow to drill
+into a single repo's per-workflow spend.
 
 Discovery: queries each repo's audits-category discussions and filters by
 the api-consumption-report-daily tracker marker. Data: fetches the
@@ -49,8 +53,8 @@ Data source:
   --source logs        AI credits from gh aw logs --json per workflow (default;
                        needs no deployed api-consumption-report workflow)
   --source artifacts   legacy: api-consumption-report discussions + run artifacts`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runConsumption(cmd, flagDir, &flags)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConsumption(cmd, flagDir, &flags, args)
 		},
 	}
 	cmd.Flags().BoolVar(&flags.latest, "latest", true, "Most-recent valid report per repo (default)")
@@ -65,7 +69,7 @@ Data source:
 // runConsumption loads fleet config, builds the FetchMode from flags,
 // invokes the aggregator, and writes either tabwriter text or the JSON
 // envelope based on --output.
-func runConsumption(cmd *cobra.Command, flagDir *string, flags *consumptionFlags) error {
+func runConsumption(cmd *cobra.Command, flagDir *string, flags *consumptionFlags, repos []string) error {
 	jsonMode := outputMode(cmd) == outputJSON
 
 	by, err := fleet.ParseGroupBy(flags.by)
@@ -100,6 +104,14 @@ func runConsumption(cmd *cobra.Command, flagDir *string, flags *consumptionFlags
 		return err
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "  (loaded %s)\n", cfg.LoadedFrom)
+
+	cfg, err = fleet.ScopeToRepos(cfg, repos)
+	if err != nil {
+		if jsonMode {
+			return preResultFailureEnvelope(cmd, commandConsumption, "", false, err)
+		}
+		return err
+	}
 
 	res, warnings, err := fleet.AggregateConsumption(cmd.Context(), cfg, mode, by, source)
 	if err != nil {

@@ -68,8 +68,10 @@ Any value outside the four-axis set is a hard error — cobra rejects with `--by
 ### Step 3 — invoke
 
 ```bash
-gh-aw-fleet consumption [--latest|--trailing Nd|--since YYYY-MM-DD] --by <axis>
+gh-aw-fleet consumption [repo...] [--latest|--trailing Nd|--since YYYY-MM-DD] --by <axis>
 ```
+
+**Scope to specific repos:** pass one or more `owner/name` args to limit the rollup to just those repos; omit them for the whole fleet. This is the way to drill into *one* repo's per-workflow spend — `gh-aw-fleet consumption rshade/finfocus --by workflow` answers "which workflows are burning credits in finfocus?", whereas a bare `--by workflow` sums each workflow across every repo running it. Unknown repo names are a hard error that lists the offenders (validated before any network call).
 
 Add `--output json` if you want to pipe through jq. The envelope is the standard fleet shape (`schema_version: 1`, `command: "consumption"`, `result.groups[]`, `result.top_burners[]`, `warnings[]`).
 
