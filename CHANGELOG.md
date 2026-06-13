@@ -10,6 +10,15 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.2.2](https://github.com/rshade/gh-aw-fleet/compare/v0.2.1...v0.2.2) (2026-06-13)
+
+
+### Added
+
+* **consumption:** scope rollup to named repos via positional args ([#126](https://github.com/rshade/gh-aw-fleet/issues/126)) ([c1e3f38](https://github.com/rshade/gh-aw-fleet/commit/c1e3f3881e692c31dbd683cf3976853063ad0b6b))
+* **consumption:** source AI credits from gh aw logs --json ([ce1e031](https://github.com/rshade/gh-aw-fleet/commit/ce1e0313e08f838b9321d82de74e9368884bc7ee)), closes [#103](https://github.com/rshade/gh-aw-fleet/issues/103) [#108](https://github.com/rshade/gh-aw-fleet/issues/108)
+* **consumption:** source AI credits from gh aw logs --json ([#116](https://github.com/rshade/gh-aw-fleet/issues/116)) ([ce1e031](https://github.com/rshade/gh-aw-fleet/commit/ce1e0313e08f838b9321d82de74e9368884bc7ee))
+
 ## [0.2.1](https://github.com/rshade/gh-aw-fleet/compare/v0.2.0...v0.2.1) (2026-06-10)
 
 
