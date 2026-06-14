@@ -79,7 +79,7 @@
       ]
     },
     "observability-plus": {
-      "description": "Daily consumption-report workflows for cross-fleet billing visibility. Pair with `gh-aw-fleet consumption` for rollups. Each running repo consumes Copilot credits daily — opt in consciously.",
+      "description": "Daily consumption-report workflows for cross-fleet billing visibility. Pair with `gh-aw-fleet consumption` for rollups; see docs/finops.md for the two-layer cost model. Each running repo consumes Copilot credits daily — opt in consciously.",
       "tier": "premium",
       "sources": {
         "github/gh-aw": { "ref": "v0.79.2" }

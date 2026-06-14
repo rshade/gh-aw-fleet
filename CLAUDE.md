@@ -1,10 +1,10 @@
 @AGENTS.md
 
 ## Active Technologies
-- Go 1.25.8 (from `go.mod`) + stdlib (`encoding/json`, `os`, `path/filepath`, `time`). **No new direct dependencies** — constitution §Third-Party Dependencies. (011-fleet-manifest)
+- Go 1.26.4 local development toolchain + stdlib (`encoding/json`, `os`, `path/filepath`, `time`). **No new direct dependencies** — constitution §Third-Party Dependencies. (011-fleet-manifest)
 - JSON files written into target-repo clones (`os.WriteFile`); read in `status` via `ghAPIRaw` (existing seam). (011-fleet-manifest)
 
-**Language**: Go 1.25.8 (per `go.mod`) across all slices below.
+**Language**: Go 1.26.4 for the local development gate; `go.mod` currently declares module compatibility at `go 1.25.8`.
 
 Per-slice dependency and storage deltas:
 
@@ -14,7 +14,7 @@ Per-slice dependency and storage deltas:
 
 ## Recent Changes
 - issue-73 (hujson): inline `//`/`/* */` comments and trailing commas accepted in `fleet.json` / `fleet.local.json` / `templates.json` / `profiles/default.json`; `gh-aw-fleet add` now appends to existing `fleet.local.json` instead of overwriting it.
-- 006-layer1-security-scanner: Added Go 1.25.8 (per `go.mod`).
+- 006-layer1-security-scanner: Added Go support under the module's compatibility directive.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,

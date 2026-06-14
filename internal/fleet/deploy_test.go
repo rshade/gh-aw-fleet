@@ -1976,4 +1976,67 @@ func TestEnsureInit_RunsWhenFleetVersionEmpty(t *testing.T) {
 	}
 }
 
+// installFakeGhInit puts a fake `gh` on PATH whose `aw init` branch exits 0,
+// creating the file at marker (relative to the clone) when marker is non-empty.
+// It exercises ensureInit's post-init drift guard deterministically without a
+// live gh aw CLI. t.Setenv scopes PATH to the calling test.
+func installFakeGhInit(t *testing.T, marker string) {
+	t.Helper()
+	binDir := t.TempDir()
+	create := ""
+	if marker != "" {
+		create = fmt.Sprintf("mkdir -p %q && printf 'x\\n' > %q", filepath.Dir(marker), marker)
+	}
+	const initStub = `#!/bin/sh
+set -eu
+if [ "$1" = "aw" ] && [ "$2" = "init" ]; then
+	%s
+	exit 0
+fi
+exit 0
+`
+	script := fmt.Sprintf(initStub, create)
+	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestEnsureInit_WarnsWhenNoMarkerProduced verifies the drift guard: when
+// gh aw init succeeds but creates none of initMarkers, ensureInit emits the
+// init_no_recognized_marker warning yet still reports init ran.
+func TestEnsureInit_WarnsWhenNoMarkerProduced(t *testing.T) {
+	installFakeGhInit(t, "")
+	buf := captureZlog(t)
+
+	ran, err := ensureInit(context.Background(), t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("ensureInit: %v", err)
+	}
+	if !ran {
+		t.Error("ensureInit returned ran=false; want true (init exec path)")
+	}
+	if findZlogEvent(t, buf, "init_no_recognized_marker") == nil {
+		t.Error("expected init_no_recognized_marker warning; none emitted")
+	}
+}
+
+// TestEnsureInit_NoWarnWhenMarkerPresent verifies the drift guard stays quiet
+// when gh aw init produces a recognized marker.
+func TestEnsureInit_NoWarnWhenMarkerPresent(t *testing.T) {
+	installFakeGhInit(t, ".github/agents/agentic-workflows.md")
+	buf := captureZlog(t)
+
+	ran, err := ensureInit(context.Background(), t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("ensureInit: %v", err)
+	}
+	if !ran {
+		t.Error("ensureInit returned ran=false; want true")
+	}
+	if ev := findZlogEvent(t, buf, "init_no_recognized_marker"); ev != nil {
+		t.Errorf("unexpected drift warning: %v", ev)
+	}
+}
+
 // T004: manifest write integration tests require live gh aw CLI; unit coverage is in manifest_test.go

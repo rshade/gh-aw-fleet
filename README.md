@@ -174,7 +174,7 @@ and `gh`.
   `gh extension install github/gh-aw --pin v0.79.2` — a bare
   `gh extension upgrade aw` stops at the latest *stable* (v0.77.5). Avoid
   `main`: it often contains unreleased features that break this tool.
-- Go 1.25.8+ **only if** installing via `go install` or building from
+- Go 1.26.4+ **only if** installing via `go install` or building from
   source
 
 ### Install
@@ -648,7 +648,10 @@ intentional: it allows independent per-workflow decisions while `deploy`
 enforces fleet-wide consistency. To force a re-pin from `fleet.json`
 after editing it, run `gh-aw-fleet sync --apply --force <repo>` rather
 than `upgrade` — `upgrade` will not pick up `fleet.json` changes on its
-own.
+own. This asymmetry concerns the per-workflow `source:` refs only:
+`deploy`, `sync`, and `upgrade` all refresh gh-aw *init artifacts* to the
+fleet's `github/gh-aw` pin and record a fleet manifest, so an `upgrade`
+never leaves a stale dispatcher/init layout behind.
 
 **Dry-run by default.** `deploy`, `sync`, and `upgrade` default to
 dry-run mode. Pass `--apply` to commit, push, and open PRs. This prevents
@@ -791,6 +794,11 @@ resumes at the push gate, proceeding directly to `git push` and
     materialize a chosen workflow set as a `fleet.json` profile.
 - **[CLAUDE.md](CLAUDE.md)** — invariants for AI coding agents working
   in this repo. Useful for human contributors too as a quick reference.
+- **[docs/finops.md](docs/finops.md)** — cost tracking for agentic
+  workflows. Frames the two-layer model: deployed aggregate rollup (Layer 1,
+  via `api-consumption-report` and `gh-aw-fleet consumption`) and optional
+  per-run attribution (Layer 2, via agentics `cost-tracker`). Explains the
+  trade-offs and why the fleet stops where it does.
 
 ## Contributing & Development
 
@@ -801,6 +809,10 @@ to start. Before opening a PR, run the full local gate:
 ```bash
 make ci         # fmt-check + vet + lint + test (the same gate CI runs)
 ```
+
+The local development gate is expected to run with Go 1.26.4 and
+golangci-lint v2.12.2. Run `make ci` directly; do not pin an older
+`GOTOOLCHAIN` unless you are deliberately debugging toolchain drift.
 
 Or step by step:
 
