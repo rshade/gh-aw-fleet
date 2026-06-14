@@ -83,6 +83,10 @@ func printUpgrade(cmd *cobra.Command, res *fleet.UpgradeResult, apply bool) {
 	fmt.Fprintf(w, "%s (clone: %s)\n", res.Repo, res.CloneDir)
 	emitUpgradeWarnings(res)
 
+	if res.InitWasRun {
+		fmt.Fprintln(w, "  gh aw init: ran (refreshed init artifacts to current gh-aw version)")
+	}
+
 	if len(res.Conflicts) > 0 {
 		fmt.Fprintf(w, "  CONFLICTS: %d file(s) need manual merge\n", len(res.Conflicts))
 		for _, c := range res.Conflicts {

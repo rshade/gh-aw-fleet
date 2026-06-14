@@ -15,10 +15,11 @@ is biased toward *operator ergonomics* (resume, preflight, packaging) over
 *feature surface area* (new commands, new abstractions). When in doubt: less
 code, more delegation.
 
-The project is at **v0.1.4**. The 2026-06-01 transition to usage-based Copilot
-billing has shifted the near-term agenda: fleet operators need cross-repo cost
-visibility, and fleet — uniquely positioned to know which repo runs which
-profile pinned to which ref — is the natural layer to provide it.
+The project is at **v0.2.2** (2026-06-12). The 2026-06-01 transition to
+usage-based Copilot billing has shifted the near-term agenda: fleet operators
+need cross-repo cost visibility, and fleet — uniquely positioned to know which
+repo runs which profile pinned to which ref — is the natural layer to provide
+it.
 
 ## Release Composition Rule
 
@@ -33,39 +34,43 @@ fleet-layer tool existing.
 
 **Identifying candidates**:
 
-- **Cost**: items labeled `cost` on GitHub — currently #53, #59, #60
-  (#57 shipped, see Completed Milestones).
+- **Cost**: items labeled `cost` on GitHub — #104 (Immediate Focus),
+  #102 / #129 (Near-Term), #106 / #107 / #113 / #53 / #59 / #60
+  (Future); #57 / #103 / #108 shipped in the v0.2.x line.
 - **Security**: items labeled `security` on GitHub — the supply-chain
-  conflict scanners #101 / #100 (live incident, promoted to Immediate
-  Focus), the security epic #36 with children #38–#40, plus #49
-  (shipped).
+  conflict scanners #101 / #100 (live incident, Immediate Focus), the
+  trigger-risk lint #104, the security epic #36 with children #38–#40,
+  plus #49 (shipped).
 
-**Status**: v0.1.x → v0.2 satisfied this (#54 / #55 / #56 cost
-prereqs, #37 Layer 1 security scanner). v0.3 is composition-complete
-and awaiting its release-please cut: the cost half landed 2026-05-15
-(#57 consumption rollup) and the security half landed 2026-05-21 (#49
-`--strict` on public repos, PR #88). v0.4 needs a fresh cost + security
-pair. Its security half is already forming: the Renovate / Dependabot
-conflict scanners (#101 / #100, promoted to Immediate Focus on
-2026-06-08 off a live `finfocus#1246` incident). On the cost side, the
-likely candidate is a real-failure-triggered diagnostic refresh (#53).
+**Status**: release-please cuts **patch** bumps for `0.x` (latest tag
+**v0.2.2**, 2026-06-12; `main` has no unreleased commits). v0.2.0
+satisfied the rule (#54 / #55 / #56 cost prereqs, #37 Layer 1 security
+scanner); the v0.2.1–v0.2.2 line shipped the cost half repeatedly — the
+consumption rollup (#57), then the `gh aw logs --json` AIC source
+(#103 / PR #116) and the v0.79.2 FinOps baseline (#108) — alongside the
+security half (#49 `--strict` on public repos). The **next** release's
+security half is the live Renovate / Dependabot conflict scanners
+(#101 / #100, incident-driven 2026-06-08); its cost half is the
+trigger-risk lint (#104, promoted to Immediate Focus 2026-06-13 by the
+sync gate to fill the cost slot).
 
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
 
-## Immediate Focus (v0.4 in progress)
+## Immediate Focus (next release in progress)
 
-v0.2 is tagged (release-please commit `c416f89`, 2026-05-14). v0.3
-shipped its composition pair — the cross-fleet consumption rollup
-(#57, cost, PR #83) and the `--strict`-on-public-repos security default
-(#49, PR #88) — plus the one-liner installers (#43, PR #92, 2026-06-10).
-Immediate Focus now holds the v0.4 pair: the supply-chain conflict
-scanners (#101 / #100, security — promoted 2026-06-08 off a live
-`finfocus#1246` incident) and the FinOps v0.79.2 baseline (#108, cost —
-implemented this session, PR pending). The `/roadmap sync` gate notes
-depth 3 > target 1 (single-WIP soft notice); the extra slots are the
-deliberate security-incident pair plus the cost baseline that unblocks
-the FinOps roadmap (#102–#107, #112–#115).
+Latest tag is **v0.2.2** (2026-06-12); `main` has no unreleased commits.
+v0.2.2 shipped the FinOps build-out — the `gh aw logs --json` AIC source
+(#103 / PR #116), scope-to-named-repos (#126), the fleet-manifest
+(#114 / PR #124), and the v0.79.2 baseline (#108) — on top of v0.2.0's
+consumption rollup (#57) and `--strict`-on-public security default (#49),
+plus the one-liner installers (#43). Immediate Focus now holds the next
+release's composition pair: the supply-chain conflict scanners
+(#101 / #100, security — promoted 2026-06-08 off a live `finfocus#1246`
+incident) and the cost-oriented trigger-risk lint (#104, cost — promoted
+2026-06-13 by the sync gate to fill the cost slot). The `/roadmap sync`
+gate notes depth 3 > target 1: the deliberate security-incident pair plus
+the required cost item. Demote toward single-WIP once #101 / #100 land.
 
 - [ ] [#101](https://github.com/rshade/gh-aw-fleet/issues/101) Detect
   Dependabot configs that conflict with gh-aw-managed pins `[M]` `security`
@@ -84,47 +89,69 @@ the FinOps roadmap (#102–#107, #112–#115).
   and keep Renovate off generated `*.lock.yml` files (Rule B). Promoted
   by `/roadmap sync` on 2026-06-08 alongside its Dependabot sibling #101
   for full dependency-bot coverage.*
-- [ ] [#108](https://github.com/rshade/gh-aw-fleet/issues/108) gh-aw
-  v0.79.2 baseline + capture `--json` / compile-env spikes `[M]` `cost`
-  `finops` `spec-first`
-  *Raises the gh-aw floor to v0.79.2 across configs / docs / tests,
-  recompiles the tracked locks, and captures real `forecast` / `logs
-  --json` fixtures — the enabling spike for the FinOps roadmap
-  (#102–#107). Implemented this session; PR pending (`feat(consumption)`
-  closes #103 + #108). Fills v0.4's release-composition cost slot
-  alongside the security pair #101 / #100.*
+- [ ] [#104](https://github.com/rshade/gh-aw-fleet/issues/104)
+  Cost-oriented trigger-risk lint over the resolved fleet `[S]`
+  `security` `cost` `finops`
+  *Flag trigger shapes that invite runaway AIC spend (unbounded
+  schedules, fork-triggered LLM runs) across the resolved workflow set.
+  Promoted by `/roadmap sync` on 2026-06-13 — fills the next release's
+  cost composition slot; `effort/small` and also `security`-labeled, so
+  it reinforces the in-flight incident theme rather than adding a
+  disjoint third workstream.*
 
 ## Near-Term Vision (v0.4 — FinOps build-out + operator QoL)
 
-With v0.3 shipped (#57 + #49 + #43) and Immediate Focus holding the v0.4
-pair (#101 / #100 security, #108 cost baseline), Near-Term holds the
-FinOps build-out the #108 spike unblocks — forecast (#102), the logs-AIC
-source (#103), trigger-risk lint (#104) — plus the deploy/consumption
-follow-ups surfaced this session (#112, #115), a deploy correctness bug
-(#98), a diagnostics expansion (#99), and two docs items (#94 / #95).
+With the FinOps build-out shipped in v0.2.2 (#103 / #108 / #114) and
+Immediate Focus holding the next release's pair (#101 / #100 security
+plus #104 cost), Near-Term holds the remaining FinOps work — forecast
+(#102), the over-budget rollup highlight (#129), and consumption
+scale-hardening (#119) — plus the deploy/consumption follow-ups
+(#112 / #115), a deploy correctness bug (#98), a diagnostics expansion
+(#99), and four docs items (#94 / #95 / #127 / #128).
 
 ### FinOps / cost visibility
 
 The 2026-06-01 usage-based Copilot billing transition makes AI-credit
-(AIC) attribution a continuous operator concern; the #108 v0.79.2 spike
-captured the upstream `--json` surfaces these build on.
+(AIC) attribution a continuous operator concern; the v0.79.2 baseline
+(#108, shipped in v0.2.2) captured the upstream `--json` surfaces these
+build on.
 
-- [ ] [#103](https://github.com/rshade/gh-aw-fleet/issues/103) Source AIC
-  from `gh aw logs --json`, not `aw_info.json` cost `[M]` `cost` `finops`
-  *Pivot the `consumption` rollup to `gh aw logs --json` (AIC; USD =
-  `aic * 0.01`) behind a `--source logs|artifacts` flag, decoupled from
-  any deployed report workflow. **Implemented this session; PR pending.***
 - [ ] [#102](https://github.com/rshade/gh-aw-fleet/issues/102) `gh-aw-fleet
   forecast` — fleet-wide pre-spend cost projection `[L]` `cost` `finops`
   *Wrap `gh aw forecast --json` across the fleet, aggregate projected AIC
   (P50/P95 per #108's spike), group `--by repo|profile|cost-center|tier`.*
-- [ ] [#104](https://github.com/rshade/gh-aw-fleet/issues/104) Cost-oriented
-  trigger-risk lint over the resolved fleet `[S]` `security` `cost` `finops`
-  *Flag trigger shapes that invite runaway AIC spend (unbounded schedules,
-  fork-triggered LLM runs) across the resolved workflow set.*
+- [ ] [#129](https://github.com/rshade/gh-aw-fleet/issues/129) Read-only
+  over-budget highlighting in the rollup (`--budget`) `[M]` `cost`
+  `finops` `spec-first`
+  *Optional per-row AIC ceiling that highlights hot rollup rows — the
+  "operate / anomaly" lens, delivered read-only inside the fleet's own
+  control plane (no cap, no alert, exit 0). Needs a small 009 spec
+  amendment distinguishing "highlight" from "alarm" (hence `spec-first`).*
+- [ ] [#119](https://github.com/rshade/gh-aw-fleet/issues/119) Paginate
+  Actions workflow discovery for the logs consumption source `[M]`
+  `finops`
+  *`consumption --source logs` discovers workflows with a single
+  `per_page=100` request; repos with >100 workflows silently undercount
+  AIC. Follow pagination through the `ghWorkflowsAPI` seam; surface
+  later-page failures as diagnostics, not silent partial totals.*
 
 ### Documentation
 
+- [ ] [#127](https://github.com/rshade/gh-aw-fleet/issues/127) Document
+  the two-layer FinOps cost model (aggregate rollup vs. per-run
+  attribution) `[S]` `documentation` `finops`
+  *New `docs/finops.md` framing Layer 1 (the deployed
+  `api-consumption-report` plus the `consumption` rollup, AIC-native)
+  vs. Layer 2 (optional agentics `cost-tracker`), with the currency
+  caveat (Copilot AIC ≠ list-price USD) and the trigger-coupling caveat
+  stated plainly. Links the FinOps issue cluster as the roadmap.*
+- [ ] [#128](https://github.com/rshade/gh-aw-fleet/issues/128) Correct the
+  stale `--source` default in the `fleet-budget-review` skill
+  (artifacts → logs) `[S]` `documentation` `finops`
+  *`skills/fleet-budget-review/SKILL.md` still documents the legacy
+  `--source artifacts` path as the default; the real default is
+  `--source logs` (#103). Rewrite the data-source sections, the example
+  table (`AIC` / `COST` columns), and the Step-4 diagnostics to match.*
 - [ ] [#94](https://github.com/rshade/gh-aw-fleet/issues/94) Surface
   dry-run as a design principle + add concrete workflow examples to the
   README `[S]` `documentation`
@@ -362,13 +389,6 @@ ideas close the loop without becoming a daemon.
 
 ### Miscellaneous
 
-- [ ] [#114](https://github.com/rshade/gh-aw-fleet/issues/114) Fleet-managed
-  marker/manifest per repo: track deployed gh-aw version + detect/refresh
-  stale init artifacts `[L]`
-  *Write `.github/aw/fleet-manifest.json` on deploy (managed, gh-aw version,
-  profiles); make `status` / `sync` version-aware so init-artifact drift is
-  detectable instead of surfacing as a runtime failure. Supersedes the
-  drift-detection half of #98.*
 - [ ] Per-profile `engine` override `[S]`
   *Today `engine` is a fleet-level default. Some profiles (e.g.,
   `security-plus`) might want a different engine. Schema change + resolution
@@ -400,6 +420,30 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#114](https://github.com/rshade/gh-aw-fleet/issues/114)
+  Fleet-managed marker/manifest per repo: deployed gh-aw version +
+  detect/refresh stale init artifacts `[L]`
+  *Shipped in v0.2.2 (PR #124, closed 2026-06-13). Deploy writes
+  `.github/aw/fleet-manifest.json` (managed flag, gh-aw version,
+  profiles); `ensureInit` now compares the manifest's `gh_aw_version`
+  against the fleet's `github/gh-aw` source pin instead of probing a
+  marker filename — a version mismatch triggers re-init. Supersedes the
+  drift-detection half of #98.*
+- [x] [#108](https://github.com/rshade/gh-aw-fleet/issues/108) gh-aw
+  v0.79.2 baseline + capture `--json` / compile-env spikes `[M]` `cost`
+  `finops`
+  *Shipped in v0.2.2 (closed 2026-06-12). Raised the gh-aw floor to
+  v0.79.2 across configs / docs / tests, recompiled the tracked locks,
+  and captured real `forecast` / `logs --json` fixtures — the enabling
+  spike for the FinOps build-out. Filled the v0.2.2 release-composition
+  cost slot.*
+- [x] [#103](https://github.com/rshade/gh-aw-fleet/issues/103) Source AIC
+  from `gh aw logs --json`, not `aw_info.json` cost `[M]` `cost` `finops`
+  *Shipped in v0.2.2 (PR #116, closed 2026-06-12). Pivoted the
+  `consumption` rollup to `gh aw logs --json` (AIC; USD = `aic * 0.01`)
+  behind a `--source logs|artifacts` flag, decoupled from any deployed
+  report workflow — `--source logs` is now the default and no longer
+  needs `api-consumption-report` deployed.*
 - [x] [#43](https://github.com/rshade/gh-aw-fleet/issues/43) Add
   `install.sh` and `install.ps1` one-liner installers `[M]` `community`
   *Shipped 2026-06-10 in PR #92. Checksum-verified curl/iwr one-liners
@@ -577,13 +621,14 @@ Any roadmap item that violates these is rejected, not negotiated.
 [meta-spec]: ./CONTEXT.md#roadmap-meta-issue-body-convention
 
 > Tracked as GitHub issues: Immediate Focus — the supply-chain scanners
-> (#101, #100) and the FinOps v0.79.2 baseline (#108); Near-Term — the
-> FinOps core (#102, #103, #104), the deploy/consumption follow-ups
-> (#112, #115), the deploy bug (#98), diagnostics hint (#99), and docs
-> items (#94, #95); Future Vision — the security epic (#36 with children
-> #38–#40), the FinOps deferred set (#105, #106, #107, #113, #53, #59,
-> #60), the fleet-manifest marker (#114), and the Status refinements
-> (#61, #62). Shipped since the last sync: #43 (installers, 2026-06-10).
-> Excluded as operational noise: #5 (Dependency Dashboard) and #111 (bot
-> failure report). The unlinked Near-Term and Future items don't have
-> issues yet — open them as work picks up, then run `/roadmap sync`.
+> (#101, #100, security) and the trigger-risk lint (#104, cost);
+> Near-Term — the FinOps build-out (#102, #129, #119), the
+> deploy/consumption follow-ups (#112, #115), the deploy bug (#98),
+> diagnostics hint (#99), and docs items (#94, #95, #127, #128); Future
+> Vision — the security epic (#36 with children #38–#40), the FinOps
+> deferred set (#105, #106, #107, #113, #53, #59, #60), and the Status
+> refinements (#61, #62). Shipped in v0.2.2 (2026-06-12): #103, #108,
+> #114 (alongside #57 / #49 / #43 across the v0.2.x line). Excluded as
+> operational noise: #5 (Dependency Dashboard) and #111 / #118 / #123
+> (bot failure reports). The unlinked Near-Term and Future items don't
+> have issues yet — open them as work picks up, then run `/roadmap sync`.

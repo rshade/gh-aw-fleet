@@ -11,7 +11,7 @@ Aggregate `api-consumption-report` output across the fleet and surface where the
 
 `gh-aw-fleet consumption` is read-only by design (FR-002). It does not enforce budgets, set caps, or alarm — those live in [GitHub's spending controls](https://github.com/settings/billing/spending_limit). What it *does* is answer the operator's budget question: "where is the fleet's Copilot-credit usage going, and which workflows are driving it?"
 
-The data comes from each repo's daily `api-consumption-report` workflow (deployed via `observability-plus`). Discovery walks the repo's `audits`-category discussions for the `<!-- gh-aw-tracker-id: api-consumption-report-daily -->` marker; data comes from the discussion-referenced workflow run's `aw_info.json` + `run_summary.json` artifacts. No caching — each invocation re-discovers from scratch (FR-022).
+The default data source (`--source logs`) uses the GitHub Actions logs API. Discovery enumerates each repo's agentic workflows (those compiled to `.lock.yml` files) via `gh api repos/.../actions/workflows`; data comes from `gh aw logs --json` per workflow, summing AI credits (`summary.total_aic`). This path needs no deployed `api-consumption-report` workflow — the rollup is decoupled from any deployed artifact. For backwards compatibility, a legacy `--source artifacts` path is available: discovery walks the repo's `audits`-category discussions for the `<!-- gh-aw-tracker-id: api-consumption-report-daily -->` marker, and data comes from the discussion-referenced workflow run's `aw_info.json` + `run_summary.json` artifacts (now mostly deprecated under the Copilot AI-Credits model, where cost is structurally absent). No caching — each invocation re-discovers from scratch (FR-022). See [`docs/finops.md`](../../docs/finops.md) for the two-layer cost model (this aggregate rollup vs. the optional per-run `cost-tracker`) and the AIC-vs-USD caveats.
 
 This skill exists because a raw `gh-aw-fleet consumption` invocation produces a tabwriter rollup, but the operator's question is rarely "show me a table." It's "should we trim the security-plus opt-ins on the lower-traffic repos?" — a question the table answers but doesn't *frame*. The skill picks the right flags, reads the JSON, and frames the conclusion.
 
@@ -79,21 +79,22 @@ The command prints a stderr breadcrumb (`(loaded fleet.json + fleet.local.json)`
 
 ### Step 4 — read the diagnostics
 
-The rollup may emit per-repo warnings on stderr. Three patterns to expect:
+The rollup may emit per-repo warnings on stderr. Two patterns to expect under the default `--source logs`:
 
-- **`No consumption reports discovered for <repo>`** — the repo has no `api-consumption-report` workflow deployed, or it hasn't published yet. Confirm via `gh-aw-fleet list <repo>` whether `api-consumption-report` is in the resolved workflow set. If not, the repo needs `observability-plus` added to its profile list. If yes but no reports yet, the workflow's first daily run hasn't completed — wait 24h.
-- **`Included in-progress report from <repo> (<date>). Totals may be partial.`** — only appears under `--trailing` / `--since`. An in-progress report (the daily run hasn't finished) contributed a partial number. Re-run after the run completes for finalized totals, or narrow the window to exclude today.
-- **`Run artifact for <repo> (run #N on <date>) is past the ~90-day run-log retention window.`** — the discussion exists but the underlying workflow-run artifacts were garbage-collected by the platform. Long-trend questions beyond ~90 days are out of scope (FR-024); shorten the window.
+- **`No consumption reports discovered for <repo>`** — the repo has no agentic workflows deployed, or no workflows have run yet. Check `gh-aw-fleet list <repo>` to see which workflows are resolved for this repo. If none are present, add a profile that includes agentic workflows. If workflows are present, wait 24h for the first run to complete and report.
+- **`Included in-progress report from <repo> (<date>). Totals for this repo may be partial.`** — only appears under `--trailing` / `--since`. An in-progress workflow run (still executing) contributed a partial data snapshot. Re-run after the run completes for finalized totals, or narrow the time window to exclude today.
 
 Warnings are non-fatal. The command always exits 0 when discovery + fetch succeed for at least one repo — "no data found" is not a failure (FR-010).
+
+**Legacy `--source artifacts` notes:** If using the deprecated artifacts path, expect an additional warning: **`Run artifact for <repo> (run #N on <date>) is past the ~90-day run-log retention window.`** This occurs when the underlying workflow-run artifacts were garbage-collected by the platform. Long-trend questions beyond ~90 days are out of scope (FR-024); shorten the window or switch to `--source logs`.
 
 ### Step 5 — frame the answer
 
 The raw table is rarely the answer. Pick the framing that matches the question:
 
-- **Snapshot question** ("how are we doing?"): lead with the fleet total (sum of the `API_CALLS` column for `--by repo`), then call out the top 3 repos by call volume. The `TOP 10 BURNERS:` footer names the highest-traffic individual workflows — quote 2-3 of them.
+- **Snapshot question** ("how are we doing?"): lead with the fleet total AI credits (sum of the `AIC` column for `--by repo`), then call out the top 3 repos by credit usage. The `TOP 10 BURNERS:` footer names the highest-traffic individual workflows by AIC — quote 2-3 of them.
 - **Cost-concentration question** ("where do we trim?"): use `--by profile` or `--by cost-center` and call out the heaviest row. Note any `<unset>` bucket — those repos aren't attributed to a budget owner and that's usually a tagging gap to fix before any real trimming decision.
-- **Workflow-specific question** ("is `<workflow>` worth it?"): use `--by workflow`, pull out the named workflow's row, and compare its `API_CALLS` / `COST` to the next-most-expensive workflow. Numbers in isolation rarely change anyone's mind; a comparison ("`workflow-X` is 3× the cost of the next-most-expensive workflow `Y`") does.
+- **Workflow-specific question** ("is `<workflow>` worth it?"): use `--by workflow`, pull out the named workflow's row, and compare its `AIC` / `COST` to the next-most-expensive workflow. Numbers in isolation rarely change anyone's mind; a comparison ("`workflow-X` is 3× the AIC of the next-most-expensive workflow `Y`") does.
 - **Trend question** ("are we trending up?"): the command doesn't store historical state, so you can't directly compare windows. Run two invocations (`--trailing 7d` and `--trailing 14d`) and infer the delta (last 7d ÷ first 7d ≈ 2 means flat; >2 means growth, <2 means decline). Flag that this is approximate — daily variance can be large.
 
 ### Step 6 — recommend (only if user asked)
@@ -102,7 +103,7 @@ If the user asks "what should I do?":
 
 - For an unattributed `<unset>` cost-center bucket: recommend adding `cost_center` annotations on those repos in `fleet.local.json`. The annotation is advisory — the loader silently accepts its absence — so it's a documentation fix, not a code change.
 - For a workflow burning disproportionate calls: name the workflow, name the profile(s) it ships in (`gh-aw-fleet list` shows resolved workflow sets per repo), and suggest excluding it on the lowest-value-per-call repos via `RepoSpec.ExcludeFromProfiles`. Don't propose removing it from the profile entirely unless the user signals that's on the table.
-- For a repo with no reports: name the repo, identify whether `observability-plus` is in its profile list, and suggest either adding the profile (if missing) or waiting 24h (if recently added).
+- For a repo with no reports (under `--source logs`): name the repo and check `gh-aw-fleet list <repo>` to see if any agentic workflows are deployed. If none, add a profile that includes agentic workflows. If workflows exist but haven't run yet, wait 24h for the first execution. (Under `--source artifacts`, the repo needs `observability-plus` and its daily workflow run.)
 - For retention-expired data: tell the user the limit and stop. The platform doesn't expose this data; pretending the rollup can answer is worse than saying "out of scope."
 
 Never apply changes from this skill. Recommendations are read-only — operator follows up with the `fleet-onboard-repo` or `fleet-deploy` skill (or a hand edit) if they want to act.
@@ -112,7 +113,7 @@ Never apply changes from this skill. Recommendations are read-only — operator 
 - **Read-only.** This skill never invokes `--apply` (consumption has no such flag — read-only by design). Recommendations route through other skills that handle mutation correctly.
 - **No caching.** Each invocation re-discovers. If the user runs the rollup twice in a session and gets slightly different numbers, that's because in-progress reports flipped to finalized between invocations — not a bug. Surface this when totals shift unexpectedly.
 - **Multi-profile additivity is the documented semantic.** Don't apologize for double-counting under `--by profile` — it's intentional (FR-014, research.md Decision 5). Operators learn to sum across profile rows only when they want a fleet total, not when comparing profile costs.
-- **Cost is nil-until-positive.** If the upstream `cost` field is zero or absent, the rollup renders `-` for cost (FR-018, Decision 6). Don't treat the dash as "this run cost zero dollars" — it means "no cost signal." Frame conclusions around API_CALLS when cost is sparse.
+- **AI credits and cost are nil-until-positive.** If `aic` / `cost` fields are zero or absent, the rollup renders `-` for those columns (FR-018, Decision 6). Don't treat the dash as "this repo costs zero dollars" — it means "no AIC data available." Under `--source logs`, all fields are populated from agentic run summaries when available; under `--source artifacts`, the cost field is structurally nil under the Copilot AI-Credits model (that path predates the AIC schema). Frame conclusions around API_CALLS when AIC is sparse.
 - **The `<unset>` cost-center bucket is a real signal, not noise.** When the operator asks "where is my spend attributed?", an `<unset>` row means "you haven't told the tool, and I'm not going to invent an answer."
 - **Don't volunteer raw JSON unless asked.** The text-mode tabwriter is the operator-facing surface; the JSON envelope is for downstream piping. Show the table; only break out JSON if the user pipes through jq or asks for the wire format.
 
@@ -120,20 +121,20 @@ Never apply changes from this skill. Recommendations are read-only — operator 
 
 A concise budget-frame paragraph + the relevant table, organized like:
 
-```
+```text
 Fleet consumption (trailing-7d, by cost-center):
 
-  COST_CENTER     API_CALLS  SAFE_WRITES  COST    REPORTS
-  platform-eng    33,789     147          $87.21  14
-  data-platform   8,402      31           $19.83  7
-  <unset>         2,108      9            -       7
+  COST_CENTER     API_CALLS  SAFE_WRITES  AIC      COST    REPORTS
+  platform-eng    33,789     147          523.41   $5.23   14
+  data-platform   8,402      31           98.67    $0.99   7
+  <unset>         2,108      9            -        -       7
 
 Frame:
-  - Platform-eng is 4× the cost of data-platform — expected given the
-    repo count (2× repos, 2× per-repo activity).
+  - Platform-eng is 5.3× the AI credits of data-platform — expected given the
+    repo count (2× repos, 2× per-repo activity and higher-cost workflows).
   - 7 reports under <unset> means two repos still aren't attributed to
     a budget owner. Recommend annotating before the quarterly review.
-  - Top burners: issue-triage (3,210 calls, $8.91) leads — but only
+  - Top burners: issue-triage (523.41 AIC, $5.23 cost) leads — but only
     ~10% of the cost-center total, so cost is broad-based, not
     concentrated. Trimming would mean broad changes, not surgical ones.
 ```
@@ -144,7 +145,7 @@ If the user asks for a specific axis or window, run the relevant invocation and 
 
 ### Example 1 — quick snapshot
 
-```
+```text
 User: how are we doing on fleet spend?
 
 You:
@@ -158,7 +159,7 @@ You:
 
 ### Example 2 — quarterly cost-center review
 
-```
+```text
 User: I need to attribute Q1 spend by cost-center for the budget review.
 
 You:
@@ -172,7 +173,7 @@ You:
 
 ### Example 3 — workflow trimming decision
 
-```
+```text
 User: is the agentics issue-triage workflow worth keeping?
 
 You:
@@ -191,7 +192,7 @@ You:
 
 ### Example 4 — empty fleet
 
-```
+```text
 User: what's our consumption?
 
 You:

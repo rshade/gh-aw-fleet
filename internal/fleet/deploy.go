@@ -570,13 +570,42 @@ func prepareClone(ctx context.Context, repo, explicit string) (string, error) {
 	return dir, nil
 }
 
+// initMarkers are the files a healthy `gh aw init` is expected to create.
+// ensureInit's drift guard uses OR-semantics: init is considered to have
+// produced a recognized layout when AT LEAST ONE is present, so a reduced
+// --no-agent / --no-skill config does not trip a false warning. Observed from
+// `gh aw init` at github/gh-aw v0.79.2 (the fleet pin); re-derive when bumping
+// the pin by running `gh aw init` in a scratch dir and updating this list.
+//
+//nolint:gochecknoglobals // immutable marker table; Go has no const slice
+var initMarkers = []string{
+	".github/agents/agentic-workflows.md",
+	".github/skills/agentic-workflows/SKILL.md",
+	".github/skills/agentic-workflow-designer/SKILL.md",
+	".github/mcp.json",
+	".github/workflows/copilot-setup-steps.yml",
+}
+
+// anyInitMarkerPresent reports whether at least one initMarkers entry exists
+// under dir.
+func anyInitMarkerPresent(dir string) bool {
+	for _, m := range initMarkers {
+		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // ensureInit ensures the target clone has been initialized for gh-aw. It
 // supersedes the former initMarkerPaths file-check: rather than asking "has
 // init ever run?", it asks "has init run at the fleet's current gh-aw version?"
 // If fleetGhAwVersion is non-empty and the clone's fleet manifest records that
 // exact version, init is skipped — the artifacts are already current. Otherwise
 // (no manifest, unreadable manifest, or version mismatch) gh aw init runs to
-// refresh init artifacts to the current version.
+// refresh init artifacts to the current version. After init runs, a drift guard
+// warns (non-fatally) when none of initMarkers appears — a signal that the
+// upstream init layout changed out from under the hardcoded marker list.
 func ensureInit(ctx context.Context, dir, fleetGhAwVersion string) (bool, error) {
 	if fleetGhAwVersion != "" {
 		m, _ := readManifestFromClone(dir)
@@ -590,6 +619,16 @@ func ensureInit(ctx context.Context, dir, fleetGhAwVersion string) (bool, error)
 	cmd.Stderr = os.Stderr
 	if err := runLogged(cmd, "gh", "aw init", map[string]string{fieldCloneDir: dir}); err != nil {
 		return false, err
+	}
+	if !anyInitMarkerPresent(dir) {
+		zlog.Warn().
+			Str("event", "init_no_recognized_marker").
+			Str(fieldCloneDir, dir).
+			Strs("expected_any_of", initMarkers).
+			Msg("gh aw init completed but produced none of the expected init markers — " +
+				"the upstream init layout may have changed (re-derive initMarkers by running " +
+				"`gh aw init` at the current gh-aw pin), or this repo uses a reduced " +
+				"--no-agent/--no-skill config; continuing")
 	}
 	return true, nil
 }

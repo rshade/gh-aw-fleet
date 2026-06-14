@@ -42,6 +42,12 @@ type UpgradeResult struct {
 	AuditJSON    json.RawMessage `json:"audit_json"`
 	OutputLog    string          `json:"output_log"` // combined stdout+stderr from gh aw upgrade/update; used for hint extraction
 
+	// InitWasRun is true when ensureInit ran `gh aw init` to refresh init
+	// artifacts during this upgrade (the clone's fleet manifest recorded a
+	// gh-aw version other than the fleet pin). False when init was already
+	// current and skipped. Mirrors DeployResult.InitWasRun.
+	InitWasRun bool `json:"init_was_run"`
+
 	// SecurityFindings is the sorted output of security.Run after the
 	// upgrade pipeline modifies workflow markdown. Findings are advisory:
 	// they never block the upgrade. Surfaced on stderr (zerolog), in the
@@ -104,19 +110,19 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 		return runAudit(ctx, res)
 	}
 
-	upgradeOut, err := runUpgrade(ctx, res.CloneDir)
-	res.OutputLog += upgradeOut
+	// Refresh init artifacts to the fleet's gh-aw version BEFORE recompiling
+	// lock files, so a stale dispatcher/init layout (last deploy predates a pin
+	// bump) doesn't outlive the upgrade. No-op when the manifest already records
+	// the current version. Runs in dry-run too (mutates only the throwaway
+	// clone), matching deploy/sync which init before their apply split.
+	res.InitWasRun, err = ensureInit(ctx, res.CloneDir, resolvedGhAwPin(cfg, repo))
 	if err != nil {
-		return res, fmt.Errorf("gh aw upgrade: %w", err)
+		return res, fmt.Errorf("gh aw init: %w", err)
 	}
-	res.UpgradeOK = true
 
-	updateOut, err := runUpdate(ctx, res.CloneDir, opts.Major, opts.Force)
-	res.OutputLog += updateOut
-	if err != nil {
-		return res, fmt.Errorf("gh aw update: %w", err)
+	if pipelineErr := runUpgradePipeline(ctx, res, opts); pipelineErr != nil {
+		return res, pipelineErr
 	}
-	res.UpdateOK = true
 
 	conflicts, err := checkConflicts(ctx, res.CloneDir)
 	if err != nil {
@@ -134,8 +140,18 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 	res.ChangedFiles = changed
 	res.SecurityFindings = security.Run(ctx, res.CloneDir)
 	if len(changed) == 0 {
-		res.NoChanges = true
-		return res, nil
+		if !opts.Apply {
+			res.NoChanges = true
+			return res, nil
+		}
+		manifestBackfilled, manifestErr := backfillUpgradeManifest(ctx, cfg, repo, res)
+		if manifestErr != nil {
+			return res, manifestErr
+		}
+		if !manifestBackfilled {
+			return res, nil
+		}
+		return createUpgradePR(ctx, res)
 	}
 
 	if !opts.Apply {
@@ -151,7 +167,51 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 		return res, compileErr
 	}
 
+	// Record the fleet manifest so the recorded gh-aw version reflects this
+	// upgrade. Written before createUpgradePR's `git add .github/` so the
+	// manifest update rides in the PR; writeManifestIfNeeded suppresses churn
+	// when already current.
+	if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
+		return res, manifestErr
+	}
+
 	return createUpgradePR(ctx, res)
+}
+
+func runUpgradePipeline(ctx context.Context, res *UpgradeResult, opts UpgradeOpts) error {
+	upgradeOut, err := runUpgrade(ctx, res.CloneDir)
+	res.OutputLog += upgradeOut
+	if err != nil {
+		return fmt.Errorf("gh aw upgrade: %w", err)
+	}
+	res.UpgradeOK = true
+
+	updateOut, err := runUpdate(ctx, res.CloneDir, opts.Major, opts.Force)
+	res.OutputLog += updateOut
+	if err != nil {
+		return fmt.Errorf("gh aw update: %w", err)
+	}
+	res.UpdateOK = true
+	return nil
+}
+
+func backfillUpgradeManifest(ctx context.Context, cfg *Config, repo string, res *UpgradeResult) (bool, error) {
+	// Backfill the fleet manifest for legacy repos whose gh-aw init layout is
+	// already current but predates manifest tracking. Without this, apply-mode
+	// upgrades short-circuit as "no changes" and the repo remains unmanaged.
+	if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
+		return false, manifestErr
+	}
+	changed, err := getChangedFiles(ctx, res.CloneDir)
+	if err != nil {
+		return false, err
+	}
+	res.ChangedFiles = changed
+	if len(changed) == 0 {
+		res.NoChanges = true
+		return false, nil
+	}
+	return true, nil
 }
 
 // createUpgradePR branches, commits, pushes, and opens a PR for an upgrade
@@ -285,7 +345,7 @@ func hasConflictMarkers(path string) bool {
 }
 
 func getChangedFiles(ctx context.Context, dir string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain", "--untracked-files=all")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
@@ -325,6 +385,9 @@ func upgradeTitle() string {
 func upgradeBody(res *UpgradeResult) string {
 	var b strings.Builder
 	b.WriteString("Upgrades agentic workflows via `gh aw upgrade` + `gh aw update`.\n\n")
+	if res.InitWasRun {
+		b.WriteString("Init artifacts were refreshed to the current gh-aw version (`gh aw init`).\n\n")
+	}
 	if section := security.RenderPRSection(res.SecurityFindings); section != "" {
 		b.WriteString(section)
 		b.WriteString("\n")

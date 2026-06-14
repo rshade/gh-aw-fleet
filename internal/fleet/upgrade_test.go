@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -199,5 +200,147 @@ func TestUpgrade_ProbeFailed_EmitsDiagGhAwMissing(t *testing.T) {
 	}
 	if seams.compileCalls != 0 {
 		t.Errorf("compile seam invoked despite probe-failed; calls=%d", seams.compileCalls)
+	}
+}
+
+// installFakeGhForUpgrade puts a fake `gh` on PATH handling the upgrade
+// pipeline's gh calls (repo clone, aw init, aw upgrade, aw update). Compile-strict
+// is supplied separately via installCompileStrictSeams; `gh pr create` is left
+// unhandled so the run fails after init+manifest, mirroring installFakeGhForSync.
+func installFakeGhForUpgrade(t *testing.T, remote string) {
+	t.Helper()
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "fake-gh.log")
+	script := `#!/bin/sh
+set -eu
+
+if [ "$1" = "repo" ] && [ "$2" = "clone" ]; then
+	git clone "$FLEET_TEST_REMOTE" "$4"
+	git -C "$4" config commit.gpgsign false
+	git -C "$4" config user.email test@example.com
+	git -C "$4" config user.name Test
+	exit 0
+fi
+
+if [ "$1" = "aw" ] && [ "$2" = "init" ]; then
+	mkdir -p .github/agents
+	printf '%s\n' 'agent setup' > .github/agents/agentic-workflows.md
+	printf 'init\n' >> "${FAKE_GH_LOG:?}"
+	exit 0
+fi
+
+if [ "$1" = "aw" ] && { [ "$2" = "upgrade" ] || [ "$2" = "update" ]; }; then
+	printf '%s\n' "$2" >> "${FAKE_GH_LOG:?}"
+	exit 0
+fi
+
+echo "unexpected gh args: $*" >&2
+exit 1
+`
+	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("FLEET_TEST_REMOTE", remote)
+	t.Setenv("FAKE_GH_LOG", logPath)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func seedCurrentInitMarker(dir string) {
+	marker := filepath.Join(dir, ".github", "agents", "agentic-workflows.md")
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(marker, []byte("agent setup\n"), 0o644); err != nil {
+		panic(err)
+	}
+	gitInDir(dir, "add", ".github/agents/agentic-workflows.md")
+	gitInDir(dir, "commit", "-m", "seed current init marker")
+}
+
+// TestUpgrade_RunsInitAndWritesManifest verifies the upgrade gap fix: Upgrade
+// refreshes init artifacts (ensureInit, setting InitWasRun) and records the
+// fleet manifest into the clone before the PR step. The run fails later at
+// `gh pr create` (no real remote), but init + manifest happen first — mirrors
+// TestSync_PruneOnlyPath_WritesManifest.
+func TestUpgrade_RunsInitAndWritesManifest(t *testing.T) {
+	repo := "rshade/upgrade-manifest"
+	remote := newTestRepo(t, nil)
+	installFakeGhForUpgrade(t, remote)
+	installCompileStrictSeams(t, &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "  --strict\n",
+		compileOut: "ok",
+	})
+
+	cfg := &Config{
+		Profiles: map[string]Profile{
+			"default": {
+				Sources:   map[string]SourcePin{"github/gh-aw": {Ref: "v0.79.2"}},
+				Workflows: []ProfileWorkflow{{Name: "ci-doctor", Source: "github/gh-aw"}},
+			},
+		},
+		Repos: map[string]RepoSpec{
+			repo: {Profiles: []string{"default"}},
+		},
+	}
+
+	res, _ := Upgrade(context.Background(), cfg, repo, UpgradeOpts{Apply: true})
+	if res == nil {
+		t.Fatal("Upgrade returned nil result")
+	}
+	if res.CloneDir != "" {
+		t.Cleanup(func() { _ = os.RemoveAll(res.CloneDir) })
+	}
+	if !res.InitWasRun {
+		t.Error("InitWasRun = false; want true (fresh clone has no fleet manifest)")
+	}
+	manifestPath := filepath.Join(res.CloneDir, FleetManifestPath)
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Fatalf("manifest not written to %s before PR step: %v", manifestPath, err)
+	}
+}
+
+func TestUpgradeApplyBackfillsManifestWhenNoUpgradeDiffs(t *testing.T) {
+	repo := "rshade/upgrade-manifest-clean"
+	remote := newTestRepo(t, seedCurrentInitMarker)
+	installFakeGhForUpgrade(t, remote)
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "  --strict\n",
+		compileOut: "ok",
+	}
+	installCompileStrictSeams(t, seams)
+
+	cfg := &Config{
+		Profiles: map[string]Profile{
+			"default": {
+				Sources:   map[string]SourcePin{"github/gh-aw": {Ref: "v0.79.2"}},
+				Workflows: []ProfileWorkflow{{Name: "ci-doctor", Source: "github/gh-aw"}},
+			},
+		},
+		Repos: map[string]RepoSpec{
+			repo: {Profiles: []string{"default"}},
+		},
+	}
+
+	res, _ := Upgrade(context.Background(), cfg, repo, UpgradeOpts{Apply: true})
+	if res == nil {
+		t.Fatal("Upgrade returned nil result")
+	}
+	if res.CloneDir != "" {
+		t.Cleanup(func() { _ = os.RemoveAll(res.CloneDir) })
+	}
+	if res.NoChanges {
+		t.Fatal("NoChanges = true; want manifest-only change to continue to PR path")
+	}
+	if !slices.Equal(res.ChangedFiles, []string{FleetManifestPath}) {
+		t.Fatalf("ChangedFiles = %q, want [%s]", res.ChangedFiles, FleetManifestPath)
+	}
+	if seams.compileCalls != 0 {
+		t.Fatalf("compile seam calls = %d, want 0 for manifest-only backfill", seams.compileCalls)
+	}
+	manifestPath := filepath.Join(res.CloneDir, FleetManifestPath)
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Fatalf("manifest not written to %s: %v", manifestPath, err)
 	}
 }

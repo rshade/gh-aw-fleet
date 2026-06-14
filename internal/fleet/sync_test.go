@@ -50,9 +50,9 @@ func TestSyncDryRunPreflightTreatsPreparedCloneAsInternal(t *testing.T) {
 
 func TestSyncApplyBypassesResumeGuard(t *testing.T) {
 	// Bypass proof rests on gh aw init leaving an untracked
-	// .github/agents/agentic-workflows.agent.md in the cloned work-dir on the
-	// default branch; a stale InternalClone=false would trip the resume guard
-	// at deploy.go:203 and never reach addResolvedWorkflows.
+	// .github/agents/agentic-workflows.md (the real v0.79.2 init marker) in the
+	// cloned work-dir on the default branch; a stale InternalClone=false would
+	// trip the resume guard and never reach addResolvedWorkflows.
 	repo := "rshade/sync-missing"
 	remote := newTestRepo(t, nil)
 	logPath := installFakeGhForSync(t, remote)
@@ -385,7 +385,7 @@ fi
 
 if [ "$1" = "aw" ] && [ "$2" = "init" ]; then
 	mkdir -p .github/agents
-	printf '%s\n' 'agent setup' > .github/agents/agentic-workflows.agent.md
+	printf '%s\n' 'agent setup' > .github/agents/agentic-workflows.md
 	printf 'init\n' >> "${FAKE_GH_LOG:?}"
 	exit 0
 fi
