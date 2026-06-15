@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/rshade/gh-aw-fleet/internal/fleet/fleetdiag"
 )
 
 // stageFixturesIntoClone copies every *.md and *.lock.yml fixture under
@@ -78,6 +80,58 @@ func TestRunEndToEnd(t *testing.T) {
 	// gitleaks finding (synthetic AWS key in workflow-with-fake-secret.md)
 	if findRule(got, "gitleaks:", true) == nil {
 		t.Errorf("expected at least one gitleaks: finding")
+	}
+}
+
+// TestRunEndToEndRenovate proves the Renovate scanner's findings flow through
+// the full pipeline with no caller changes (FR-013): a clone with a deficient
+// renovate.json yields LOW findings on the stderr render, in the PR section,
+// and as security_renovate codes in the JSON-envelope projection.
+func TestRunEndToEndRenovate(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".github", "workflows"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Deficient config: neither conflict rule present → two LOW findings.
+	if err := os.WriteFile(filepath.Join(dir, "renovate.json"), []byte(`{"packageRules":[]}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got := Run(context.Background(), dir)
+
+	low := 0
+	for _, f := range got {
+		if !strings.HasPrefix(f.RuleID, "fleet.renovate.") {
+			continue
+		}
+		low++
+		if f.Severity != SeverityLow {
+			t.Errorf("renovate finding %q severity = %v, want LOW", f.RuleID, f.Severity)
+		}
+		if code := f.ToDiagnostic().Code; code != fleetdiag.DiagSecurityRenovate {
+			t.Errorf("renovate finding %q diag code = %q, want %q", f.RuleID, code, fleetdiag.DiagSecurityRenovate)
+		}
+	}
+	if low != 2 {
+		t.Fatalf("renovate LOW findings = %d, want 2: %+v", low, got)
+	}
+
+	stderr := RenderForStderr(got)
+	for _, want := range []string{
+		"[LOW] fleet.renovate.gh-aw-actions-not-disabled",
+		"[LOW] fleet.renovate.lockfile-not-disabled",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr render missing %q:\n%s", want, stderr)
+		}
+	}
+
+	pr := RenderPRSection(got)
+	if !strings.Contains(pr, "## Security Findings") {
+		t.Errorf("PR section missing heading:\n%s", pr)
+	}
+	if !strings.Contains(pr, "**LOW**") || !strings.Contains(pr, "fleet.renovate.") {
+		t.Errorf("PR section missing LOW renovate bullet:\n%s", pr)
 	}
 }
 

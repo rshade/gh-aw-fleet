@@ -59,7 +59,7 @@ func RenderForPRBody(findings []Finding) string {
 
 // numSeverityBuckets is the count of distinct severity values whose
 // counts are tallied in the PR-body summary line (HIGH, MEDIUM, LOW,
-// INFO). LOW is currently unused (FR-015) but its slot is reserved.
+// INFO). The Renovate config scanner emits LOW (FR-015).
 const numSeverityBuckets = 4
 
 // severityTally returns "2 HIGH, 1 MEDIUM, 1 INFO" — severities present in

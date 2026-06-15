@@ -1,0 +1,22 @@
+{
+  // gh-aw-fleet managed Renovate policy (JWCC: comments + trailing commas)
+  "extends": [
+    "config:recommended",
+  ],
+  "packageRules": [
+    {
+      /* Rule A: gh-aw-actions is managed atomically by `gh aw upgrade` */
+      "matchPackageNames": [
+        "github/gh-aw-actions",
+      ],
+      "enabled": false,
+    },
+    {
+      // Rule B: never let Renovate touch generated lock files
+      "matchFileNames": [
+        ".github/workflows/*.lock.yml",
+      ],
+      "enabled": false,
+    },
+  ],
+}

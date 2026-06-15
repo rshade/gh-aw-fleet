@@ -25,17 +25,21 @@ const (
 )
 
 const (
-	ruleIDActionlintNotInstalled      = "actionlint:not-installed"
-	ruleIDEngineEnvNonAllowlist       = "fleet.engine.env.non-allowlist"
-	ruleIDFrontmatterParseError       = "fleet.frontmatter.parse-error"
-	ruleIDMCPNonStandardServer        = "fleet.mcp.non-standard-server"
-	ruleIDPermissionsWriteOnSchedule  = "fleet.permissions.write-on-schedule"
-	ruleIDRepoMemoryMainBranch        = "fleet.repo-memory.main-branch"
-	ruleIDSafeOutputsDraftFalse       = "fleet.safe-outputs.draft-false"
-	ruleIDSafeOutputsMissingProtected = "fleet.safe-outputs.missing-protected-files"
+	ruleIDActionlintNotInstalled         = "actionlint:not-installed"
+	ruleIDEngineEnvNonAllowlist          = "fleet.engine.env.non-allowlist"
+	ruleIDFrontmatterParseError          = "fleet.frontmatter.parse-error"
+	ruleIDMCPNonStandardServer           = "fleet.mcp.non-standard-server"
+	ruleIDPermissionsWriteOnSchedule     = "fleet.permissions.write-on-schedule"
+	ruleIDRenovateGhAwActionsNotDisabled = "fleet.renovate.gh-aw-actions-not-disabled"
+	ruleIDRenovateLockfileNotDisabled    = "fleet.renovate.lockfile-not-disabled"
+	ruleIDRenovateParseError             = "fleet.renovate.parse-error"
+	ruleIDRepoMemoryMainBranch           = "fleet.repo-memory.main-branch"
+	ruleIDSafeOutputsDraftFalse          = "fleet.safe-outputs.draft-false"
+	ruleIDSafeOutputsMissingProtected    = "fleet.safe-outputs.missing-protected-files"
 )
 
 const (
 	rulePrefixActionlint = "actionlint:"
 	rulePrefixGitleaks   = "gitleaks:"
+	rulePrefixRenovate   = "fleet.renovate."
 )
