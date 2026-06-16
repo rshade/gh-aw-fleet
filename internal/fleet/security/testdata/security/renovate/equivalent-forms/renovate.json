@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "ignoreDeps": [
+    "github/gh-aw-actions/setup"
+  ],
+  "ignorePaths": [
+    "**/*.lock.yml"
+  ],
+  "packageRules": [
+    {
+      "matchDepPatterns": "gh-aw-actions",
+      "enabled": false
+    },
+    {
+      "matchPaths": ".github/workflows/*.lock.yml",
+      "enabled": false
+    }
+  ]
+}

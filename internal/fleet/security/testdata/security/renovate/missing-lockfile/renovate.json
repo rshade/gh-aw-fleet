@@ -12,13 +12,6 @@
       ],
       "enabled": false,
       "description": "gh-aw-actions version is coupled to the gh aw compiler version baked into lock file metadata. Renovate bumping it directly breaks hash validation. Managed atomically by the fleet tool via: gh aw upgrade"
-    },
-    {
-      "description": "gh-aw generates .github/workflows/*.lock.yml via 'gh aw compile'. Their pinned action SHAs and container tags are managed by gh-aw (recompiling bumps them), so Renovate must not touch them: edits would be reverted on the next compile and can break the gh-aw integrity manifest.",
-      "matchFileNames": [
-        ".github/workflows/*.lock.yml"
-      ],
-      "enabled": false
     }
   ]
 }

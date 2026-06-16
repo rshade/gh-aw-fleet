@@ -47,6 +47,7 @@ const (
 	DiagSecurityMCPNonStandardHost    = fleetdiag.DiagSecurityMCPNonStandardHost
 	DiagSecurityActionlint            = fleetdiag.DiagSecurityActionlint
 	DiagSecurityFrontmatterParseError = fleetdiag.DiagSecurityFrontmatterParseError
+	DiagSecurityRenovate              = fleetdiag.DiagSecurityRenovate
 
 	DiagCompileStrictFailed = fleetdiag.DiagCompileStrictFailed
 	DiagGhAwTooOld          = fleetdiag.DiagGhAwTooOld

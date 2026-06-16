@@ -1,0 +1,6 @@
+{
+  "packageRules": [
+    {
+      "matchPackageNames": ["github/gh-aw-actions"
+      "enabled": false
+    }

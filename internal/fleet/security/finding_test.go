@@ -114,6 +114,9 @@ func TestDiagCodeForRuleIDPrefixMapping(t *testing.T) {
 		"actionlint:syntax-check":                    fleetdiag.DiagSecurityActionlint,
 		"actionlint:not-installed":                   fleetdiag.DiagSecurityActionlint,
 		"fleet.frontmatter.parse-error":              fleetdiag.DiagSecurityFrontmatterParseError,
+		"fleet.renovate.gh-aw-actions-not-disabled":  fleetdiag.DiagSecurityRenovate,
+		"fleet.renovate.lockfile-not-disabled":       fleetdiag.DiagSecurityRenovate,
+		"fleet.renovate.parse-error":                 fleetdiag.DiagSecurityRenovate,
 		"unknown:rule":                               fleetdiag.DiagHint,
 	}
 	for ruleID, want := range cases {

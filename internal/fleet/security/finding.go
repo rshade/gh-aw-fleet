@@ -14,8 +14,9 @@ import (
 // notes (skipped scanners, unknown engine, malformed frontmatter).
 type Severity int
 
-// Severity constants. Only INFO, MEDIUM, and HIGH are emitted by v1
-// detectors; LOW is reserved for future use (FR-015).
+// Severity constants. INFO, LOW, MEDIUM, and HIGH are all emitted by
+// current detectors — the Renovate config scanner emits LOW for its
+// advisory conflict findings (FR-015).
 const (
 	SeverityInfo   Severity = 0
 	SeverityLow    Severity = 1
@@ -182,19 +183,23 @@ func diagCodeForRuleID(ruleID string) string {
 		return fleetdiag.DiagSecurityActionlint
 	case ruleID == ruleIDFrontmatterParseError:
 		return fleetdiag.DiagSecurityFrontmatterParseError
+	case strings.HasPrefix(ruleID, rulePrefixRenovate):
+		return fleetdiag.DiagSecurityRenovate
 	default:
 		return fleetdiag.DiagHint
 	}
 }
 
 // defaultScanners constructs the v1 scanner list in the canonical order:
-// gitleaks → structural → actionlint. Each scanner's constructor cost
-// (gitleaks regex compilation, actionlint exec.LookPath) is paid once
-// per Run invocation.
+// gitleaks → structural → actionlint → renovate. Each scanner's
+// constructor cost (gitleaks regex compilation, actionlint exec.LookPath)
+// is paid once per Run invocation. Run sorts the combined findings, so the
+// registration order does not affect output ordering.
 func defaultScanners() []Scanner {
 	return []Scanner{
 		newGitleaksScanner(),
 		newStructuralScanner(),
 		newActionlintScanner(),
+		newRenovateScanner(),
 	}
 }
