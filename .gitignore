@@ -16,3 +16,4 @@ fleet.local.json
 
 # Local PR draft — regenerated per session via /pr-message.
 PR_MESSAGE.md
+.claude/agent-memory/

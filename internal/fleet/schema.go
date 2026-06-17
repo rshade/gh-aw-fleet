@@ -208,9 +208,17 @@ type TemplateWorkflow struct {
 	SafeOutputs []string       `json:"safe_outputs,omitempty"`
 	StopAfter   string         `json:"stop_after,omitempty"`
 	Permissions map[string]any `json:"permissions,omitempty"`
-	Frontmatter map[string]any `json:"frontmatter,omitempty"`
-	Body        string         `json:"body,omitempty"`
-	Lines       int            `json:"lines,omitempty"`
+	// SkipIfMatch holds the pre-activation guard conditions from the
+	// on.skip-if-match frontmatter key. When non-empty, the gh-aw runtime
+	// cancels the workflow cheaply (before any AI call) if a condition matches
+	// — the primary lever for reducing high-frequency trigger cost.
+	SkipIfMatch []string `json:"skip_if_match,omitempty"`
+	// SkipIfNoMatch holds the pre-activation guard conditions from the
+	// on.skip-if-no-match frontmatter key, the inverse of skip-if-match.
+	SkipIfNoMatch []string       `json:"skip_if_no_match,omitempty"`
+	Frontmatter   map[string]any `json:"frontmatter,omitempty"`
+	Body          string         `json:"body,omitempty"`
+	Lines         int            `json:"lines,omitempty"`
 }
 
 // Evaluation is Claude's judgment on a workflow — used by `fleet template

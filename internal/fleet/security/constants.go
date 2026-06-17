@@ -26,6 +26,9 @@ const (
 
 const (
 	ruleIDActionlintNotInstalled          = "actionlint:not-installed"
+	ruleIDCostHighFrequencyTrigger        = "fleet.cost.high-frequency-trigger"
+	ruleIDCostReactiveNoSkipGuard         = "fleet.cost.reactive-no-skip-guard"
+	ruleIDCostScheduledNoSkipGuard        = "fleet.cost.scheduled-no-skip-guard"
 	ruleIDDependabotGhAwActionsNotIgnored = "fleet.dependabot.gh-aw-actions-not-ignored"
 	ruleIDDependabotParseError            = "fleet.dependabot.parse-error"
 	ruleIDEngineEnvNonAllowlist           = "fleet.engine.env.non-allowlist"
@@ -42,6 +45,7 @@ const (
 
 const (
 	rulePrefixActionlint = "actionlint:"
+	rulePrefixCost       = "fleet.cost."
 	rulePrefixDependabot = "fleet.dependabot."
 	rulePrefixGitleaks   = "gitleaks:"
 	rulePrefixRenovate   = "fleet.renovate."
