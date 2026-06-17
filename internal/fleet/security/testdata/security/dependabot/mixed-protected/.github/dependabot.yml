@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "github/gh-aw-actions"
+      - dependency-name: "github/gh-aw-actions/setup"
+      - dependency-name: "github/gh-aw/actions/setup-cli"
+  - package-ecosystem: "github-actions"
+    directory: "/tools"
+    schedule:
+      interval: "weekly"

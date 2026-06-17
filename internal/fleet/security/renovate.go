@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/tailscale/hujson"
@@ -137,7 +136,7 @@ type packageRule struct {
 // per missing conflict rule. No config present → nil. Unparseable config →
 // one INFO finding. Root enabled:false → nil (Renovate disabled repo-wide).
 func (s *renovateScanner) Scan(_ context.Context, cloneDir string) []Finding {
-	rel, full, found := probeRenovateConfig(cloneDir)
+	rel, full, found := probeConfigFile(cloneDir, renovateConfigNames)
 	if !found {
 		return nil
 	}
@@ -156,21 +155,6 @@ func (s *renovateScanner) Scan(_ context.Context, cloneDir string) []Finding {
 		out = append(out, renovateLockfileFinding(rel))
 	}
 	return out
-}
-
-// probeRenovateConfig returns the first existing config path in probe order.
-// The first result is the clone-relative slash-form path (used as
-// Finding.File); the second is the OS path to read; the third is false when
-// no recognized config exists.
-func probeRenovateConfig(cloneDir string) (string, string, bool) {
-	for _, name := range renovateConfigNames {
-		candidate := filepath.Join(cloneDir, filepath.FromSlash(name))
-		info, err := os.Stat(candidate)
-		if err == nil && !info.IsDir() {
-			return name, candidate, true
-		}
-	}
-	return "", "", false
 }
 
 // parseRenovateConfig reads the config bytes, standardizes JWCC syntax via

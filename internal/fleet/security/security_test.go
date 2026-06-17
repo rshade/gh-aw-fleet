@@ -377,10 +377,10 @@ func assertRepoRelativeActionlintFile(t *testing.T, cloneDir, got string) {
 }
 
 func TestRunRegistersAllScanners(t *testing.T) {
-	// Smoke test: ensure default Run wires gitleaks + structural + actionlint + renovate.
+	// Smoke test: ensure default Run wires gitleaks + structural + actionlint + renovate + dependabot.
 	scanners := defaultScanners()
-	if len(scanners) != 4 {
-		t.Fatalf("defaultScanners() len = %d; want 4", len(scanners))
+	if len(scanners) != 5 {
+		t.Fatalf("defaultScanners() len = %d; want 5", len(scanners))
 	}
 	if _, ok := scanners[0].(*gitleaksScanner); !ok {
 		t.Errorf("scanner[0] type = %T; want *gitleaksScanner", scanners[0])
@@ -393,6 +393,9 @@ func TestRunRegistersAllScanners(t *testing.T) {
 	}
 	if _, ok := scanners[3].(*renovateScanner); !ok {
 		t.Errorf("scanner[3] type = %T; want *renovateScanner", scanners[3])
+	}
+	if _, ok := scanners[4].(*dependabotScanner); !ok {
+		t.Errorf("scanner[4] type = %T; want *dependabotScanner", scanners[4])
 	}
 }
 

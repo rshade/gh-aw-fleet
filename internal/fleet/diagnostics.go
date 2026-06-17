@@ -48,6 +48,7 @@ const (
 	DiagSecurityActionlint            = fleetdiag.DiagSecurityActionlint
 	DiagSecurityFrontmatterParseError = fleetdiag.DiagSecurityFrontmatterParseError
 	DiagSecurityRenovate              = fleetdiag.DiagSecurityRenovate
+	DiagSecurityDependabot            = fleetdiag.DiagSecurityDependabot
 
 	DiagCompileStrictFailed = fleetdiag.DiagCompileStrictFailed
 	DiagGhAwTooOld          = fleetdiag.DiagGhAwTooOld
