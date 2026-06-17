@@ -159,10 +159,9 @@ func (f Finding) ToDiagnostic() fleetdiag.Diagnostic {
 	}
 }
 
-// diagCodeForRuleID maps a Finding's RuleID to one of the nine new
-// diagnostic constants in fleet/diagnostics.go. Defensive fallback to
-// DiagHint for unknown prefixes (should never happen given the rule
-// table is closed).
+// diagCodeForRuleID maps a Finding's RuleID to its family diagnostic constant
+// in fleet/diagnostics.go. Defensive fallback to DiagHint for unknown prefixes
+// (should never happen given the rule table is closed).
 func diagCodeForRuleID(ruleID string) string {
 	switch {
 	case strings.HasPrefix(ruleID, rulePrefixGitleaks):
@@ -185,13 +184,15 @@ func diagCodeForRuleID(ruleID string) string {
 		return fleetdiag.DiagSecurityFrontmatterParseError
 	case strings.HasPrefix(ruleID, rulePrefixRenovate):
 		return fleetdiag.DiagSecurityRenovate
+	case strings.HasPrefix(ruleID, rulePrefixDependabot):
+		return fleetdiag.DiagSecurityDependabot
 	default:
 		return fleetdiag.DiagHint
 	}
 }
 
 // defaultScanners constructs the v1 scanner list in the canonical order:
-// gitleaks → structural → actionlint → renovate. Each scanner's
+// gitleaks → structural → actionlint → renovate → dependabot. Each scanner's
 // constructor cost (gitleaks regex compilation, actionlint exec.LookPath)
 // is paid once per Run invocation. Run sorts the combined findings, so the
 // registration order does not affect output ordering.
@@ -201,5 +202,6 @@ func defaultScanners() []Scanner {
 		newStructuralScanner(),
 		newActionlintScanner(),
 		newRenovateScanner(),
+		newDependabotScanner(),
 	}
 }

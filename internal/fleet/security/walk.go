@@ -38,3 +38,20 @@ func walkWorkflows(cloneDir, suffix string) []walkEntry {
 	}
 	return out
 }
+
+// probeConfigFile returns the first existing path among names (probe order)
+// under cloneDir. The first result is the probe-order name (slash form, used as
+// Finding.File); the second is the os-native path to read; the third is false
+// when none of the candidates exist. Directories are skipped. Shared by the
+// config-conflict scanners (Renovate, Dependabot), whose only probe difference
+// is the candidate filename list.
+func probeConfigFile(cloneDir string, names []string) (string, string, bool) {
+	for _, name := range names {
+		candidate := filepath.Join(cloneDir, filepath.FromSlash(name))
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() {
+			return name, candidate, true
+		}
+	}
+	return "", "", false
+}

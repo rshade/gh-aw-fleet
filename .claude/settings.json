@@ -78,7 +78,6 @@
       "Bash(git push --force:*)",
       "Bash(git reset --hard:*)",
       "Bash(git restore:*)",
-      "Bash(git checkout:*)",
       "Bash(git stash:*)",
       "Bash(git clean:*)"
     ]

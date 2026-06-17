@@ -48,6 +48,10 @@ const (
 	// conflict scanner. One code covers all fleet.renovate.* rules;
 	// per-rule granularity rides on Diagnostic.Fields["rule_id"].
 	DiagSecurityRenovate = "security_renovate"
+	// DiagSecurityDependabot is the family code for the Dependabot config
+	// conflict scanner. One code covers all fleet.dependabot.* rules;
+	// per-rule granularity rides on Diagnostic.Fields["rule_id"].
+	DiagSecurityDependabot = "security_dependabot"
 
 	// DiagCompileStrictFailed fires when `gh aw compile --strict` exits non-zero
 	// because one or more workflows violate strict-mode validation. The hint
