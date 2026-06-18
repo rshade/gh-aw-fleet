@@ -30,7 +30,7 @@ jobs:
     name: shellcheck install.sh
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck install.sh
 
@@ -38,7 +38,7 @@ jobs:
     name: PSScriptAnalyzer install.ps1
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
@@ -57,7 +57,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install (latest, default dir)
         run: bash install.sh
@@ -132,7 +132,7 @@ jobs:
     name: smoke install.ps1
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install (latest, default dir, -NoPath)
         shell: pwsh
