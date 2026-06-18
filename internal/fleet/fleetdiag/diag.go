@@ -52,6 +52,10 @@ const (
 	// conflict scanner. One code covers all fleet.dependabot.* rules;
 	// per-rule granularity rides on Diagnostic.Fields["rule_id"].
 	DiagSecurityDependabot = "security_dependabot"
+	// DiagCostTriggerRisk is the family code for the cost-oriented
+	// trigger-risk scanner. One code covers all fleet.cost.* rules;
+	// per-rule granularity rides on Diagnostic.Fields["rule_id"].
+	DiagCostTriggerRisk = "cost_trigger_risk"
 
 	// DiagCompileStrictFailed fires when `gh aw compile --strict` exits non-zero
 	// because one or more workflows violate strict-mode validation. The hint

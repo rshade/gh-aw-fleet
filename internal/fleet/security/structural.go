@@ -177,25 +177,19 @@ func hasWriteOrAdminPermission(v any) bool {
 	return false
 }
 
+// scheduleOrWorkflowRunSet is the set of triggers inspected by writeOnScheduleRule.
+//
+//nolint:gochecknoglobals // immutable lookup set
+var scheduleOrWorkflowRunSet = map[string]bool{
+	"schedule":     true,
+	"workflow_run": true,
+}
+
 // hasScheduleOrWorkflowRunTrigger inspects the `on:` block for the two
 // triggers that turn this rule on. Accepts the string, list, and map forms
 // GitHub Actions allows.
 func hasScheduleOrWorkflowRunTrigger(v any) bool {
-	switch t := v.(type) {
-	case string:
-		return t == "schedule" || t == "workflow_run"
-	case []any:
-		for _, e := range t {
-			if s, ok := e.(string); ok && (s == "schedule" || s == "workflow_run") {
-				return true
-			}
-		}
-	case map[string]any:
-		_, sched := t["schedule"]
-		_, wfRun := t["workflow_run"]
-		return sched || wfRun
-	}
-	return false
+	return hasTriggerInSet(v, scheduleOrWorkflowRunSet)
 }
 
 // draftFalseRule fires MEDIUM when safe-outputs.create-pull-request.draft

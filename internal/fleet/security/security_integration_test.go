@@ -44,10 +44,14 @@ func stageFixturesIntoClone(t *testing.T) string {
 	return tmp
 }
 
-// TestRunEndToEnd asserts SC-001 coverage and FR-015 ("v1 MUST NOT emit
-// LOW"). Run is invoked against the entire fixture set and the union of
-// findings is checked for: at least one finding per expected rule, and
-// zero LOW findings overall.
+// TestRunEndToEnd asserts SC-001 coverage. Run is invoked against the entire
+// fixture set and the union of findings is checked for at least one finding
+// per expected rule.
+//
+// FR-015 ("structural rules MUST NOT emit LOW") is enforced per-scanner in
+// TestStructuralScanner_AggregateNoLowSeverity. The Renovate, Dependabot,
+// and cost scanners emit LOW by design; the integration test does not
+// re-assert that invariant here.
 func TestRunEndToEnd(t *testing.T) {
 	dir := stageFixturesIntoClone(t)
 	got := Run(context.Background(), dir)
@@ -55,10 +59,24 @@ func TestRunEndToEnd(t *testing.T) {
 		t.Fatal("expected at least some findings end-to-end; got 0")
 	}
 
-	// FR-015 invariant: v1 must not emit LOW.
+	// FR-015 scoped to structural rules only — the cost/renovate/dependabot
+	// scanners emit LOW intentionally. Use an allowlist of advisory-scanner
+	// prefixes: any LOW finding whose rule ID does NOT start with one of these
+	// is unexpected and fails the test.
+	allowedLowPrefixes := []string{rulePrefixCost, rulePrefixRenovate, rulePrefixDependabot}
 	for _, f := range got {
-		if f.Severity == SeverityLow {
-			t.Errorf("FR-015 violated: %+v has SeverityLow", f)
+		if f.Severity != SeverityLow {
+			continue
+		}
+		allowed := false
+		for _, p := range allowedLowPrefixes {
+			if strings.HasPrefix(f.RuleID, p) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			t.Errorf("FR-015 violated: structural rule %q emitted LOW", f.RuleID)
 		}
 	}
 
@@ -70,6 +88,9 @@ func TestRunEndToEnd(t *testing.T) {
 		"fleet.repo-memory.main-branch",
 		"fleet.mcp.non-standard-server",
 		"fleet.frontmatter.parse-error",
+		ruleIDCostHighFrequencyTrigger,
+		ruleIDCostReactiveNoSkipGuard,
+		ruleIDCostScheduledNoSkipGuard,
 	}
 	for _, id := range expectedRuleIDs {
 		if findRule(got, id, false) == nil {
@@ -248,31 +269,23 @@ func extractStderrTuple(line string) string {
 func extractBodyTuple(line string) string {
 	// Strip the "- **" prefix.
 	line = strings.TrimPrefix(line, "- **")
-	endSev := strings.Index(line, "**")
-	if endSev < 0 {
+	sev, rest, ok := strings.Cut(line, "**")
+	if !ok {
 		return line
 	}
-	sev := line[:endSev]
-	rest := line[endSev+2:]
 	// rest starts with " `rule_id` — `file:line` — ..."
 	rest = strings.TrimLeft(rest, " ")
 	rest = strings.TrimPrefix(rest, "`")
-	endRule := strings.Index(rest, "`")
-	if endRule < 0 {
+	rule, rest, ok := strings.Cut(rest, "`")
+	if !ok {
 		return line
 	}
-	rule := rest[:endRule]
-	rest = rest[endRule+1:]
-	idx := strings.Index(rest, "`")
-	if idx < 0 {
+	// Advance past the separator to the next backtick-delimited token.
+	_, rest, ok = strings.Cut(rest, "`")
+	if !ok {
 		return sev + "|" + rule + "|"
 	}
-	rest = rest[idx+1:]
-	endLoc := strings.Index(rest, "`")
-	if endLoc < 0 {
-		return sev + "|" + rule + "|"
-	}
-	loc := rest[:endLoc]
+	loc, _, _ := strings.Cut(rest, "`")
 	if loc == "" {
 		loc = "-"
 	}

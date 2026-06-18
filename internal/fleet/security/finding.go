@@ -186,16 +186,18 @@ func diagCodeForRuleID(ruleID string) string {
 		return fleetdiag.DiagSecurityRenovate
 	case strings.HasPrefix(ruleID, rulePrefixDependabot):
 		return fleetdiag.DiagSecurityDependabot
+	case strings.HasPrefix(ruleID, rulePrefixCost):
+		return fleetdiag.DiagCostTriggerRisk
 	default:
 		return fleetdiag.DiagHint
 	}
 }
 
 // defaultScanners constructs the v1 scanner list in the canonical order:
-// gitleaks → structural → actionlint → renovate → dependabot. Each scanner's
-// constructor cost (gitleaks regex compilation, actionlint exec.LookPath)
-// is paid once per Run invocation. Run sorts the combined findings, so the
-// registration order does not affect output ordering.
+// gitleaks → structural → actionlint → renovate → dependabot → cost. Each
+// scanner's constructor cost (gitleaks regex compilation, actionlint
+// exec.LookPath) is paid once per Run invocation. Run sorts the combined
+// findings, so the registration order does not affect output ordering.
 func defaultScanners() []Scanner {
 	return []Scanner{
 		newGitleaksScanner(),
@@ -203,5 +205,6 @@ func defaultScanners() []Scanner {
 		newActionlintScanner(),
 		newRenovateScanner(),
 		newDependabotScanner(),
+		newCostScanner(),
 	}
 }

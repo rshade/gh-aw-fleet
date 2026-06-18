@@ -38,57 +38,40 @@ fleet-layer tool existing.
   #102 / #129 (Near-Term), #106 / #107 / #113 / #53 / #59 / #60
   (Future); #57 / #103 / #108 shipped in the v0.2.x line.
 - **Security**: items labeled `security` on GitHub — the supply-chain
-  conflict scanners #101 / #100 (live incident, Immediate Focus), the
-  trigger-risk lint #104, the security epic #36 with children #38–#40,
-  plus #49 (shipped).
+  conflict scanners #101 / #100 (merged to main, ships in next release),
+  the trigger-risk lint #104 (Immediate Focus), the security epic #36
+  with children #38–#40, plus #49 (shipped).
 
 **Status**: release-please cuts **patch** bumps for `0.x` (latest tag
-**v0.2.2**, 2026-06-12; `main` has no unreleased commits). v0.2.0
+**v0.2.2**, 2026-06-12; `main` has unreleased commits — Renovate scanner
+PR #133, Dependabot scanner PR #135, init drift guard PR #130). v0.2.0
 satisfied the rule (#54 / #55 / #56 cost prereqs, #37 Layer 1 security
 scanner); the v0.2.1–v0.2.2 line shipped the cost half repeatedly — the
 consumption rollup (#57), then the `gh aw logs --json` AIC source
 (#103 / PR #116) and the v0.79.2 FinOps baseline (#108) — alongside the
 security half (#49 `--strict` on public repos). The **next** release's
-security half is the live Renovate / Dependabot conflict scanners
-(#101 / #100, incident-driven 2026-06-08); its cost half is the
-trigger-risk lint (#104, promoted to Immediate Focus 2026-06-13 by the
-sync gate to fill the cost slot).
+security half has merged: Renovate and Dependabot conflict scanners
+(#100 / #101, merged 2026-06-16/17); its cost half is the trigger-risk
+lint (#104, Immediate Focus).
 
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
 
 ## Immediate Focus (next release in progress)
 
-Latest tag is **v0.2.2** (2026-06-12); `main` has no unreleased commits.
-v0.2.2 shipped the FinOps build-out — the `gh aw logs --json` AIC source
-(#103 / PR #116), scope-to-named-repos (#126), the fleet-manifest
-(#114 / PR #124), and the v0.79.2 baseline (#108) — on top of v0.2.0's
-consumption rollup (#57) and `--strict`-on-public security default (#49),
-plus the one-liner installers (#43). Immediate Focus now holds the next
-release's composition pair: the supply-chain conflict scanners
-(#101 / #100, security — promoted 2026-06-08 off a live `finfocus#1246`
-incident) and the cost-oriented trigger-risk lint (#104, cost — promoted
-2026-06-13 by the sync gate to fill the cost slot). The `/roadmap sync`
-gate notes depth 3 > target 1: the deliberate security-incident pair plus
-the required cost item. Demote toward single-WIP once #101 / #100 land.
+Latest tag is **v0.2.2** (2026-06-12); `main` has unreleased commits —
+the Renovate conflict scanner (PR #133, 2026-06-16), the Dependabot
+conflict scanner (PR #135, 2026-06-17), and the init drift guard
+(PR #130, 2026-06-14). v0.2.2 shipped the FinOps build-out — the
+`gh aw logs --json` AIC source (#103 / PR #116), scope-to-named-repos
+(#126), the fleet-manifest (#114 / PR #124), and the v0.79.2 baseline
+(#108) — on top of v0.2.0's consumption rollup (#57) and
+`--strict`-on-public security default (#49), plus the one-liner
+installers (#43). The supply-chain conflict scanners (#101 / #100) have
+merged — filling the security composition slot. Immediate Focus now holds
+only the cost slot: the trigger-risk lint (#104). Depth is 1, matching
+`target_focus_depth: 1`.
 
-- [ ] [#101](https://github.com/rshade/gh-aw-fleet/issues/101) Detect
-  Dependabot configs that conflict with gh-aw-managed pins `[M]` `security`
-  *Parse `.github/dependabot.yml` via `yaml.v3`; if a `github-actions`
-  ecosystem block lacks `ignore` rules for the gh-aw actions, emit a
-  `Finding` quoting the exact `ignore:` YAML. Dependabot can't
-  glob-ignore lock files, so there's no Rule B equivalent — it protects
-  dependency names only. Promoted by `/roadmap sync` on 2026-06-08 —
-  operator override of single-WIP for the live `finfocus#1246` incident;
-  fills v0.4's release-composition security slot.*
-- [ ] [#100](https://github.com/rshade/gh-aw-fleet/issues/100) Detect
-  Renovate configs that conflict with gh-aw-managed pins `[M]` `security`
-  *Probe `renovate.json` / `.renovaterc[.json]` / `renovate.json5` /
-  `.github/renovate.json` (hujson-tolerant) and emit a `Finding` per
-  missing `packageRules` block: disable `gh-aw-actions` bumps (Rule A)
-  and keep Renovate off generated `*.lock.yml` files (Rule B). Promoted
-  by `/roadmap sync` on 2026-06-08 alongside its Dependabot sibling #101
-  for full dependency-bot coverage.*
 - [ ] [#104](https://github.com/rshade/gh-aw-fleet/issues/104)
   Cost-oriented trigger-risk lint over the resolved fleet `[S]`
   `security` `cost` `finops`
@@ -102,12 +85,11 @@ the required cost item. Demote toward single-WIP once #101 / #100 land.
 ## Near-Term Vision (v0.4 — FinOps build-out + operator QoL)
 
 With the FinOps build-out shipped in v0.2.2 (#103 / #108 / #114) and
-Immediate Focus holding the next release's pair (#101 / #100 security
-plus #104 cost), Near-Term holds the remaining FinOps work — forecast
-(#102), the over-budget rollup highlight (#129), and consumption
-scale-hardening (#119) — plus the deploy/consumption follow-ups
-(#112 / #115), a deploy correctness bug (#98), a diagnostics expansion
-(#99), and four docs items (#94 / #95 / #127 / #128).
+the security scanners (#101 / #100) merged to main, Near-Term holds the
+remaining FinOps work — forecast (#102), the over-budget rollup highlight
+(#129), and consumption scale-hardening (#119) — plus deploy follow-ups
+(#112 / #115), a diagnostics expansion (#99), and four docs items
+(#94 / #95 / #127 / #128).
 
 ### FinOps / cost visibility
 
@@ -170,16 +152,6 @@ build on.
 
 ### Operator quality of life
 
-- [ ] [#98](https://github.com/rshade/gh-aw-fleet/issues/98) Fix
-  `ensureInit` probing a stale marker filename — re-inits every run, no
-  drift detection `[M]` `bug`
-  *`ensureInit` probes `.github/agents/agentic-workflows.agent.md`, but
-  real `gh aw init` (v0.77.5) writes `agentic-workflows.md` — the guard
-  never short-circuits, so init re-runs every deploy/sync and every PR
-  body falsely claims "this repo was not yet initialized." CI missed it
-  because the fake-gh stub writes the same wrong filename. Fix: OR
-  multiple real markers so `--no-agent`/`--no-skill` don't fool it, and
-  fail loudly on the next upstream rename.*
 - [ ] [#99](https://github.com/rshade/gh-aw-fleet/issues/99) Add
   `CollectHints` entries for `no aw.yml manifest` / `already exists`
   `gh aw add` errors `[S]`
@@ -420,6 +392,31 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#101](https://github.com/rshade/gh-aw-fleet/issues/101) Detect
+  Dependabot configs that conflict with gh-aw-managed pins `[M]` `security`
+  *Merged to main (PR #135, closed 2026-06-17); ships in next release.
+  Parses `.github/dependabot.yml` via `yaml.v3`; emits a `LOW` `Finding`
+  per `github-actions` update entry that lacks `ignore` rules for the
+  gh-aw-actions family. Dependabot has no file-glob ignore, so there is
+  one conflict rule (not two); new `security_dependabot` diag code;
+  surfaces on `deploy`/`sync`/`upgrade` via the existing finding
+  pipeline.*
+- [x] [#100](https://github.com/rshade/gh-aw-fleet/issues/100) Detect
+  Renovate configs that conflict with gh-aw-managed pins `[M]` `security`
+  *Merged to main (PR #133, closed 2026-06-16); ships in next release.
+  Probes `renovate.json` / `.renovaterc[.json]` / `renovate.json5` /
+  `.github/renovate.json` (hujson-tolerant); emits `LOW` findings for
+  missing `packageRules`: disable gh-aw-actions bumps (Rule A) and
+  exclude generated `*.lock.yml` files (Rule B). New `security_renovate`
+  diag code; no new deps.*
+- [x] [#98](https://github.com/rshade/gh-aw-fleet/issues/98) Fix
+  `ensureInit` probing a stale marker filename — re-inits every run, no
+  drift detection `[M]` `bug`
+  *Merged to main (PR #130, closed 2026-06-14); ships in next release.
+  Added init drift guard and upgraded init/manifest parity; the
+  manifest-version comparison (foundation from #114) now correctly
+  short-circuits re-init when the deployed gh-aw version matches the
+  fleet pin.*
 - [x] [#114](https://github.com/rshade/gh-aw-fleet/issues/114)
   Fleet-managed marker/manifest per repo: deployed gh-aw version +
   detect/refresh stale init artifacts `[L]`
@@ -620,15 +617,15 @@ Any roadmap item that violates these is rejected, not negotiated.
 
 [meta-spec]: ./CONTEXT.md#roadmap-meta-issue-body-convention
 
-> Tracked as GitHub issues: Immediate Focus — the supply-chain scanners
-> (#101, #100, security) and the trigger-risk lint (#104, cost);
-> Near-Term — the FinOps build-out (#102, #129, #119), the
-> deploy/consumption follow-ups (#112, #115), the deploy bug (#98),
-> diagnostics hint (#99), and docs items (#94, #95, #127, #128); Future
-> Vision — the security epic (#36 with children #38–#40), the FinOps
-> deferred set (#105, #106, #107, #113, #53, #59, #60), and the Status
-> refinements (#61, #62). Shipped in v0.2.2 (2026-06-12): #103, #108,
-> #114 (alongside #57 / #49 / #43 across the v0.2.x line). Excluded as
-> operational noise: #5 (Dependency Dashboard) and #111 / #118 / #123
-> (bot failure reports). The unlinked Near-Term and Future items don't
-> have issues yet — open them as work picks up, then run `/roadmap sync`.
+> Tracked as GitHub issues: Immediate Focus — the trigger-risk lint
+> (#104, cost); Near-Term — the FinOps build-out (#102, #129, #119),
+> deploy follow-ups (#112, #115), diagnostics hint (#99), and docs items
+> (#94, #95, #127, #128); Future Vision — the security epic (#36 with
+> children #38–#40), the FinOps deferred set (#105, #106, #107, #113,
+> #53, #59, #60), and the Status refinements (#61, #62). Merged to main
+> (unreleased): #101 / #100 (conflict scanners) and #98 (init drift
+> guard). Shipped in v0.2.2 (2026-06-12): #103, #108, #114 (alongside
+> #57 / #49 / #43 across the v0.2.x line). Excluded as operational noise:
+> #5 (Dependency Dashboard) and #111 / #118 / #123 / #132 / #134 (bot
+> failure reports). The unlinked Near-Term and Future items don't have
+> issues yet — open them as work picks up, then run `/roadmap sync`.

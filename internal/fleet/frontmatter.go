@@ -6,6 +6,11 @@ import (
 	"github.com/rshade/gh-aw-fleet/internal/fleet/frontmatter"
 )
 
+const (
+	skipIfMatchKey   = "skip-if-match"
+	skipIfNoMatchKey = "skip-if-no-match"
+)
+
 // ErrEmptyFrontmatter is returned by ParseFrontmatter when the input has no
 // YAML content. Callers typically treat this as a non-fatal skip.
 //
@@ -49,6 +54,16 @@ func ExtractWorkflowMeta(fm map[string]any, tw *TemplateWorkflow) {
 	tw.Triggers = extractTriggers(fm["on"])
 	tw.Tools = extractToolKeys(fm["tools"])
 	tw.SafeOutputs = extractToolKeys(fm["safe-outputs"])
+	tw.SkipIfMatch = extractSkipConditions(fm[skipIfMatchKey])
+	tw.SkipIfNoMatch = extractSkipConditions(fm[skipIfNoMatchKey])
+	if on, ok := fm["on"].(map[string]any); ok {
+		if v := extractSkipConditions(on[skipIfMatchKey]); len(v) > 0 {
+			tw.SkipIfMatch = v
+		}
+		if v := extractSkipConditions(on[skipIfNoMatchKey]); len(v) > 0 {
+			tw.SkipIfNoMatch = v
+		}
+	}
 	if perms, ok := fm["permissions"].(map[string]any); ok {
 		tw.Permissions = perms
 	}
@@ -83,6 +98,9 @@ func extractTriggers(v any) []string {
 	case map[string]any:
 		out := make([]string, 0, len(t))
 		for k := range t {
+			if isSkipGuardKey(k) {
+				continue
+			}
 			out = append(out, k)
 		}
 		sort.Strings(out)
@@ -105,4 +123,39 @@ func extractToolKeys(v any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// extractSkipConditions flattens a skip-if-match or skip-if-no-match value
+// into a sorted list of condition strings. Handles the YAML forms: a bare
+// string, a sequence of strings, and a mapping (keys extracted, mirroring
+// how extractTriggers handles map-form on: blocks).
+func extractSkipConditions(v any) []string {
+	switch t := v.(type) {
+	case string:
+		if t != "" {
+			return []string{t}
+		}
+		return nil
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, e := range t {
+			if s, ok := e.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		sort.Strings(out)
+		return out
+	case map[string]any:
+		out := make([]string, 0, len(t))
+		for k := range t {
+			out = append(out, k)
+		}
+		sort.Strings(out)
+		return out
+	}
+	return nil
+}
+
+func isSkipGuardKey(k string) bool {
+	return k == skipIfMatchKey || k == skipIfNoMatchKey
 }
