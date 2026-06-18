@@ -9,7 +9,7 @@ import (
 
 // costScanner evaluates each workflow's YAML frontmatter for high-frequency
 // triggers (push, check_run, check_suite), medium-frequency reactive
-// triggers (pull_request, issues, issue_comment), and recurring schedule
+// triggers (pull_request, pull_request_target, issues, issue_comment), and recurring schedule
 // triggers that lack a skip-if-match or skip-if-no-match pre-activation
 // guard. Pre-activation guards let the gh-aw runtime cancel a workflow
 // cheaply — before incurring Copilot-credit or Actions-minute cost — when a
