@@ -10,6 +10,19 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.2.3](https://github.com/rshade/gh-aw-fleet/compare/v0.2.2...v0.2.3) (2026-06-18)
+
+
+### Added
+
+* **security:** add advisory Dependabot config conflict scanner ([#135](https://github.com/rshade/gh-aw-fleet/issues/135)) ([fc3f48b](https://github.com/rshade/gh-aw-fleet/commit/fc3f48bff6ede41922ed8dd5133ab786ad0aa5f5)), closes [#101](https://github.com/rshade/gh-aw-fleet/issues/101)
+* **security:** add advisory Renovate config conflict scanner ([#133](https://github.com/rshade/gh-aw-fleet/issues/133)) ([bfa1a30](https://github.com/rshade/gh-aw-fleet/commit/bfa1a306ed875aa8e60fba36ffa0fbc5f5c71af1)), closes [#100](https://github.com/rshade/gh-aw-fleet/issues/100)
+
+
+### Fixed
+
+* **deploy:** add init drift guard and upgrade init/manifest parity ([#130](https://github.com/rshade/gh-aw-fleet/issues/130)) ([8301ab0](https://github.com/rshade/gh-aw-fleet/commit/8301ab0471754272e927cee3e9e91f80cf94ea69)), closes [#98](https://github.com/rshade/gh-aw-fleet/issues/98)
+
 ## [0.2.2](https://github.com/rshade/gh-aw-fleet/compare/v0.2.1...v0.2.2) (2026-06-13)
 
 
