@@ -2,6 +2,8 @@
 /gh-aw-fleet.exe
 /bin/
 /dist/
+node_modules/
+docs/.astro/
 *.test
 *.out
 .vscode/

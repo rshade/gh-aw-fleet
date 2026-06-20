@@ -120,3 +120,8 @@ Committed at repo root; shared with collaborators and subagents. Allows `go buil
 - issue-73 (hujson): comment-preserving config — `//` line, `/* */` block, and trailing-comma syntax accepted in `fleet.json` / `fleet.local.json` / `templates.json` / `profiles/default.json`; `.hujson` extension preferred over `.json`; `gh-aw-fleet add` no longer overwrites prior repo entries when the local file exists.
 - 002-add-zerolog-logging: added `--log-level` / `--log-format` persistent flags; `⚠ WARNING:` lines in `deploy`/`sync` moved to stderr as structured `warn` events; subprocess summaries at `debug`.
 - 001-add-subcommand: added `gh-aw-fleet add <owner/repo>` subcommand (cobra) for onboarding repos into `fleet.local.json`.
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->

@@ -25,5 +25,5 @@ Per-slice dependency and storage deltas:
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-[specs/013-dependabot-conflict-scanner/plan.md](./specs/013-dependabot-conflict-scanner/plan.md)
+[specs/014-starlight-docs-site/plan.md](./specs/014-starlight-docs-site/plan.md)
 <!-- SPECKIT END -->

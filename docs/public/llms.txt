@@ -1,0 +1,10 @@
+# gh-aw-fleet
+
+> Declarative fleet manager for GitHub Agentic Workflows.
+
+- [Home](https://rshade.github.io/gh-aw-fleet/)
+- [Install](https://rshade.github.io/gh-aw-fleet/install/)
+- [Configuration](https://rshade.github.io/gh-aw-fleet/configuration/)
+- [Reconcile Workflow](https://rshade.github.io/gh-aw-fleet/reconcile/)
+- [Consumption and FinOps](https://rshade.github.io/gh-aw-fleet/consumption/)
+- [Roadmap](https://rshade.github.io/gh-aw-fleet/roadmap/)

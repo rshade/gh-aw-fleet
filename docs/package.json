@@ -1,0 +1,21 @@
+{
+  "name": "gh-aw-fleet-docs",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "prebuild": "node -e \"const fs=require('fs');if(!fs.existsSync('theme/tokens.css')){console.error('ERROR: docs/theme submodule missing; run: git submodule update --init --recursive');process.exit(1)}\"",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.3",
+    "@astrojs/starlight": "^0.40.0",
+    "astro": "^6.4.5",
+    "sharp": "^0.35.0",
+    "starlight-links-validator": "^0.24.1"
+  }
+}

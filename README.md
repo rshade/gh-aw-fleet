@@ -6,6 +6,8 @@ Declarative fleet manager for GitHub Agentic Workflows.
 [![License](https://img.shields.io/github/license/rshade/gh-aw-fleet)](LICENSE)
 [![Go version](https://img.shields.io/github/go-mod/go-version/rshade/gh-aw-fleet)](go.mod)
 
+Documentation: <https://rshade.github.io/gh-aw-fleet/>
+
 ## Status
 
 Released as **v0.1.0** (April 2026). Pre-1.0: public surfaces (CLI flags,
