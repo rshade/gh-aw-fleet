@@ -1,0 +1,33 @@
+---
+title: gh-aw-fleet
+description: Declarative fleet management for GitHub Agentic Workflows.
+template: splash
+hero:
+  tagline: Keep agentic workflows aligned across repositories with one declarative fleet file and PR-based reconciliation.
+  actions:
+    - text: View on GitHub
+      link: https://github.com/rshade/gh-aw-fleet
+      icon: external
+      variant: primary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+	<Card title="Declarative fleet state" icon="open-book">
+		`fleet.json` declares which repositories receive which workflow profiles,
+		pinned to explicit upstream refs.
+	</Card>
+	<Card title="Thin orchestration" icon="puzzle">
+		`gh-aw-fleet` delegates workflow initialization, compilation, branching, and
+		PR creation to `gh aw`, `git`, and `gh`.
+	</Card>
+	<Card title="Dry-run first" icon="approve-check">
+		`deploy`, `sync`, and `upgrade` show the planned reconcile before any
+		external repository is changed.
+	</Card>
+	<Card title="Fleet-wide FinOps" icon="seti:json">
+		`consumption` rolls up AI-credit usage by repository, profile, cost center,
+		or workflow from the same fleet configuration.
+	</Card>
+</CardGrid>
