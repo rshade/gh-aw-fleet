@@ -89,7 +89,7 @@ type VersionDrift struct {
 // Source is "github/gh-aw". Returns an empty string when the repo has no
 // github/gh-aw-sourced workflows or when ResolveRepoWorkflows fails.
 func resolvedGhAwPin(cfg *Config, repo string) string {
-	workflows, err := cfg.ResolveRepoWorkflows(repo)
+	workflows, err := ResolveRepoWorkflows(cfg, repo)
 	if err != nil {
 		return ""
 	}

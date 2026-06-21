@@ -215,7 +215,7 @@ func setupRequiredSection(res *DeployResult) string {
 // Dry-run (Apply=false) stops after pre-flight and returns the plan.
 // --apply extends through branch/commit/push/PR.
 func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*DeployResult, error) {
-	resolved, err := cfg.ResolveRepoWorkflows(repo)
+	resolved, err := ResolveRepoWorkflows(cfg, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -1057,7 +1057,7 @@ const CompileStrictMinVersion = "v0.79.2"
 // the resolve+log keeps the FR-006/FR-007 log shape identical across call
 // sites.
 func logCompileStrictResolution(ctx context.Context, cfg *Config, repo string) (bool, string) {
-	effective, source, reason := cfg.EffectiveCompileStrict(ctx, repo)
+	effective, source, reason := EffectiveCompileStrict(ctx, cfg, repo)
 	zlog.Info().
 		Str("event", "compile_strict_resolved").
 		Str(fieldRepo, repo).

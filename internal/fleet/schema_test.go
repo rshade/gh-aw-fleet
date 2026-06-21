@@ -76,7 +76,7 @@ func TestEffectiveCompileStrict(t *testing.T) {
 			cfg := &Config{Repos: map[string]RepoSpec{
 				repo: {CompileStrict: tc.spec},
 			}}
-			gotEff, gotSrc, gotReason := cfg.EffectiveCompileStrict(context.Background(), repo)
+			gotEff, gotSrc, gotReason := EffectiveCompileStrict(context.Background(), cfg, repo)
 
 			if gotEff != tc.wantEffective {
 				t.Errorf("effective = %v; want %v", gotEff, tc.wantEffective)
@@ -211,7 +211,7 @@ func TestEffectiveCompileStrict_ReasonTruncated(t *testing.T) {
 	}
 
 	cfg := &Config{Repos: map[string]RepoSpec{"rshade/test": {}}}
-	_, _, gotReason := cfg.EffectiveCompileStrict(context.Background(), "rshade/test")
+	_, _, gotReason := EffectiveCompileStrict(context.Background(), cfg, "rshade/test")
 	if len(gotReason) > effectiveCompileStrictReasonMax {
 		t.Errorf("len(reason) = %d; want <= %d", len(gotReason), effectiveCompileStrictReasonMax)
 	}

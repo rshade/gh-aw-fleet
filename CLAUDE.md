@@ -8,6 +8,10 @@
 
 **Language**: Go 1.26.4 for the local development gate; `go.mod` currently declares module compatibility at `go 1.25.8`.
 
+## Architecture big-picture
+
+`pkg/fleet` is the module's first public surface and the single canonical home of the `fleet.json` wire contract. `internal/fleet` aliases those config types while keeping load, merge, resolve, and deploy logic internal.
+
 Per-slice dependency and storage deltas:
 
 - (006-layer1-security-scanner) Storage: N/A — pure read calls against files already in the work-dir clone. No on-disk scanner state, no cache, no baseline file. Findings are transient on result structs (`DeployResult`/`SyncResult`/`UpgradeResult`).
@@ -25,5 +29,5 @@ Per-slice dependency and storage deltas:
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-[specs/014-starlight-docs-site/plan.md](./specs/014-starlight-docs-site/plan.md)
+[specs/015-pkg-fleet-config-export/plan.md](./specs/015-pkg-fleet-config-export/plan.md)
 <!-- SPECKIT END -->

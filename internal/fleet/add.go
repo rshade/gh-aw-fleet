@@ -132,7 +132,7 @@ func Add(cfg *Config, opts AddOptions) (*AddResult, error) {
 		cfg.Repos = make(map[string]RepoSpec)
 	}
 	cfg.Repos[opts.Repo] = candidate
-	resolved, err := cfg.ResolveRepoWorkflows(opts.Repo)
+	resolved, err := ResolveRepoWorkflows(cfg, opts.Repo)
 	delete(cfg.Repos, opts.Repo)
 	if err != nil {
 		return nil, fmt.Errorf("resolve workflows for %q: %w", opts.Repo, err)

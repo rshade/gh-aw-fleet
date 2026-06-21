@@ -368,7 +368,7 @@ func readHujsonOrScaffold(path string) ([]byte, error) {
 // ResolveRepoWorkflows flattens a RepoSpec into the concrete list of
 // (workflow, source, ref) tuples that should be deployed to that repo.
 // Applies profile membership, exclusions, and extras in that order.
-func (c *Config) ResolveRepoWorkflows(repo string) ([]ResolvedWorkflow, error) {
+func ResolveRepoWorkflows(c *Config, repo string) ([]ResolvedWorkflow, error) {
 	spec, ok := c.Repos[repo]
 	if !ok {
 		return nil, fmt.Errorf("repo %q not in fleet.json", repo)

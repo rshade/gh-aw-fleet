@@ -48,7 +48,7 @@ func newListCmd(flagDir *string) *cobra.Command {
 			sort.Strings(repos)
 			for _, r := range repos {
 				spec := cfg.Repos[r]
-				resolved, resolveErr := cfg.ResolveRepoWorkflows(r)
+				resolved, resolveErr := fleet.ResolveRepoWorkflows(cfg, r)
 				if resolveErr != nil {
 					return resolveErr
 				}
