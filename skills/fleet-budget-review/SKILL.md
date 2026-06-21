@@ -108,6 +108,36 @@ If the user asks "what should I do?":
 
 Never apply changes from this skill. Recommendations are read-only — operator follows up with the `fleet-onboard-repo` or `fleet-deploy` skill (or a hand edit) if they want to act.
 
+## Pre-spend forecast
+
+`gh-aw-fleet forecast` is the pre-spend twin of `consumption`. Where `consumption` reports what the fleet *spent*, `forecast` projects what it *will* spend, using `gh aw forecast --json` per repo.
+
+**Single-turn flow** (no dry-run/apply since it's read-only):
+
+```bash
+gh-aw-fleet forecast [--period week|month] [--by repo|profile|cost-center|tier] [repo...]
+```
+
+Read the projected AIC table and frame as: "fleet is projected to spend X AIC (= $Y) over the next week/month." A complete budget conversation = observed rollup (from `consumption`) + forward projection (from `forecast`).
+
+**Flag reference:**
+
+- `--period week|month` (default `week`) — maps to upstream `--days 7|30`.
+- `--by repo|profile|cost-center|tier` (default `repo`) — note that `tier` is forecast-only (not available in `consumption`). Same axes as `consumption` except `tier` groups by the `Profile.Tier` field.
+- `[repo...]` positional args — scope to named `owner/name` repos.
+- `--output json` — inherited persistent flag for pipe-friendly output.
+
+**Reading the output:**
+
+- `PROJECTED_AIC` is the authoritative point estimate (summed projected AI credits).
+- `P10/P50/P90` is an *advisory* Monte Carlo confidence band — approximate (summing per-workflow percentiles is not statistically exact); treat as indicative spread, not a guarantee.
+- A cold group (`cold=true`, `SAMPLED 0`, dashes in band columns) means no run history yet — not "free". Wait for runs to accumulate.
+- `PROJECTED_COST` = `PROJECTED_AIC × $0.01`.
+
+**Minimum gh-aw CLI version:** v0.79.2 required (checked automatically before any repo call).
+
+**Advisory note:** `forecast` does no Monte Carlo math itself — it sums the upstream point estimates and advisory bands from `gh aw forecast`. The tool's value is the fleet-wide fan-out and group-by aggregation.
+
 ## Invariants
 
 - **Read-only.** This skill never invokes `--apply` (consumption has no such flag — read-only by design). Recommendations route through other skills that handle mutation correctly.

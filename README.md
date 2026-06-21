@@ -43,6 +43,16 @@ needs no deployed reporting workflow ([#57](https://github.com/rshade/gh-aw-flee
 [#103](https://github.com/rshade/gh-aw-fleet/issues/103)); see
 [ROADMAP.md](ROADMAP.md) for the broader billing-readiness arc.
 
+The `forecast` subcommand projects what the fleet *will* spend before commits
+are deployed. `gh-aw-fleet forecast` fans out `gh aw forecast --json` across
+the fleet and rolls up per-workflow AI-credit (AIC) estimates. `--period week|month`
+(default `week`) selects the projection horizon; `--by repo|profile|cost-center|tier`
+(default `repo`) groups results (note: `tier` grouping is forecast-only). Pass
+one or more repos by name to scope the rollup. Minimum `gh aw` CLI version:
+**v0.79.2** (checked automatically; older CLIs are rejected with a clear error).
+See [`specs/014-forecast-subcommand/quickstart.md`](specs/014-forecast-subcommand/quickstart.md)
+for column semantics (PROJECTED_AIC, P10/P50/P90 percentile bands, cold groups).
+
 ## Who is this for?
 
 **You'll get value if:**
@@ -353,6 +363,7 @@ gh-aw-fleet status -o json \
 | `sync <repo>` | Reconcile to declared profile (add missing, flag drift) |
 | `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade` |
 | `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD` |
+| `forecast [owner/name ...]` | Project pre-spend AI-credit cost across the fleet; group `--by repo\|profile\|cost-center\|tier`, horizon `--period week\|month` |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
 | `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones) |
 

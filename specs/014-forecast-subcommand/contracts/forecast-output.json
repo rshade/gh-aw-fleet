@@ -1,0 +1,55 @@
+{
+  "_comment": "Example JSON envelope produced by `gh-aw-fleet forecast --output json` AFTER this feature ships. Shows the ForecastResult shape under result:. Envelope schema_version remains 1 (additive new subcommand; parity with consumption). Envelope key set matches cmd/output.go's Envelope struct exactly: schema_version, command, repo, apply, result, warnings, hints. The `repo` envelope field is empty because forecast is fleet-wide, mirroring consumption/list.",
+  "schema_version": 1,
+  "command": "forecast",
+  "repo": "",
+  "apply": false,
+  "result": {
+    "loaded_from": "fleet.json + fleet.local.json",
+    "period": "month",
+    "group_by": "repo",
+    "groups": [
+      {
+        "_comment_group_1": "Repo with run history — point estimate plus a Monte Carlo band. projected_cost_usd is projected_aic * 0.01 (aicToUSDRate).",
+        "key": "rshade/finfocus",
+        "projected_aic": 137.494,
+        "projected_cost_usd": 1.37,
+        "aic_p10": 0,
+        "aic_p50": 137.494,
+        "aic_p90": 549.976,
+        "sampled_runs": 1,
+        "cold": false,
+        "workflow_count": 1
+      },
+      {
+        "_comment_group_2": "Cold-start repo — every workflow had sampled_runs:0, so projected_aic is 0, the band fields are null (not absent), cold is true, and projected_cost_usd is omitted via omitempty. Distinguishable from a genuinely cheap repo by cold:true.",
+        "key": "rshade/gh-aw-fleet",
+        "projected_aic": 0,
+        "aic_p10": null,
+        "aic_p50": null,
+        "aic_p90": null,
+        "sampled_runs": 0,
+        "cold": true,
+        "workflow_count": 4
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "_comment_warning_1": "Per-repo partial-output diagnostic (FR-013): gh aw forecast timed out (exit 124) but emitted a decodable partial document; the workflows present were aggregated. Code DiagHint.",
+      "code": "hint",
+      "message": "Forecast for rshade/large-monorepo is partial — `gh aw forecast` timed out before sampling every workflow. Widen --timeout or retry for a complete projection."
+    },
+    {
+      "_comment_warning_2": "Per-repo hard-skip diagnostic (FR-007): the gh aw forecast call failed and produced no decodable output; the repo is skipped and the rest of the fleet still aggregates.",
+      "code": "hint",
+      "message": "`gh aw forecast` failed for rshade/archived-repo: exit status 1. Skipping this repo."
+    },
+    {
+      "_comment_warning_3": "Group-level reliability caveat: a contributing workflow reported monte_carlo.is_reliable=false (small sample). The point estimate stands; the band is advisory.",
+      "code": "hint",
+      "message": "Monte Carlo band for rshade/finfocus is low-confidence (is_reliable=false) — projected_aic is the authoritative number; treat aic_p10/p50/p90 as indicative."
+    }
+  ],
+  "hints": []
+}

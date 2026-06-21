@@ -15,7 +15,7 @@ is biased toward *operator ergonomics* (resume, preflight, packaging) over
 *feature surface area* (new commands, new abstractions). When in doubt: less
 code, more delegation.
 
-The project is at **v0.2.2** (2026-06-12). The 2026-06-01 transition to
+The project is at **v0.2.3** (2026-06-18). The 2026-06-01 transition to
 usage-based Copilot billing has shifted the near-term agenda: fleet operators
 need cross-repo cost visibility, and fleet — uniquely positioned to know which
 repo runs which profile pinned to which ref — is the natural layer to provide
@@ -36,63 +36,65 @@ fleet-layer tool existing.
 
 - **Cost**: items labeled `cost` on GitHub — #129 (Immediate Focus),
   #102 (Near-Term), #106 / #107 / #113 / #53 / #59 / #60 (Future);
-  #57 / #103 / #108 / #104 shipped in the v0.2.x line and since.
-- **Security**: items labeled `security` on GitHub — the `--strict`
-  promotion #38 (Immediate Focus, an #36 epic child), the security epic
-  #36 with children #39 / #40, plus the supply-chain conflict scanners
-  #101 / #100 and #49 (shipped).
+  #57 / #103 / #108 / #104 shipped in the v0.2.x line.
+- **Security**: items labeled `security` on GitHub — #38 (Immediate
+  Focus), the security epic #36 with remaining children #39–#40;
+  #49 / #100 / #101 / #104 shipped.
 
 **Status**: release-please cuts **patch** bumps for `0.x` (latest tag
-**v0.2.2**, 2026-06-12; `main` has unreleased commits awaiting the next tag).
-v0.2.0 satisfied the rule (#54 / #55 / #56 cost prereqs, #37 Layer 1 security
-scanner); the v0.2.1-v0.2.2 line shipped the cost half repeatedly — the
-consumption rollup (#57), then the `gh aw logs --json` AIC source
-(#103 / PR #116) and the v0.79.2 FinOps baseline (#108) — alongside the
-security half (#49 `--strict` on public repos). The supply-chain conflict
-scanners (#101 / #100) and the trigger-risk lint (#104) have since merged to
-`main` and await the next tag; the following pair is now in Immediate Focus —
-the over-budget highlight (#129, cost) and the `--strict` promotion
-(#38, security).
+**v0.2.3**, 2026-06-18). v0.2.0 satisfied the rule (#54 / #55 / #56 cost
+prereqs, #37 Layer 1 security scanner); the v0.2.1–v0.2.2 line shipped
+the cost half repeatedly — the consumption rollup (#57), then the
+`gh aw logs --json` AIC source (#103 / PR #116) and the v0.79.2 FinOps
+baseline (#108) — alongside the security half (#49 `--strict` on public
+repos). **v0.2.3** (2026-06-18) satisfied the rule on both halves at
+once: the trigger-risk lint (#104 / PR #136 — labeled both `cost` and
+`security`) plus the Renovate and Dependabot conflict scanners
+(#100 / #101) and the init drift guard (#98). The **next** release's
+composition slots are both filled in Immediate Focus: the `--strict`
+enforcement flag (#38, `security`) and the over-budget rollup highlight
+(#129, `cost`), promoted by `/roadmap sync` on 2026-06-18.
 
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
 
 ## Immediate Focus (next release in progress)
 
-Latest tag is **v0.2.2** (2026-06-12). Since then `main` has merged the next
-release's work — the supply-chain conflict scanners (#101 / #100, security),
-the cost-oriented trigger-risk lint (#104, cost), and the `ensureInit` drift
-fix (#98) — all now closed, awaiting the next release-please tag (see Completed
-Milestones). Immediate Focus now holds the following pair, both carrying
-`roadmap/current`: the over-budget rollup highlight (#129, cost) and the
-security `--strict` promotion (#38, security — an #36 epic child, eligible
-since Layer 1 #37 shipped). They fill the next release's cost + security
-composition slots.
+Latest tag is **v0.2.3** (2026-06-18). v0.2.3 shipped the trigger-risk
+lint (#104 / PR #136), the Renovate and Dependabot conflict scanners
+(#100 / #101), and the init drift guard (#98), on top of v0.2.2's FinOps
+build-out (#103 / #108 / #114 / #126) and v0.2.0's consumption rollup
+(#57) and `--strict`-on-public security default (#49). With #104 shipped,
+Immediate Focus opened empty; `/roadmap sync` (2026-06-18) promoted a
+composition pair to fill both open slots for the next release. Depth is 2
+— `target_focus_depth: 1` plus a composition bump, since both the `cost`
+and `security` slots were unfilled.
 
-> `/roadmap sync` (2026-06-19) notes depth 2 > target 1 (single-WIP discipline).
-> Composition is balanced (cost #129 + security #38). Demote toward single-WIP
-> once one of the pair lands.
-
+- [ ] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict`
+  flag: promote HIGH Layer 1 findings from advisory to blocking `[S]`
+  `security`
+  *Fills the next release's **security** slot. Highest-scoring candidate
+  (55) in the 2026-06-18 gate: `effort/small`, and epic-promotion-eligible
+  as a child of #36 now that the Layer 1 scanner (#37) has shipped. Turns
+  the advisory scanner into an enforcement gate — the natural next step in
+  the supply-chain epic.*
 - [ ] [#129](https://github.com/rshade/gh-aw-fleet/issues/129) Read-only
-  over-budget highlighting in the rollup (`--budget`) `[M]` `cost` `finops`
-  `spec-first`
-  *Optional per-row AIC ceiling that highlights hot rollup rows — the
-  "operate / anomaly" lens, delivered read-only inside the fleet's own
-  control plane (no cap, no alert, exit 0). Needs a small 009 spec amendment
-  distinguishing "highlight" from "alarm" (hence `spec-first`).*
-- [ ] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict` flag:
-  promote HIGH Layer 1 findings from advisory to blocking `[S]` `security`
-  *Child of the security epic #36; became promotion-eligible once Layer 1
-  (#37) shipped 2026-05-07. Flips advisory HIGH findings to blocking under an
-  opt-in `--strict` flag across the deploy/sync/upgrade pipeline.*
+  over-budget highlighting in the rollup (`--budget`) `[M]` `cost`
+  `finops` `spec-first`
+  *Fills the next release's **cost** slot. Optional per-row AIC ceiling
+  that highlights hot rollup rows — the "operate / anomaly" lens,
+  delivered read-only inside the fleet's own control plane (no cap, no
+  alert, exit 0). Needs a small 009 spec amendment distinguishing
+  "highlight" from "alarm" (hence `spec-first`).*
 
 ## Near-Term Vision (v0.4 — FinOps build-out + operator QoL)
 
-With the FinOps build-out shipped in v0.2.2 and the next release's
-composition pair now in Immediate Focus (#129 cost + #38 security), Near-Term
-holds the remaining FinOps work — forecast (#102) and consumption
-scale-hardening (#119) — plus the deploy/consumption follow-ups (#112 / #115),
-a diagnostics expansion (#99), and four docs items (#94 / #95 / #127 / #128).
+With the FinOps build-out shipped in v0.2.2 (#103 / #108 / #114) and
+the security scanners (#100 / #101) shipped in v0.2.3, Near-Term holds the
+remaining FinOps work — forecast (#102) and consumption scale-hardening
+(#119) — plus deploy follow-ups (#112 / #115), a diagnostics expansion
+(#99), and four docs items (#94 / #95 / #127 / #128). The over-budget
+rollup highlight (#129) was promoted to Immediate Focus on 2026-06-18.
 
 ### FinOps / cost visibility
 
@@ -212,14 +214,15 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   Add security scanning to `upgrade`/`sync`/`deploy` pipeline `[L]`
   *Umbrella: insert a scanner layer that catches secrets, dangerous
   compiled-YAML patterns, and fleet-structural violations before PRs merge.
-  Layer 1 (#37) shipped 2026-05-07 — by the epic's own promotion rule, #38
-  is now in Immediate Focus; #39 / #40 remain eligible for promotion.*
+  Layer 1 (#37) shipped 2026-05-07 — by the epic's own promotion rule, the
+  remaining children became eligible; #38 was promoted to Immediate Focus
+  on 2026-06-18, leaving #39–#40 eligible for a future sync.*
   - [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
     scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
     (shipped 2026-05-07)
   - [ ] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict`
     flag: promote HIGH Layer 1 findings from advisory to blocking `[S]`
-    — now in **Immediate Focus** (`roadmap/current`)
+    (**promoted to Immediate Focus 2026-06-18**)
   - [ ] [#39](https://github.com/rshade/gh-aw-fleet/issues/39)
     `--deep-scan` flag: prompt-injection regex signatures + optional
     classifier `[L]`
@@ -428,24 +431,39 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
-- [x] [#104](https://github.com/rshade/gh-aw-fleet/issues/104) Cost-oriented
-  trigger-risk lint over the resolved fleet `[S]` `security` `cost` `finops`
-  *Closed 2026-06-18. Flags trigger shapes that invite runaway AIC spend
-  (unbounded schedules, fork-triggered LLM runs) across the resolved workflow
-  set. Filled the next release's cost composition slot.*
+- [x] [#104](https://github.com/rshade/gh-aw-fleet/issues/104)
+  Cost-oriented trigger-risk lint over the resolved fleet `[S]`
+  `security` `cost` `finops`
+  *Shipped in v0.2.3 (PR #136, closed 2026-06-18). Flags trigger shapes
+  that invite runaway AIC spend (unbounded schedules, fork-triggered LLM
+  runs) across the resolved workflow set. Labeled both `cost` and
+  `security`, it single-handedly satisfied v0.2.3's release-composition
+  rule. Promoted to Immediate Focus by `/roadmap sync` on 2026-06-13.*
 - [x] [#101](https://github.com/rshade/gh-aw-fleet/issues/101) Detect
   Dependabot configs that conflict with gh-aw-managed pins `[M]` `security`
-  *Closed 2026-06-17. Advisory `security_dependabot` scanner; security half of
-  the supply-chain conflict pair (with #100).*
-- [x] [#100](https://github.com/rshade/gh-aw-fleet/issues/100) Detect Renovate
-  configs that conflict with gh-aw-managed pins `[M]` `security`
-  *Closed 2026-06-16. Advisory `security_renovate` scanner; incident-driven
-  (`finfocus#1246`).*
-- [x] [#98](https://github.com/rshade/gh-aw-fleet/issues/98) Fix `ensureInit`
-  probing a stale marker filename — re-inits every run, no drift detection
-  `[M]` `bug`
-  *Closed 2026-06-14. Superseded the marker-filename probe with the
-  fleet-manifest version comparison (#114).*
+  *Shipped in v0.2.3 (PR #135, closed 2026-06-17).
+  Parses `.github/dependabot.yml` via `yaml.v3`; emits a `LOW` `Finding`
+  per `github-actions` update entry that lacks `ignore` rules for the
+  gh-aw-actions family. Dependabot has no file-glob ignore, so there is
+  one conflict rule (not two); new `security_dependabot` diag code;
+  surfaces on `deploy`/`sync`/`upgrade` via the existing finding
+  pipeline.*
+- [x] [#100](https://github.com/rshade/gh-aw-fleet/issues/100) Detect
+  Renovate configs that conflict with gh-aw-managed pins `[M]` `security`
+  *Shipped in v0.2.3 (PR #133, closed 2026-06-16).
+  Probes `renovate.json` / `.renovaterc[.json]` / `renovate.json5` /
+  `.github/renovate.json` (hujson-tolerant); emits `LOW` findings for
+  missing `packageRules`: disable gh-aw-actions bumps (Rule A) and
+  exclude generated `*.lock.yml` files (Rule B). New `security_renovate`
+  diag code; no new deps.*
+- [x] [#98](https://github.com/rshade/gh-aw-fleet/issues/98) Fix
+  `ensureInit` probing a stale marker filename — re-inits every run, no
+  drift detection `[M]` `bug`
+  *Shipped in v0.2.3 (PR #130, closed 2026-06-14).
+  Added init drift guard and upgraded init/manifest parity; the
+  manifest-version comparison (foundation from #114) now correctly
+  short-circuits re-init when the deployed gh-aw version matches the
+  fleet pin.*
 - [x] [#114](https://github.com/rshade/gh-aw-fleet/issues/114)
   Fleet-managed marker/manifest per repo: deployed gh-aw version +
   detect/refresh stale init artifacts `[L]`
@@ -646,17 +664,17 @@ Any roadmap item that violates these is rejected, not negotiated.
 
 [meta-spec]: ./CONTEXT.md#roadmap-meta-issue-body-convention
 
-> Tracked as GitHub issues: Immediate Focus — the over-budget rollup
-> highlight (#129, cost) and the `--strict` promotion (#38, security, an #36
-> epic child); Near-Term — the FinOps build-out (#102, #119), the
-> deploy/consumption follow-ups (#112, #115), diagnostics hint (#99), and docs
-> items (#94, #95, #127, #128); Future Vision — the security epic (#36 with
-> children #39, #40), the FinOps deferred set (#105, #106, #107, #113, #53,
-> #59, #60), the control-plane enablement cluster (#146 epic with #141–#145),
-> the docs-site spike (#138), and the Status refinements (#61, #62). Merged to
-> `main` since v0.2.2 (awaiting next tag): #101, #100, #104 (the supply-chain
-> pair plus cost lint) and #98 (ensureInit fix). Shipped in v0.2.2
-> (2026-06-12): #103, #108, #114 (alongside #57 / #49 / #43 across the
-> v0.2.x line). Excluded as operational noise: #5 (Dependency Dashboard) and
-> the `[aw]` bot failure reports. The unlinked Near-Term and Future items
-> don't have issues yet — open them as work picks up, then run `/roadmap sync`.
+> Tracked as GitHub issues: Immediate Focus — the `--strict` enforcement
+> flag (#38, security) and the over-budget rollup highlight (#129, cost),
+> promoted 2026-06-18; Near-Term — the FinOps build-out (#102, #119),
+> deploy follow-ups (#112, #115), diagnostics hint (#99), and docs items
+> (#94, #95, #127, #128); Future Vision — the security epic (#36 with
+> remaining children #39–#40), the FinOps deferred set
+> (#105, #106, #107, #113, #53, #59, #60), and the Status refinements
+> (#61, #62). Shipped in v0.2.3 (2026-06-18): #104 (trigger-risk lint),
+> #100 / #101 (conflict scanners), #98 (init drift guard). Shipped in
+> v0.2.2 (2026-06-12): #103, #108, #114 (alongside #57 / #49 / #43 across
+> the v0.2.x line). Excluded as operational noise: #5 (Dependency
+> Dashboard) and #111 / #118 / #123 / #132 / #134 / #137 (bot failure
+> reports). The unlinked Near-Term and Future items don't have issues
+> yet — open them as work picks up, then run `/roadmap sync`.

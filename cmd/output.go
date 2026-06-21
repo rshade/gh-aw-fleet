@@ -28,6 +28,7 @@ const (
 const (
 	commandConsumption = "consumption"
 	commandDeploy      = "deploy"
+	commandForecast    = "forecast"
 	commandList        = "list"
 	commandStatus      = "status"
 	commandSync        = "sync"
