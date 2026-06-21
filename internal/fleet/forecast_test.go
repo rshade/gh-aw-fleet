@@ -23,13 +23,25 @@ func loadForecastFixture(t *testing.T, name string) forecastPayload {
 	return p
 }
 
+func markForecastBandsReliable(p forecastPayload) forecastPayload {
+	for i := range p.Workflows {
+		if p.Workflows[i].WeeklyMonteCarlo != nil {
+			p.Workflows[i].WeeklyMonteCarlo.IsReliable = true
+		}
+		if p.Workflows[i].MonthlyMonteCarlo != nil {
+			p.Workflows[i].MonthlyMonteCarlo.IsReliable = true
+		}
+	}
+	return p
+}
+
 // TestAggregateForecastHappyPath covers the single-workflow happy path
 // with a warm (non-zero sampled_runs) workflow.
 func TestAggregateForecastHappyPath(t *testing.T) {
 	prevF, prevV := ghForecastAPI, ghAwVersion
 	t.Cleanup(func() { ghForecastAPI, ghAwVersion = prevF, prevV })
 
-	singlePayload := loadForecastFixture(t, "forecast_single_workflow.json")
+	singlePayload := markForecastBandsReliable(loadForecastFixture(t, "forecast_single_workflow.json"))
 	ghForecastAPI = func(_ context.Context, repo string, period Period) (forecastPayload, error) {
 		if repo == "test/repo" {
 			return singlePayload, nil
@@ -87,6 +99,67 @@ func TestAggregateForecastHappyPath(t *testing.T) {
 	// Check that P50 is non-nil (from weekly_monte_carlo in fixture)
 	if g.AICP50 == nil {
 		t.Errorf("AICP50 = nil; want non-nil")
+	}
+}
+
+// TestAggregateForecastLowConfidenceMonteCarloDiagnostic covers unreliable
+// Monte Carlo bands being surfaced as diagnostics.
+func TestAggregateForecastLowConfidenceMonteCarloDiagnostic(t *testing.T) {
+	prevF, prevV := ghForecastAPI, ghAwVersion
+	t.Cleanup(func() { ghForecastAPI, ghAwVersion = prevF, prevV })
+
+	singlePayload := loadForecastFixture(t, "forecast_single_workflow.json")
+	ghForecastAPI = func(_ context.Context, repo string, period Period) (forecastPayload, error) {
+		if repo == "test/repo" {
+			return singlePayload, nil
+		}
+		return forecastPayload{}, nil
+	}
+	ghAwVersion = func(_ context.Context) (string, error) {
+		return CompileStrictMinVersion, nil
+	}
+
+	cfg := &Config{
+		LoadedFrom: "test",
+		Repos: map[string]RepoSpec{
+			"test/repo": {
+				Profiles: []string{"default"},
+			},
+		},
+		Profiles: map[string]Profile{
+			"default": {Tier: "standard"},
+		},
+	}
+
+	res, diags, err := AggregateForecast(context.Background(), cfg, PeriodWeek, ForecastByRepo)
+	if err != nil {
+		t.Fatalf("AggregateForecast: %v", err)
+	}
+	if len(res.Groups) != 1 {
+		t.Fatalf("len(Groups) = %d; want 1", len(res.Groups))
+	}
+
+	var got *Diagnostic
+	for i := range diags {
+		if diags[i].Code == DiagForecastLowConfidence {
+			got = &diags[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatalf("missing %s diagnostic in %#v", DiagForecastLowConfidence, diags)
+	}
+	if got.Fields[fieldRepo] != "test/repo" {
+		t.Errorf("Fields[repo] = %v; want test/repo", got.Fields[fieldRepo])
+	}
+	if got.Fields[fieldGroup] != "test/repo" {
+		t.Errorf("Fields[group] = %v; want test/repo", got.Fields[fieldGroup])
+	}
+	if got.Fields[fieldPeriod] != "week" {
+		t.Errorf("Fields[period] = %v; want week", got.Fields[fieldPeriod])
+	}
+	if got.Fields[fieldWorkflow] != "Code Simplifier" {
+		t.Errorf("Fields[workflow_id] = %v; want Code Simplifier", got.Fields[fieldWorkflow])
 	}
 }
 
@@ -151,9 +224,9 @@ func TestAggregateForecastColdStart(t *testing.T) {
 	}
 }
 
-// TestAggrecastForecastHardFail covers the case where ghForecastAPI returns
-// an error with zero workflows in the payload (hard fail, skipped repo).
-func TestAggrecastForecastHardFail(t *testing.T) {
+// TestAggregateForecastHardFail covers the case where ghForecastAPI returns
+// an error with zero workflows in the payload for every repo.
+func TestAggregateForecastHardFail(t *testing.T) {
 	prevF, prevV := ghForecastAPI, ghAwVersion
 	t.Cleanup(func() { ghForecastAPI, ghAwVersion = prevF, prevV })
 
@@ -177,8 +250,11 @@ func TestAggrecastForecastHardFail(t *testing.T) {
 	}
 
 	res, diags, err := AggregateForecast(context.Background(), cfg, PeriodWeek, ForecastByRepo)
-	if err != nil {
-		t.Fatalf("AggregateForecast: %v", err)
+	if err == nil {
+		t.Fatalf("AggregateForecast returned nil error; want total-failure error")
+	}
+	if res == nil {
+		t.Fatalf("AggregateForecast result = nil; want partial result with zero groups")
 	}
 
 	// Result should be returned with zero groups
@@ -189,6 +265,57 @@ func TestAggrecastForecastHardFail(t *testing.T) {
 	// A diagnostic should be emitted for the skipped repo
 	if len(diags) == 0 {
 		t.Errorf("Expected hard-fail diagnostic, got 0 diags")
+	}
+}
+
+// TestAggregateForecastHardFailPartialSuccess covers a hard-failed repo that
+// should not fail the whole command when another repo produced a payload.
+func TestAggregateForecastHardFailPartialSuccess(t *testing.T) {
+	prevF, prevV := ghForecastAPI, ghAwVersion
+	t.Cleanup(func() { ghForecastAPI, ghAwVersion = prevF, prevV })
+
+	singlePayload := markForecastBandsReliable(loadForecastFixture(t, "forecast_single_workflow.json"))
+	ghForecastAPI = func(_ context.Context, repo string, period Period) (forecastPayload, error) {
+		if repo == "test/repo" {
+			return singlePayload, nil
+		}
+		return forecastPayload{}, errors.New("simulate error")
+	}
+	ghAwVersion = func(_ context.Context) (string, error) {
+		return CompileStrictMinVersion, nil
+	}
+
+	cfg := &Config{
+		LoadedFrom: "test",
+		Repos: map[string]RepoSpec{
+			"test/fail": {Profiles: []string{"default"}},
+			"test/repo": {Profiles: []string{"default"}},
+		},
+		Profiles: map[string]Profile{
+			"default": {},
+		},
+	}
+
+	res, diags, err := AggregateForecast(context.Background(), cfg, PeriodWeek, ForecastByRepo)
+	if err != nil {
+		t.Fatalf("AggregateForecast: %v", err)
+	}
+	if len(res.Groups) != 1 {
+		t.Fatalf("len(Groups) = %d; want 1", len(res.Groups))
+	}
+	if res.Groups[0].Key != "test/repo" {
+		t.Errorf("Key = %q; want test/repo", res.Groups[0].Key)
+	}
+
+	foundSkippedRepoDiag := false
+	for _, d := range diags {
+		if d.Fields[fieldRepo] == "test/fail" {
+			foundSkippedRepoDiag = true
+			break
+		}
+	}
+	if !foundSkippedRepoDiag {
+		t.Errorf("Expected skipped-repo diagnostic for test/fail, got %d diags", len(diags))
 	}
 }
 
@@ -412,5 +539,50 @@ func TestForecastGroupByTier(t *testing.T) {
 	g := res.Groups[0]
 	if g.Key != "standard" {
 		t.Errorf("Key = %q; want \"standard\"", g.Key)
+	}
+}
+
+// TestForecastGroupByTierNoProfilesUsesUnset covers tracked repos that have
+// no profiles and should still contribute to the "<unset>" tier bucket.
+func TestForecastGroupByTierNoProfilesUsesUnset(t *testing.T) {
+	prevF, prevV := ghForecastAPI, ghAwVersion
+	t.Cleanup(func() { ghForecastAPI, ghAwVersion = prevF, prevV })
+
+	singlePayload := markForecastBandsReliable(loadForecastFixture(t, "forecast_single_workflow.json"))
+	ghForecastAPI = func(_ context.Context, repo string, period Period) (forecastPayload, error) {
+		if repo == "test/repo" {
+			return singlePayload, nil
+		}
+		return forecastPayload{}, nil
+	}
+	ghAwVersion = func(_ context.Context) (string, error) {
+		return CompileStrictMinVersion, nil
+	}
+
+	cfg := &Config{
+		LoadedFrom: "test",
+		Repos: map[string]RepoSpec{
+			"test/repo": {},
+		},
+		Profiles: map[string]Profile{},
+	}
+
+	res, _, err := AggregateForecast(context.Background(), cfg, PeriodWeek, ForecastByTier)
+	if err != nil {
+		t.Fatalf("AggregateForecast: %v", err)
+	}
+
+	if len(res.Groups) != 1 {
+		t.Errorf("len(Groups) = %d; want 1", len(res.Groups))
+	}
+
+	g := res.Groups[0]
+	if g.Key != unsetCostCenter {
+		t.Errorf("Key = %q; want %q", g.Key, unsetCostCenter)
+	}
+
+	const expectedAIC = 32.082
+	if g.ProjectedAIC < expectedAIC-0.01 || g.ProjectedAIC > expectedAIC+0.01 {
+		t.Errorf("ProjectedAIC = %.3f; want ~%.3f", g.ProjectedAIC, expectedAIC)
 	}
 }

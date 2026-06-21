@@ -32,9 +32,12 @@ const (
 
 const (
 	fieldCloneDir = "clone_dir"
+	fieldGroup    = "group"
 	fieldHint     = "hint"
 	fieldPath     = "path"
+	fieldPeriod   = "period"
 	fieldRepo     = "repo"
+	fieldWorkflow = "workflow_id"
 )
 
 const (

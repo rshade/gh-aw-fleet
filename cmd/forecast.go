@@ -83,8 +83,13 @@ func runForecast(cmd *cobra.Command, flagDir *string, flags *forecastFlags, repo
 	res, warnings, err := fleet.AggregateForecast(cmd.Context(), cfg, period, by)
 	if err != nil {
 		if jsonMode {
-			return preResultFailureEnvelope(cmd, commandForecast, "", false, err)
+			hints := ensureFailureHint(nil, err)
+			if writeErr := writeEnvelope(cmd, commandForecast, "", false, res, warnings, hints); writeErr != nil {
+				return writeErr
+			}
+			return err
 		}
+		emitConsumptionWarnings(warnings)
 		return err
 	}
 

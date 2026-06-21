@@ -37,6 +37,7 @@ const (
 	DiagRepoInaccessible      = fleetdiag.DiagRepoInaccessible
 	DiagNetworkUnreachable    = fleetdiag.DiagNetworkUnreachable
 	DiagEmptyFleet            = fleetdiag.DiagEmptyFleet
+	DiagForecastLowConfidence = fleetdiag.DiagForecastLowConfidence
 
 	DiagSecurityCredential            = fleetdiag.DiagSecurityCredential
 	DiagSecurityWriteOnSchedule       = fleetdiag.DiagSecurityWriteOnSchedule

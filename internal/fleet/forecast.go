@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -234,16 +235,21 @@ func addForecastToGroups(
 	by ForecastGroupBy,
 	payload forecastPayload,
 	period Period,
-) {
+) []Diagnostic {
 	spec := cfg.Repos[repo]
+	var diags []Diagnostic
 
 	for _, wf := range payload.Workflows {
 		point, band := wf.pick(period)
 		keys := forecastKeys(cfg, repo, spec, by)
 		for _, key := range keys {
 			addPointToGroup(groups, key, point, band, wf.SampledRuns)
+			if band != nil && !band.IsReliable {
+				diags = append(diags, newForecastLowConfidenceDiagnostic(repo, key, period, wf.WorkflowID))
+			}
 		}
 	}
+	return diags
 }
 
 // forecastKeys returns the group key(s) for a repo based on the grouping axis.
@@ -263,6 +269,9 @@ func forecastKeys(cfg *Config, repo string, spec RepoSpec, by ForecastGroupBy) [
 		}
 		return []string{key}
 	case ForecastByTier:
+		if len(spec.Profiles) == 0 {
+			return []string{unsetCostCenter}
+		}
 		tiers := make(map[string]bool)
 		for _, p := range spec.Profiles {
 			tier := cfg.Profiles[p].Tier
@@ -278,6 +287,21 @@ func forecastKeys(cfg *Config, repo string, spec RepoSpec, by ForecastGroupBy) [
 		return keys
 	}
 	return nil
+}
+
+func newForecastLowConfidenceDiagnostic(repo, group string, period Period, workflowID string) Diagnostic {
+	msg := fmt.Sprintf("Forecast Monte Carlo band for %s workflow %q in group %q is low-confidence; "+
+		"treat P10/P50/P90 as advisory until more runs are sampled.", repo, workflowID, group)
+	return Diagnostic{
+		Code:    DiagForecastLowConfidence,
+		Message: msg,
+		Fields: map[string]any{
+			fieldGroup:    group,
+			fieldPeriod:   period.String(),
+			fieldRepo:     repo,
+			fieldWorkflow: workflowID,
+		},
+	}
 }
 
 // addPointToGroup adds a single workflow's projection to a group, folding in
@@ -357,6 +381,7 @@ func AggregateForecast(
 
 	groups := map[string]*ForecastGroup{}
 	var diags []Diagnostic
+	successfulForecasts := 0
 
 	for _, repo := range repoNames {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -370,13 +395,14 @@ func AggregateForecast(
 				fmt.Sprintf("`gh aw forecast` failed for %s: %v. Skipping this repo.", repo, err)))
 			continue
 		}
+		successfulForecasts++
 		if err != nil && len(payload.Workflows) > 0 {
 			// Partial output: warning but still aggregate
 			diags = append(diags, *newSoftDiagnostic(repo,
 				fmt.Sprintf("Forecast for %s is partial — `gh aw forecast` exited non-zero but produced a decodable partial document. Projections for this repo reflect only the workflows present in the output.", repo)))
 		}
 
-		addForecastToGroups(groups, cfg, repo, by, payload, period)
+		diags = append(diags, addForecastToGroups(groups, cfg, repo, by, payload, period)...)
 	}
 
 	result := &ForecastResult{
@@ -384,6 +410,12 @@ func AggregateForecast(
 		Period:     period.String(),
 		GroupBy:    by.String(),
 		Groups:     materializeForecastGroups(groups),
+	}
+
+	if len(repoNames) > 0 && successfulForecasts == 0 {
+		return result, diags, errors.New(
+			"gh aw forecast failed for every repo; no decodable forecast payloads were produced",
+		)
 	}
 
 	// Emit all-cold fleet diagnostic if every group is cold
