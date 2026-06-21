@@ -91,7 +91,7 @@ type WorkflowDrift struct {
 type statusJob struct {
 	repo     string
 	declared []ResolvedWorkflow
-	// resolveErr surfaces a cfg.ResolveRepoWorkflows failure (broken profile
+	// resolveErr surfaces a ResolveRepoWorkflows failure (broken profile
 	// reference, etc.). When non-nil, the worker short-circuits to an errored
 	// RepoStatus rather than fetching anything.
 	resolveErr error
@@ -260,7 +260,7 @@ func selectRepos(cfg *Config, opts StatusOpts) ([]string, error) {
 func buildStatusJobs(cfg *Config, repos []string) []statusJob {
 	jobs := make([]statusJob, 0, len(repos))
 	for _, repo := range repos {
-		declared, err := cfg.ResolveRepoWorkflows(repo)
+		declared, err := ResolveRepoWorkflows(cfg, repo)
 		jobs = append(jobs, statusJob{
 			repo:            repo,
 			declared:        declared,

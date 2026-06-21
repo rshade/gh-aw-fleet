@@ -40,7 +40,7 @@ type SyncResult struct {
 // Sync reconciles one repo's .github/workflows/ to match its declared profile(s).
 // Detects missing, drift, and expected workflows, then optionally deploys or prunes.
 func Sync(ctx context.Context, cfg *Config, repo string, opts SyncOpts) (*SyncResult, error) {
-	resolved, err := cfg.ResolveRepoWorkflows(repo)
+	resolved, err := ResolveRepoWorkflows(cfg, repo)
 	if err != nil {
 		return nil, err
 	}

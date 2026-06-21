@@ -50,7 +50,7 @@ func BuildListResult(cfg *Config) (*ListResult, error) {
 	rows := make([]ListRow, 0, len(repoNames))
 	for _, repo := range repoNames {
 		spec := cfg.Repos[repo]
-		resolved, err := cfg.ResolveRepoWorkflows(repo)
+		resolved, err := ResolveRepoWorkflows(cfg, repo)
 		if err != nil {
 			return nil, err
 		}

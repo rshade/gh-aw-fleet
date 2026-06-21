@@ -2,10 +2,18 @@
 /gh-aw-fleet.exe
 /bin/
 /dist/
+build/
 node_modules/
 docs/.astro/
+vendor/
+*.log
 *.test
 *.out
+.env*
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
 .vscode/
 .idea/
 
