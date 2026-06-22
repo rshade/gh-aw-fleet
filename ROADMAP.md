@@ -61,18 +61,25 @@ changes) is exempt — the rule applies to feature-bearing releases.
 
 Latest tag is **v0.2.3** (2026-06-17), which shipped the supply-chain conflict
 scanners (#101 / #100, security) and the `ensureInit` drift fix (#98). Since
-v0.2.3, `main` has merged the cost-oriented trigger-risk lint (#104, cost) and
-the public `pkg/fleet` config-contract export (#148) — both now closed, awaiting
-the next release-please tag (see Completed Milestones). Immediate Focus holds the
-following pair, both carrying `roadmap/current`: the over-budget rollup highlight
-(#129, cost) and the security `--strict` promotion (#38, security — an #36 epic
-child, eligible since Layer 1 #37 shipped). They fill the next release's cost +
-security composition slots.
+v0.2.3, `main` has merged the cost-oriented trigger-risk lint (#104, cost), the
+public `pkg/fleet` config-contract export (#148), and the `ax-go` foundation
+phase 1 (#156) — all now closed, awaiting the next release-please tag (see
+Completed Milestones). Immediate Focus holds the following pair, both carrying
+`roadmap/current`: the over-budget rollup highlight (#129, cost) and the security
+`--strict` promotion (#38, security — an #36 epic child, eligible since the
+Layer 1 scanner #37 shipped). They fill the next release's cost + security
+composition slots.
 
-> `/roadmap sync` (2026-06-21) notes depth 2 > target 1 (single-WIP discipline).
+> `/roadmap sync` (2026-06-22) notes depth 2 > target 1 (single-WIP discipline).
 > Composition is balanced (cost #129 + security #38). No demotion recommended —
-> each item anchors a distinct required composition slot; demote toward
-> single-WIP once one of the pair lands.
+> each item anchors a distinct required composition slot, so demoting either
+> would re-open a required slot and bump the effective target back to 2. Demote
+> toward single-WIP once one of the pair lands.
+>
+> **Sequencing (operator, 2026-06-22)**: land `--strict` #38 (the smaller
+> security half) first; the cross-repo `overview` wedge #153 (cost) is the
+> designated promotion into Immediate Focus when #38 closes — it anchors the
+> next release's cost slot and unblocks the #154/#155 observability cluster.
 
 - [ ] [#129](https://github.com/rshade/gh-aw-fleet/issues/129) Read-only
   over-budget highlighting in the rollup (`--budget`) `[M]` `cost` `finops`
@@ -422,14 +429,11 @@ never depends on the control plane). See `agentic-fleet/control-plane/docs/`.
   `[M]` `cross-repo`
   *Stable JSON envelopes, non-interactive, deterministic exit codes for the
   shell-out path. Relates to #142.*
-- [ ] [#156](https://github.com/rshade/gh-aw-fleet/issues/156) Adopt `ax-go`
-  as the AX foundation — phase 1 (amend constitution + config primitives +
-  `__schema` discoverability) `[L]` `cross-repo` `spec-first`
-  *Adopt the portfolio's Agentic Experience foundation as the shared
-  output/error/config/logging substrate. Phase 1 = constitution amendment
-  (MINOR bump, like hujson #73) + `ax.ParseConfig`/`PatchConfig` swap in
-  `load.go` + net-new `__schema` discoverability. `unblocks: 145`. Multi-phase;
-  tracking epic optional.*
+
+  *Phase 1 (#156) of the broader `ax-go` adoption shipped 2026-06-22 — see
+  Completed Milestones. Remaining ax-go phases (error-envelope adoption,
+  `--output json` payload alignment, logger convergence, idempotency/mode/
+  dry-run context) are unscheduled; open them as work picks up.*
 
 ### Miscellaneous
 
@@ -464,6 +468,15 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#156](https://github.com/rshade/gh-aw-fleet/issues/156) Adopt `ax-go` as
+  the AX foundation — phase 1 (amend constitution + config primitives +
+  `__schema` discoverability) `[L]` `cross-repo` `spec-first`
+  *Closed 2026-06-22 (PR #159). Adopted `github.com/rshade/ax-go v0.2.0` the
+  constitutional way: `internal/fleet/load.go` now parses/patches via
+  import-isolated `config.ParseFile` / `config.Patch`, `cmd` exposes a hidden
+  additive `__schema` command, and `go.mod` declares `go 1.26.4`. Import
+  boundary is `config`/`schema`/`contract` only. Remaining ax-go phases stay
+  unscheduled (see Control-plane enablement).*
 - [x] [#148](https://github.com/rshade/gh-aw-fleet/issues/148) Export fleet
   config contract into public `pkg/fleet` (types + SchemaVersion + JSON) —
   minimal first slice of #141 `[S]` `cross-repo`

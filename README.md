@@ -10,7 +10,7 @@ Documentation: <https://rshade.github.io/gh-aw-fleet/>
 
 ## Status
 
-Released as **v0.1.0** (April 2026). Pre-1.0: public surfaces (CLI flags,
+Pre-1.0 (see the latest-release badge above). Public surfaces (CLI flags,
 `fleet.json` schema) may still change before v1.0. The core reconcile loop
 (`deploy`, `sync`, `upgrade`, `add`) plus read-only drift detection
 (`status`) is functional. `template fetch` works but is still being
