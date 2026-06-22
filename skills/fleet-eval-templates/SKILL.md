@@ -29,7 +29,7 @@ Skip for:
 ### Step 1 — fetch
 
 ```bash
-cd /mnt/c/GitHub/go/src/github.com/rshade/gh-aw && go run . template fetch
+cd $GOPATH/src/github.com/rshade/gh-aw && go run . template fetch
 ```
 
 The command lists `.github/workflows/*.md` (for gh-aw) and `workflows/*.md` (for agentics) at `main`, downloads each, parses frontmatter, and writes the result to `templates.json`. It also computes a diff against the prior `templates.json` and prints a summary:

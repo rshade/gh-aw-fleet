@@ -265,7 +265,7 @@ func TestJSONModeRejected_TemplateFetch(t *testing.T) {
 	root := NewRootCmd()
 	root.SetOut(io.Discard)
 	root.SetErr(io.Discard)
-	root.SetArgs([]string{"template", "fetch", "-o", "json"})
+	root.SetArgs([]string{templateCommandName, "fetch", "-o", "json"})
 	err := root.Execute()
 	if err == nil {
 		t.Fatal("Execute = nil; want error for template fetch -o json")

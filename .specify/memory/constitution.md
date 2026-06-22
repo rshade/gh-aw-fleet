@@ -1,23 +1,18 @@
 <!--
 SYNC IMPACT REPORT
-Version change: 1.0.0 → 1.1.0
-Rationale: Codifies the previously implicit minimal-direct-dependencies norm
-into an explicit "Third-Party Dependencies" section, retroactively records the
-existing direct deps (cobra, zerolog, yaml.v3, gitleaks/v8) as approved, and
-carves out `github.com/tailscale/hujson` as the first amendment-driven addition
-to support inline config documentation (#73). MINOR bump: new section + material
-expansion of guidance; no principle removed or redefined.
+Version change: 1.1.0 -> 1.2.0
+Rationale: Adds `github.com/rshade/ax-go` as an approved direct dependency for
+the shared AX foundation phase-1 adoption. MINOR bump: material expansion of
+the Third-Party Dependencies approved list; no principle removed or redefined.
 
 Modified principles: none (all four principles unchanged).
 
 Sections added:
-  - Third-Party Dependencies (between Declarative Reconcile Invariants and
-    Development Workflow)
+  - none
 
 Sections modified:
-  - Development Workflow: Complexity bullet now defers dependency policy to the
-    new Third-Party Dependencies section (one-line PR rationale is no longer
-    sufficient for new direct deps; an amendment is required).
+  - Third-Party Dependencies: approved `github.com/rshade/ax-go` with the
+    required three-alternatives rationale and import-isolation note.
 
 Sections removed: none.
 
@@ -33,11 +28,9 @@ Templates requiring updates:
      references detected.
   ⚠ .specify/templates/commands/*.md — directory does not exist; nothing to
      audit.
-  ⚠ CLAUDE.md / AGENTS.md — the "Active Technologies" blocks in feature specs
-     reference "No new third-party dependencies — constitution Principle I."
-     That note is now formally satisfied by the Third-Party Dependencies
-     section; CLAUDE.md does not need to change, but future feature specs
-     SHOULD point to the new section by name instead of "Principle I."
+  ⚠ CLAUDE.md / AGENTS.md — update required in this phase to record ax-go,
+     the go directive bump, the import-isolation invariant, and deferred AX
+     follow-up phases.
   ✅ README.md — no dependency-policy content; no changes needed.
 
 Follow-up TODOs: none.
@@ -112,6 +105,7 @@ Indirect (transitive) dependencies in `go.mod`'s second `require()` block are no
 - `gopkg.in/yaml.v3` — Workflow frontmatter parsing and `templates.json` evaluation handling; required to interop with `gh aw`'s YAML output (grandfathered at v1.0.0 ratification).
 - `github.com/zricethezav/gitleaks/v8` — Secrets-scanning rule engine for the Layer 1 security scanner (`internal/security`). Vendoring the rule set was rejected because the upstream catalog updates faster than this repo's release cadence; re-implementing detection logic would re-host complexity that has a maintained home upstream. Adopted in #37; retroactively recorded as approved here.
 - `github.com/tailscale/hujson` — Comment-preserving reads and writes of fleet config files (`fleet.json`, `fleet.local.json`, `templates.json`, `profiles/default.json`). The standard `encoding/json` package cannot preserve `//` comments or trailing commas across round-trip edits, which blocks the inline-documentation use case in #73 (operators annotating pin choices, profile rationale, and per-workflow `Evaluation` notes next to the data they describe). Scope: `hujson.Standardize()` runs on the read path before `json.Unmarshal`; `hujson.Patch` runs on the write path to surgically apply edits while preserving operator-authored comments. Vendoring was rejected because the package must stay in sync with `encoding/json` semantics, a maintenance burden best owned upstream.
+- `github.com/rshade/ax-go` — Shared Agentic Experience (AX) contracts for import-isolated config parsing/patching and CLI schema discoverability. The standard library was rejected because AX contracts such as error envelopes, discoverability, idempotency, and mode resolution are bespoke rather than built into Go; vendoring was rejected because it would fork the shared, golden-pinned contract DNA; CLI delegation is not applicable because this is gh-aw-fleet's own output and AX layer, not work that `gh aw`, `gh`, or `git` can perform. Scope: gh-aw-fleet consumes only the `config`, `schema`, and transitive stdlib-only `contract` packages so ax-go's OpenTelemetry, gRPC, and protobuf transitive dependencies stay out of this tool's build.
 
 ## Development Workflow
 
@@ -141,4 +135,4 @@ Layering:
 
 When the three disagree, the constitution wins, followed by CLAUDE.md, followed by README.md. Disagreements surface as amendment proposals.
 
-**Version**: 1.1.0 | **Ratified**: 2026-04-18 | **Last Amended**: 2026-05-10
+**Version**: 1.2.0 | **Ratified**: 2026-04-18 | **Last Amended**: 2026-06-21

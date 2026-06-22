@@ -24,7 +24,7 @@ customization flags.
   incomplete tasks)
 - **[Story]**: Which user story this task belongs to (US1, US2, US3)
 - All file paths are relative to the repository root:
-  `/mnt/c/GitHub/go/src/github.com/rshade/gh-aw/`
+  `$GOPATH/src/github.com/rshade/gh-aw/`
 
 ## Path Conventions
 

@@ -8,9 +8,11 @@ import (
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
+const templateCommandName = "template"
+
 func newTemplateCmd(flagDir *string) *cobra.Command {
 	tpl := &cobra.Command{
-		Use:   "template",
+		Use:   templateCommandName,
 		Short: "Manage the upstream template catalog (templates.json)",
 	}
 	tpl.AddCommand(newTemplateFetchCmd(flagDir))

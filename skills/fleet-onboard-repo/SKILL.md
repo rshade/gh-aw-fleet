@@ -28,7 +28,7 @@ Skip for:
 ### Step 1 — verify not already tracked
 
 ```bash
-cd /mnt/c/GitHub/go/src/github.com/rshade/gh-aw && go run . list
+cd $GOPATH/src/github.com/rshade/gh-aw && go run . list
 ```
 
 If `<owner>/<repo>` already appears in the output, stop and say "already tracked — use `fleet-deploy` to (re)deploy." Do not edit fleet.local.json.

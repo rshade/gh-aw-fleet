@@ -15,7 +15,7 @@ description: "Task list for Layer 1 Security Scanner (issue #37, epic #36)"
 
 - **[P]**: Different files, no dependencies on incomplete tasks
 - **[Story]**: Maps task to spec.md user story (US1=P1, US2=P2, US3=P3, US4=P4)
-- All paths absolute from repo root `/mnt/c/GitHub/go/src/github.com/rshade/gh-aw-fleet/`
+- All paths absolute from repo root `$GOPATH/src/github.com/rshade/gh-aw-fleet/`
 
 ---
 

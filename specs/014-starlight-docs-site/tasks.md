@@ -29,7 +29,7 @@ story is an independently shippable increment. Note US2 and US4 are both P2.
 
 This feature adds a self-contained Node/Astro project rooted at `docs/` plus one
 workflow and three repo-root hygiene files. No Go files change. All paths are
-relative to the repo root `/mnt/c/GitHub/go/src/github.com/rshade/gh-aw-fleet/`.
+relative to the repo root `$GOPATH/src/github.com/rshade/gh-aw-fleet/`.
 
 ---
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -199,6 +200,39 @@ func writeLocalAddition(dir, repo string, spec RepoSpec) error {
 	}
 	existing.Repos[repo] = spec
 	return writeJSON(path, existing)
+}
+
+// writeHujson reads the existing file at path (or starts from an empty object
+// scaffold when missing), parses it as HuJson, runs apply on the syntax tree,
+// formats, packs, and atomically writes. The Add path uses this direct AST
+// mutation because it appends one repo member while preserving comments.
+func writeHujson(path string, apply func(*hujson.Value) error) error {
+	existing, err := readHujsonOrScaffold(path)
+	if err != nil {
+		return err
+	}
+	v, parseErr := hujson.Parse(existing)
+	if parseErr != nil {
+		return fmt.Errorf("parse %s as hujson: %w", path, parseErr)
+	}
+	if applyErr := apply(&v); applyErr != nil {
+		return applyErr
+	}
+	v.Format()
+	return atomicWrite(path, v.Pack())
+}
+
+// readHujsonOrScaffold returns the contents of path, or "{}" when path does
+// not exist so hujson.Parse has a valid empty-object starting point.
+func readHujsonOrScaffold(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return data, nil
+	}
+	if os.IsNotExist(err) {
+		return []byte("{}"), nil
+	}
+	return nil, fmt.Errorf("read %s: %w", path, err)
 }
 
 // appendRepoMember inserts a new (slug, spec) pair under the root config's
