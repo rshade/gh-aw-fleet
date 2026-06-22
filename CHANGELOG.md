@@ -10,6 +10,19 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.2.4](https://github.com/rshade/gh-aw-fleet/compare/v0.2.3...v0.2.4) (2026-06-22)
+
+
+### Added
+
+* **ax:** adopt ax-go config primitives and hidden schema command ([#159](https://github.com/rshade/gh-aw-fleet/issues/159)) ([ad55478](https://github.com/rshade/gh-aw-fleet/commit/ad55478960f1fc2bd413a1d143159e0ba0be0d6b)), closes [#156](https://github.com/rshade/gh-aw-fleet/issues/156)
+* **pkg/fleet:** export fleet.json config contract as public package ([#152](https://github.com/rshade/gh-aw-fleet/issues/152)) ([980ceb1](https://github.com/rshade/gh-aw-fleet/commit/980ceb175e745a2564dc563e22fd54e937399f50)), closes [#148](https://github.com/rshade/gh-aw-fleet/issues/148)
+
+
+### Documentation
+
+* **site:** scaffold Astro Starlight docs site consuming rshade-theme ([#149](https://github.com/rshade/gh-aw-fleet/issues/149)) ([7fd2aec](https://github.com/rshade/gh-aw-fleet/commit/7fd2aec2249f06dba148cb8cee1e4d8699a68495)), closes [#138](https://github.com/rshade/gh-aw-fleet/issues/138)
+
 ## [0.2.3](https://github.com/rshade/gh-aw-fleet/compare/v0.2.2...v0.2.3) (2026-06-18)
 
 
