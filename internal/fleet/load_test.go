@@ -135,6 +135,51 @@ func TestLoadTemplates_HuJsonSyntax(t *testing.T) {
 	}
 }
 
+func TestLoadTemplates_AllowsPopulatedCatalogOverDefaultAXLimit(t *testing.T) {
+	const (
+		sourceName   = "githubnext/agentics"
+		workflowName = "large-catalog-entry"
+	)
+	dir := t.TempDir()
+	largeBody := strings.Repeat("x", 2*1024*1024)
+	body := `{
+  "version": 1,
+  "fetched_at": "2026-05-10T00:00:00Z",
+  "sources": {
+    "` + sourceName + `": {
+      "ref_fetched": "main",
+      "workflows": [
+        {
+          "name": "` + workflowName + `",
+          "path": "workflows/` + workflowName + `.md",
+          "sha": "abc123",
+          "body": "` + largeBody + `"
+        }
+      ]
+    }
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, TemplatesFile), []byte(body), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	tpl, err := LoadTemplates(dir)
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	workflows := tpl.Sources[sourceName].Workflows
+	if len(workflows) != 1 {
+		t.Fatalf("workflows = %d, want 1", len(workflows))
+	}
+	if workflows[0].Name != workflowName {
+		t.Errorf("workflow name = %q, want %q", workflows[0].Name, workflowName)
+	}
+	if len(workflows[0].Body) != len(largeBody) {
+		t.Errorf("body length = %d, want %d", len(workflows[0].Body), len(largeBody))
+	}
+}
+
 // TestProbeConfigPath_Behavior covers the three branches of probeConfigPath
 // directly so failures pinpoint the helper rather than a higher-level caller.
 func TestProbeConfigPath_Behavior(t *testing.T) {

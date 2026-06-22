@@ -19,7 +19,7 @@ description: "Task list for status subcommand drift detection (feature 004-statu
 
 ## Path Conventions
 
-This is a single-module Go project. All paths are relative to the repository root `/mnt/c/GitHub/go/src/github.com/rshade/gh-aw-fleet/`.
+This is a single-module Go project. All paths are relative to the repository root `$GOPATH/src/github.com/rshade/gh-aw-fleet/`.
 
 - Cobra wrappers live in `cmd/`
 - Feature logic lives in `internal/fleet/`

@@ -1,13 +1,16 @@
 package fleet
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	zlog "github.com/rs/zerolog/log"
-	"github.com/tailscale/hujson"
+	"github.com/rshade/ax-go/config"
 )
 
 // Filenames the fleet reads/writes relative to the working directory.
@@ -34,6 +37,8 @@ const (
 	hujsonExt = ".hujson"
 	jsonExt   = ".json"
 )
+
+const templatesMaxBytes = 16 * 1024 * 1024
 
 // jsonPatchOpAdd is the RFC 6902 "add" operation name. Per the RFC, "add"
 // replaces the value when the target path already exists, which is the
@@ -98,7 +103,7 @@ func pathExists(p string) (bool, error) {
 // replace base entries, so you never need to duplicate shared profiles.
 //
 // HuJson syntax (//-line comments, /*-block comments, trailing commas) is
-// supported in either file via hujson.Standardize on the read path.
+// supported in either file via ax-go's config parser.
 //
 // Sets LoadedFrom on the returned config to indicate which file(s) were
 // loaded.
@@ -144,27 +149,33 @@ func LoadConfig(dir string) (*Config, error) {
 	return merged, nil
 }
 
-// loadConfigFile reads and parses a single config file. Runs the input
-// through hujson.Standardize before json.Unmarshal so HuJson syntax is
-// transparent to the consumer; vanilla JSON passes through unchanged.
+// loadConfigFile reads and parses a single config file. Runs the input through
+// ax-go's config parser so HuJson syntax is transparent to the consumer;
+// vanilla JSON passes through unchanged.
 // Returns (nil, os.ErrNotExist) if missing.
 func loadConfigFile(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	std, stdErr := hujson.Standardize(data)
-	if stdErr != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, stdErr)
-	}
 	var c Config
-	if jsonErr := json.Unmarshal(std, &c); jsonErr != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, jsonErr)
+	if err := parseConfigFile(path, &c); err != nil {
+		return nil, err
 	}
 	if c.Version != SchemaVersion {
 		return nil, fmt.Errorf("%s schema version %d unsupported (expected %d)", path, c.Version, SchemaVersion)
 	}
 	return &c, nil
+}
+
+// parseConfigFile decodes path into v through ax-go's HuJson-tolerant config
+// parser. It is the single boundary that normalizes ax-go's parse errors:
+// a missing file surfaces as a bare os.ErrNotExist (so callers can errors.Is
+// it), and any other failure is wrapped with the offending path.
+func parseConfigFile(path string, v any, opts ...config.Option) error {
+	if err := config.ParseFile(context.Background(), path, v, opts...); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	return nil
 }
 
 // mergeConfigs overlays the local config on top of the base config.
@@ -221,17 +232,12 @@ func LoadTemplates(dir string) (*Templates, error) {
 	if !exists {
 		return &Templates{Version: SchemaVersion, Sources: map[string]TemplateSource{}}, nil
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	std, stdErr := hujson.Standardize(data)
-	if stdErr != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, stdErr)
-	}
 	var t Templates
-	if jsonErr := json.Unmarshal(std, &t); jsonErr != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, jsonErr)
+	if parseErr := parseConfigFile(path, &t, config.WithMaxBytes(templatesMaxBytes)); parseErr != nil {
+		if errors.Is(parseErr, os.ErrNotExist) {
+			return nil, fmt.Errorf("read %s: %w", path, parseErr)
+		}
+		return nil, parseErr
 	}
 	return &t, nil
 }
@@ -255,17 +261,11 @@ func SaveTemplates(dir string, t *Templates) error {
 	if !exists {
 		return writeJSON(path, t)
 	}
-	ops, opsErr := buildTemplatesPatch(t)
+	opsBytes, opsErr := buildTemplatesPatch(t)
 	if opsErr != nil {
 		return opsErr
 	}
-	patchErr := writeHujson(path, func(v *hujson.Value) error {
-		if applyErr := v.Patch(ops); applyErr != nil {
-			return fmt.Errorf("apply patch to %s: %w", path, applyErr)
-		}
-		return nil
-	})
-	if patchErr != nil {
+	if patchErr := patchConfigFile(path, opsBytes); patchErr != nil {
 		zlog.Warn().
 			Str("event", "hujson_fallback_to_rewrite").
 			Str("path", path).
@@ -274,6 +274,22 @@ func SaveTemplates(dir string, t *Templates) error {
 		return writeJSON(path, t)
 	}
 	return nil
+}
+
+// patchConfigFile reads path, applies the RFC 6902 patch in ops via ax-go's
+// comment-preserving config.Patch, and writes the result atomically. Any
+// failure (read, patch, or write) is returned so the caller can fall back to
+// a full rewrite.
+func patchConfigFile(path string, ops []byte) error {
+	existing, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return fmt.Errorf("read %s: %w", path, readErr)
+	}
+	patched, patchErr := config.Patch(context.Background(), bytes.NewReader(existing), ops)
+	if patchErr != nil {
+		return fmt.Errorf("apply patch to %s: %w", path, patchErr)
+	}
+	return atomicWrite(path, patched)
 }
 
 // buildTemplatesPatch produces an RFC 6902 patch document with three "add"
@@ -313,56 +329,38 @@ func writeJSON(path string, v any) error {
 	return atomicWrite(path, data)
 }
 
-// atomicWrite stages bytes at path+".tmp" then renames into place, ensuring
-// readers never observe a partially-written file. Ensures a trailing
-// newline (POSIX text-file convention).
+// atomicWrite stages bytes in a uniquely-named temp file in the target
+// directory then renames into place, ensuring readers never observe a
+// partially-written file. The temp file is created 0o600 by os.CreateTemp, so
+// the destination keeps owner-only permissions. Ensures a trailing newline
+// (POSIX text-file convention).
 func atomicWrite(path string, data []byte) error {
 	if len(data) == 0 || data[len(data)-1] != '\n' {
 		data = append(data, '\n')
 	}
-	tmp := path + ".tmp"
-	if writeErr := os.WriteFile(tmp, data, 0o600); writeErr != nil {
-		return writeErr
-	}
-	return os.Rename(tmp, path)
-}
-
-// writeHujson reads the existing file at path (or starts from an empty
-// object scaffold when missing), parses it as HuJson, runs the caller's
-// apply step on the syntax tree, formats, packs, and atomically writes.
-// Comments and whitespace outside the touched region survive.
-//
-// Returns an error if the file is unreadable for a reason other than
-// not-exist, if hujson.Parse rejects the file, or if apply fails.
-// Callers that want graceful degradation (fall back to a full rewrite)
-// detect those errors and call writeJSON themselves with a warning log.
-func writeHujson(path string, apply func(*hujson.Value) error) error {
-	existing, err := readHujsonOrScaffold(path)
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
 	}
-	v, parseErr := hujson.Parse(existing)
-	if parseErr != nil {
-		return fmt.Errorf("parse %s as hujson: %w", path, parseErr)
+	tmpPath := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, writeErr := tmp.Write(data); writeErr != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write %s: %w", tmpPath, writeErr)
 	}
-	if applyErr := apply(&v); applyErr != nil {
-		return applyErr
+	if closeErr := tmp.Close(); closeErr != nil {
+		return fmt.Errorf("close %s: %w", tmpPath, closeErr)
 	}
-	v.Format()
-	return atomicWrite(path, v.Pack())
-}
-
-// readHujsonOrScaffold returns the contents of path, or "{}" when path
-// does not exist (giving Parse a valid empty-object starting point).
-func readHujsonOrScaffold(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-	if err == nil {
-		return data, nil
+	if renameErr := os.Rename(tmpPath, path); renameErr != nil {
+		return renameErr
 	}
-	if os.IsNotExist(err) {
-		return []byte("{}"), nil
-	}
-	return nil, fmt.Errorf("read %s: %w", path, err)
+	renamed = true
+	return nil
 }
 
 // ResolveRepoWorkflows flattens a RepoSpec into the concrete list of

@@ -29,7 +29,7 @@ Skip for:
 ### Step 1 — fleet-wide audit
 
 ```bash
-cd /mnt/c/GitHub/go/src/github.com/rshade/gh-aw && go run . upgrade --audit --all
+cd $GOPATH/src/github.com/rshade/gh-aw && go run . upgrade --audit --all
 ```
 
 This clones each tracked repo, runs `gh aw upgrade --audit --json` inside, collects the JSON. Output is a compact per-repo summary.

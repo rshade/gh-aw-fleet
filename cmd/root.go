@@ -9,13 +9,15 @@ import (
 	logpkg "github.com/rshade/gh-aw-fleet/internal/log"
 )
 
+const rootCommandName = "gh-aw-fleet"
+
 // NewRootCmd builds the root gh-aw-fleet command with all subcommands wired in.
 // It owns flagDir, which subcommands read through closures over the returned pointer.
 func NewRootCmd() *cobra.Command {
 	var flagDir string
 
 	root := &cobra.Command{
-		Use:   "gh-aw-fleet",
+		Use:   rootCommandName,
 		Short: "Declarative fleet manager for GitHub Agentic Workflows",
 		Long: `gh-aw-fleet manages a fleet of repositories that deploy GitHub Agentic
 Workflows (gh-aw). It reconciles each repo toward the desired state
@@ -47,6 +49,7 @@ and calling Claude when a deploy or merge needs judgment.`,
 		newUpgradeCmd(&flagDir),
 		newConsumptionCmd(&flagDir),
 	)
+	root.AddCommand(newSchemaCmd(root))
 	return root
 }
 

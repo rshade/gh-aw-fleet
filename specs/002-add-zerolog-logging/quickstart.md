@@ -13,14 +13,14 @@ This is a minimal end-to-end reproduction that exercises every flag combination 
 - `gh` CLI with `gh auth status` green (for `list` to actually hit GitHub — optional; `list --help` exercises the flag surface without network).
 - `jq` on PATH.
 - A local `fleet.local.json` or `fleet.json` — any valid file; `list` does not mutate.
-- Repo cloned to `/mnt/c/GitHub/go/src/github.com/rshade/gh-aw` (adjust paths below if elsewhere).
+- Repo cloned to `$GOPATH/src/github.com/rshade/gh-aw` (adjust paths below if elsewhere).
 
 ---
 
 ## Step 1 — Build
 
 ```sh
-cd /mnt/c/GitHub/go/src/github.com/rshade/gh-aw
+cd $GOPATH/src/github.com/rshade/gh-aw
 go build -o gh-aw-fleet .
 ```
 

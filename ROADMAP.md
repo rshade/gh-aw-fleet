@@ -59,19 +59,20 @@ changes) is exempt — the rule applies to feature-bearing releases.
 
 ## Immediate Focus (next release in progress)
 
-Latest tag is **v0.2.2** (2026-06-12). Since then `main` has merged the next
-release's work — the supply-chain conflict scanners (#101 / #100, security),
-the cost-oriented trigger-risk lint (#104, cost), and the `ensureInit` drift
-fix (#98) — all now closed, awaiting the next release-please tag (see Completed
-Milestones). Immediate Focus now holds the following pair, both carrying
-`roadmap/current`: the over-budget rollup highlight (#129, cost) and the
-security `--strict` promotion (#38, security — an #36 epic child, eligible
-since Layer 1 #37 shipped). They fill the next release's cost + security
-composition slots.
+Latest tag is **v0.2.3** (2026-06-17), which shipped the supply-chain conflict
+scanners (#101 / #100, security) and the `ensureInit` drift fix (#98). Since
+v0.2.3, `main` has merged the cost-oriented trigger-risk lint (#104, cost) and
+the public `pkg/fleet` config-contract export (#148) — both now closed, awaiting
+the next release-please tag (see Completed Milestones). Immediate Focus holds the
+following pair, both carrying `roadmap/current`: the over-budget rollup highlight
+(#129, cost) and the security `--strict` promotion (#38, security — an #36 epic
+child, eligible since Layer 1 #37 shipped). They fill the next release's cost +
+security composition slots.
 
-> `/roadmap sync` (2026-06-19) notes depth 2 > target 1 (single-WIP discipline).
-> Composition is balanced (cost #129 + security #38). Demote toward single-WIP
-> once one of the pair lands.
+> `/roadmap sync` (2026-06-21) notes depth 2 > target 1 (single-WIP discipline).
+> Composition is balanced (cost #129 + security #38). No demotion recommended —
+> each item anchors a distinct required composition slot; demote toward
+> single-WIP once one of the pair lands.
 
 - [ ] [#129](https://github.com/rshade/gh-aw-fleet/issues/129) Read-only
   over-budget highlighting in the rollup (`--budget`) `[M]` `cost` `finops`
@@ -88,11 +89,32 @@ composition slots.
 
 ## Near-Term Vision (v0.4 — FinOps build-out + operator QoL)
 
-With the FinOps build-out shipped in v0.2.2 and the next release's
-composition pair now in Immediate Focus (#129 cost + #38 security), Near-Term
-holds the remaining FinOps work — forecast (#102) and consumption
-scale-hardening (#119) — plus the deploy/consumption follow-ups (#112 / #115),
-a diagnostics expansion (#99), and four docs items (#94 / #95 / #127 / #128).
+With the FinOps build-out shipped and the next release's composition pair now
+in Immediate Focus (#129 cost + #38 security), Near-Term holds the cross-repo
+observability wedge (#153 / #154), the remaining FinOps work — forecast (#102)
+and consumption scale-hardening (#119) — plus the deploy/consumption follow-ups
+(#112 / #115), a diagnostics expansion (#99), the docs-theme adoption (#147),
+and four docs items (#94 / #95 / #127 / #128).
+
+### Observability / cross-repo wedge
+
+The free, local cross-repo health + cost + drift view — the validation wedge
+that proves demand for the hosted control plane (#146) before committing to it.
+Ship local first; the hosted plane becomes the obvious "I don't want to run
+this myself" upgrade.
+
+- [ ] [#153](https://github.com/rshade/gh-aw-fleet/issues/153)
+  `gh-aw-fleet overview` — unified cross-repo health + cost + drift view `[L]`
+  `cost` `finops` `cross-repo`
+  *One read-only dashboard joining run health (failures/success %), cost
+  (AIC/USD), and drift per repo, reusing the `Status()` + `gh aw logs`
+  fan-outs. Ships free/local; validates EPIC #146. `unblocks: 146`.*
+- [ ] [#154](https://github.com/rshade/gh-aw-fleet/issues/154)
+  `gh-aw-fleet debug [repo]` — aggregate failed agentic-run logs `[M]`
+  `cross-repo`
+  *Wraps `gh aw logs` and groups failed runs by root cause (via `CollectHints`)
+  so overview's FAIL counts don't dead-end in the GitHub UI. Drill-down
+  companion to #153.*
 
 ### FinOps / cost visibility
 
@@ -145,6 +167,11 @@ build on.
   source-of-truth for announcements: a bottom-of-README Resources line,
   a release-notes "Related" link, and a repo-description link to the
   blog tag index. No top-of-README marketing link by design.*
+- [ ] [#147](https://github.com/rshade/gh-aw-fleet/issues/147) Adopt shared
+  `rshade-theme` (design tokens) for a consistent look `[S]` `enhancement`
+  *Follow-up to the now-shipped docs-site scaffold (#138): adopt the shared
+  rshade-theme design tokens so the docs site matches the portfolio look.
+  Triaged into Near-Term by `/roadmap sync` 2026-06-21 (was untriaged).*
 
 ### Operator quality of life
 
@@ -355,6 +382,12 @@ ideas close the loop without becoming a daemon.
   current `main` and report behavioral diffs (frontmatter changes, body
   diff hunks). Useful for `fleet-eval-templates` skill but a multi-day
   build.*
+- [ ] [#155](https://github.com/rshade/gh-aw-fleet/issues/155)
+  `overview --fail-on-runs` — opt-in non-zero exit on run failures `[S]`
+  `finops` `cross-repo`
+  *Opt-in CI gate for the overview wedge (#153): exit non-zero when any repo
+  has failed runs in the window; default stays drift-only / advisory.
+  `trigger`: ships after #153 lands.*
 
 ### Control-plane enablement (agentic-fleet.ai)
 
@@ -389,6 +422,14 @@ never depends on the control plane). See `agentic-fleet/control-plane/docs/`.
   `[M]` `cross-repo`
   *Stable JSON envelopes, non-interactive, deterministic exit codes for the
   shell-out path. Relates to #142.*
+- [ ] [#156](https://github.com/rshade/gh-aw-fleet/issues/156) Adopt `ax-go`
+  as the AX foundation — phase 1 (amend constitution + config primitives +
+  `__schema` discoverability) `[L]` `cross-repo` `spec-first`
+  *Adopt the portfolio's Agentic Experience foundation as the shared
+  output/error/config/logging substrate. Phase 1 = constitution amendment
+  (MINOR bump, like hujson #73) + `ax.ParseConfig`/`PatchConfig` swap in
+  `load.go` + net-new `__schema` discoverability. `unblocks: 145`. Multi-phase;
+  tracking epic optional.*
 
 ### Miscellaneous
 
@@ -400,11 +441,6 @@ never depends on the control plane). See `agentic-fleet/control-plane/docs/`.
   *When `upgrade --all` opens N PRs, link them to each other in PR bodies
   so a human reviewer can navigate the rollout. Pure formatting; no schema
   change.*
-- [ ] [#138](https://github.com/rshade/gh-aw-fleet/issues/138) Scaffold an
-  Astro Starlight docs site consuming `rshade-theme` (reference
-  implementation / first test) `[M]` `documentation`
-  *Exploratory: stand up a docs site as the first consumer of the shared
-  theme. Tangential to the CLI; revisit when docs work is prioritized.*
 
 ### Status command refinements
 
@@ -428,6 +464,16 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#148](https://github.com/rshade/gh-aw-fleet/issues/148) Export fleet
+  config contract into public `pkg/fleet` (types + SchemaVersion + JSON) —
+  minimal first slice of #141 `[S]` `cross-repo`
+  *Closed 2026-06-21. First slice of the control-plane epic (#146): the public
+  `pkg/fleet` package now owns the `fleet.json` wire contract while
+  `internal/fleet` aliases it.*
+- [x] [#138](https://github.com/rshade/gh-aw-fleet/issues/138) Scaffold an Astro
+  Starlight docs site consuming `rshade-theme` `[M]` `documentation`
+  *Closed 2026-06-20. Reference implementation / first consumer of the shared
+  theme. Follow-up theming tracked in #147.*
 - [x] [#104](https://github.com/rshade/gh-aw-fleet/issues/104) Cost-oriented
   trigger-risk lint over the resolved fleet `[S]` `security` `cost` `finops`
   *Closed 2026-06-18. Flags trigger shapes that invite runaway AIC spend

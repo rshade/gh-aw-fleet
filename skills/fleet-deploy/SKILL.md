@@ -39,7 +39,7 @@ Three turns. Don't collapse them — the confirmation gates are deliberate.
 Verify the repo is tracked:
 
 ```bash
-cd /mnt/c/GitHub/go/src/github.com/rshade/gh-aw && go run . list
+cd $GOPATH/src/github.com/rshade/gh-aw && go run . list
 ```
 
 Look for an exact match on `<owner>/<repo>` in the output. If not present, stop and tell the user "That repo isn't in fleet.json / fleet.local.json — add it via `fleet add` or edit fleet.local.json, then re-run." Do not proceed.
