@@ -4,6 +4,8 @@ const addToken = "add"
 
 const logsToken = "logs"
 
+const githubContentTypeFile = "file"
+
 const (
 	engineCopilot = "copilot"
 	engineClaude  = "claude"

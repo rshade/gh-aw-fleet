@@ -19,11 +19,12 @@ import (
 // runs `gh aw audit` instead of the upgrade pipeline; Major=true permits
 // major-version source bumps; Force=true passes through to `gh aw upgrade`.
 type UpgradeOpts struct {
-	Apply   bool
-	Audit   bool
-	Major   bool
-	Force   bool
-	WorkDir string
+	Apply    bool
+	Audit    bool
+	Major    bool
+	Force    bool
+	WorkDir  string       // optional existing clone.
+	Security SecurityOpts // security policy for this invocation.
 }
 
 // UpgradeResult aggregates what happened for a single-repo upgrade. OutputLog
@@ -102,9 +103,12 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 	if err != nil {
 		return res, err
 	}
-	if opts.WorkDir == "" && !opts.Apply {
-		defer os.RemoveAll(res.CloneDir)
-	}
+	cleanupClone := opts.WorkDir == "" && !opts.Apply
+	defer func() {
+		if cleanupClone {
+			_ = os.RemoveAll(res.CloneDir)
+		}
+	}()
 
 	if opts.Audit {
 		return runAudit(ctx, res)
@@ -139,19 +143,13 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 	}
 	res.ChangedFiles = changed
 	res.SecurityFindings = security.Run(ctx, res.CloneDir)
+	if gateErr := evaluateStrictGatePreservingClone(
+		repo, res.CloneDir, opts.Security, res.SecurityFindings, &cleanupClone,
+	); gateErr != nil {
+		return res, gateErr
+	}
 	if len(changed) == 0 {
-		if !opts.Apply {
-			res.NoChanges = true
-			return res, nil
-		}
-		manifestBackfilled, manifestErr := backfillUpgradeManifest(ctx, cfg, repo, res)
-		if manifestErr != nil {
-			return res, manifestErr
-		}
-		if !manifestBackfilled {
-			return res, nil
-		}
-		return createUpgradePR(ctx, res)
+		return finishNoChangeUpgrade(ctx, cfg, repo, res, opts)
 	}
 
 	if !opts.Apply {
@@ -175,6 +173,23 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 		return res, manifestErr
 	}
 
+	return createUpgradePR(ctx, res)
+}
+
+func finishNoChangeUpgrade(
+	ctx context.Context, cfg *Config, repo string, res *UpgradeResult, opts UpgradeOpts,
+) (*UpgradeResult, error) {
+	if !opts.Apply {
+		res.NoChanges = true
+		return res, nil
+	}
+	manifestBackfilled, manifestErr := backfillUpgradeManifest(ctx, cfg, repo, res)
+	if manifestErr != nil {
+		return res, manifestErr
+	}
+	if !manifestBackfilled {
+		return res, nil
+	}
 	return createUpgradePR(ctx, res)
 }
 

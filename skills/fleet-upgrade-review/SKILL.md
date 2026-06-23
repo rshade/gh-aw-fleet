@@ -76,6 +76,22 @@ If any repo needs attention, ask the user which to address first (or all, one at
 go run . upgrade <owner>/<repo>
 ```
 
+If the user wants HIGH Layer 1 security findings to fail the review, include
+`--strict`:
+
+```bash
+go run . upgrade <owner>/<repo> --strict
+go run . upgrade --all --strict
+go run . upgrade --all --strict --output json
+```
+
+This security gate is separate from `gh aw compile --strict`. It consumes the
+existing scanner findings and blocks before compile-strict, manifest, branch,
+commit, push, or PR steps. On strict abort, the clone is preserved and
+`<clone>/findings.json` contains every finding from the run. `upgrade --all
+--strict` stops at the first blocked repo; JSON mode emits the blocked repo's
+envelope before stopping.
+
 Dry-run output shows:
 - `gh aw upgrade` log (dispatcher updates, action bumps).
 - `gh aw update` log (per-workflow pulls, 3-way merges, compile results).
@@ -85,6 +101,7 @@ Dry-run output shows:
 
 Report everything to the user. Pay particular attention to:
 - **Compile failures** with hints — typical cause is upstream workflow using features the installed CLI doesn't know about. The hint usually says "pin to tagged release via `fleet sync --apply --force`."
+- **Strict security aborts** — HIGH Layer 1 findings block the run when `--strict` is present. Surface the finding warnings, preserved clone path, and `findings.json`; ask whether to fix findings or rerun without `--strict`.
 - **Conflicts** — files where local modifications collide with upstream changes. Do NOT proceed to `--apply`. Surface the conflict list, recommend opening the clone dir (preserved at `/tmp/gh-aw-fleet-...`) to resolve manually.
 - **No changes** — report "no-op, skip."
 
@@ -98,8 +115,15 @@ Same blast-radius rule as `fleet-deploy`: `--apply` pushes a branch and opens a 
 go run . upgrade <owner>/<repo> --apply
 ```
 
+If the approved dry-run used strict gating, keep the same policy:
+
+```bash
+go run . upgrade <owner>/<repo> --strict --apply
+```
+
 Outcomes match `fleet-deploy`:
 - **Clean success**: output ends with `PR: <url>`. Report the URL.
+- **Strict security abort**: no branch, commit, push, or PR is created. Report the clone path and `findings.json`; do not rerun without `--strict` unless the user explicitly chooses advisory-only behavior.
 - **gpg signing failure**: same failure mode; generate the manual-finish paste.
 - **Conflict (missed in dry-run)**: report, don't retry.
 
@@ -145,6 +169,7 @@ Same as `fleet-deploy`, repeated here because the skill will be invoked independ
 - **Never** run `git add`, `git commit`, `git push` from Claude Code's Bash tool.
 - **Never** bypass commit signing.
 - **Dry-run is the default**. Explicit user go-ahead before `--apply`.
+- **Strict security remains opt-in**. Only pass `--strict` when requested or when the operator flow explicitly requires HIGH Layer 1 findings to block.
 - **Conflicts block the pipeline** — do not proceed to `--apply` when `CONFLICTS:` appears. User resolves in the preserved clone, then re-runs `fleet upgrade <repo> --apply --work-dir <clone>` (the resume path is supported).
 - **Commit messages are commitlint-valid**. `ci(workflows)` scope.
 - **`--major`** is opt-in. Only pass it when the user explicitly requests major-version bumps (the dashboard flagged something requiring it).

@@ -34,6 +34,9 @@ const (
 	commandUpgrade     = "upgrade"
 )
 
+// strictFlagUsage is the shared --strict help text for deploy, sync, and upgrade.
+const strictFlagUsage = "Fail when HIGH Layer 1 security findings are present (does not change gh aw compile --strict)"
+
 const (
 	diagnosticFieldRepo   = "repo"
 	diagnosticFieldSecret = "secret"

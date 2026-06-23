@@ -40,9 +40,10 @@ type DeployOpts struct {
 	Force          bool // pass --force to gh aw add
 	Branch         string
 	PRTitle        string
-	WorkDir        string // if set, use this clone path; otherwise tmp.
-	InternalClone  bool   // WorkDir was prepared by this process; not a user resume request.
-	InitAlreadyRan bool   // caller already ran gh aw init on WorkDir during this operation.
+	WorkDir        string       // if set, use this clone path; otherwise tmp.
+	InternalClone  bool         // WorkDir was prepared by this process; not a user resume request.
+	InitAlreadyRan bool         // caller already ran gh aw init on WorkDir during this operation.
+	Security       SecurityOpts // security policy for this invocation.
 }
 
 // DeployResult aggregates what happened for a single-repo deploy.
@@ -225,9 +226,12 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	if err != nil {
 		return res, err
 	}
-	if opts.WorkDir == "" && !opts.Apply {
-		defer os.RemoveAll(res.CloneDir)
-	}
+	cleanupClone := opts.WorkDir == "" && !opts.Apply
+	defer func() {
+		if cleanupClone {
+			_ = os.RemoveAll(res.CloneDir)
+		}
+	}()
 
 	if opts.WorkDir != "" && !opts.InternalClone {
 		resumed, handled, resumeErr := handleWorkDirResume(ctx, cfg, repo, res, opts)
@@ -268,6 +272,11 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 	res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
 
 	res.SecurityFindings = security.Run(ctx, res.CloneDir)
+	if gateErr := evaluateStrictGatePreservingClone(
+		repo, res.CloneDir, opts.Security, res.SecurityFindings, &cleanupClone,
+	); gateErr != nil {
+		return res, gateErr
+	}
 
 	if !opts.Apply {
 		// Dry-run path: resolve and log the would-be policy without invoking

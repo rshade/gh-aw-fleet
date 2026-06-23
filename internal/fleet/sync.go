@@ -13,10 +13,11 @@ import (
 
 // SyncOpts controls sync behavior.
 type SyncOpts struct {
-	Apply   bool   // if true, call Deploy to add missing workflows
-	Prune   bool   // if true and Apply=true, delete drift files before Deploy
-	Force   bool   // passed through to Deploy
-	WorkDir string // optional existing clone
+	Apply    bool         // if true, call Deploy to add missing workflows
+	Prune    bool         // if true and Apply=true, delete drift files before Deploy
+	Force    bool         // passed through to Deploy
+	WorkDir  string       // optional existing clone.
+	Security SecurityOpts // security policy for this invocation.
 }
 
 // SyncResult aggregates what happened for a single-repo sync.
@@ -51,9 +52,12 @@ func Sync(ctx context.Context, cfg *Config, repo string, opts SyncOpts) (*SyncRe
 	if err != nil {
 		return res, err
 	}
-	if opts.WorkDir == "" && !opts.Apply {
-		defer os.RemoveAll(res.CloneDir)
-	}
+	cleanupClone := opts.WorkDir == "" && !opts.Apply
+	defer func() {
+		if cleanupClone {
+			_ = os.RemoveAll(res.CloneDir)
+		}
+	}()
 
 	fleetPin := resolvedGhAwPin(cfg, repo)
 	initRan, initErr := ensureInit(ctx, res.CloneDir, fleetPin)
@@ -68,20 +72,89 @@ func Sync(ctx context.Context, cfg *Config, repo string, opts SyncOpts) (*SyncRe
 		return res, errors.New("--prune requires --apply")
 	}
 
-	if opts.Apply {
-		if applyErr := applyDeployOrPrune(ctx, cfg, repo, res, opts, workflowsDir, initRan); applyErr != nil {
-			res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
-			return res, applyErr
-		}
-	} else if len(res.Missing) > 0 {
-		if preErr := runPreflight(ctx, cfg, repo, res, opts, initRan); preErr != nil {
-			res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
-			return res, preErr
-		}
+	if syncErr := runSyncActions(
+		ctx, cfg, repo, res, opts, workflowsDir, initRan, &cleanupClone,
+	); syncErr != nil {
+		return res, syncErr
 	}
 
-	res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
+	if res.SecurityFindings == nil {
+		res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
+	}
+	if gateErr := evaluateStrictGatePreservingClone(
+		repo, res.CloneDir, opts.Security, res.SecurityFindings, &cleanupClone,
+	); gateErr != nil {
+		return res, gateErr
+	}
 	return res, nil
+}
+
+func runSyncActions(
+	ctx context.Context,
+	cfg *Config,
+	repo string,
+	res *SyncResult,
+	opts SyncOpts,
+	workflowsDir string,
+	initRan bool,
+	cleanupClone *bool,
+) error {
+	if opts.Apply {
+		return runSyncApply(ctx, cfg, repo, res, opts, workflowsDir, initRan, cleanupClone)
+	}
+	if len(res.Missing) == 0 {
+		return nil
+	}
+	return runSyncPreflight(ctx, cfg, repo, res, opts, initRan, cleanupClone)
+}
+
+func runSyncApply(
+	ctx context.Context,
+	cfg *Config,
+	repo string,
+	res *SyncResult,
+	opts SyncOpts,
+	workflowsDir string,
+	initRan bool,
+	cleanupClone *bool,
+) error {
+	if len(res.Missing) == 0 {
+		res.SecurityFindings = security.Run(ctx, res.CloneDir)
+		if gateErr := evaluateStrictGatePreservingClone(
+			repo, res.CloneDir, opts.Security, res.SecurityFindings, cleanupClone,
+		); gateErr != nil {
+			return gateErr
+		}
+	}
+	if applyErr := applyDeployOrPrune(ctx, cfg, repo, res, opts, workflowsDir, initRan); applyErr != nil {
+		res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
+		preserveCloneForStrictError(applyErr, cleanupClone)
+		return applyErr
+	}
+	return nil
+}
+
+func runSyncPreflight(
+	ctx context.Context,
+	cfg *Config,
+	repo string,
+	res *SyncResult,
+	opts SyncOpts,
+	initRan bool,
+	cleanupClone *bool,
+) error {
+	if preErr := runPreflight(ctx, cfg, repo, res, opts, initRan); preErr != nil {
+		res.SecurityFindings = collectSyncSecurityFindings(ctx, res)
+		preserveCloneForStrictError(preErr, cleanupClone)
+		return preErr
+	}
+	return nil
+}
+
+func preserveCloneForStrictError(err error, cleanupClone *bool) {
+	if IsStrictSecurityError(err) && cleanupClone != nil {
+		*cleanupClone = false
+	}
 }
 
 // collectSyncSecurityFindings returns the security findings to surface on
@@ -159,6 +232,7 @@ func applyDeployOrPrune(
 			WorkDir:        res.CloneDir,
 			InternalClone:  opts.WorkDir == "",
 			InitAlreadyRan: initRan,
+			Security:       opts.Security,
 		}
 		var deployErr error
 		res.Deploy, deployErr = Deploy(ctx, cfg, repo, deployOpts)
@@ -214,6 +288,7 @@ func runPreflight(ctx context.Context, cfg *Config, repo string, res *SyncResult
 		WorkDir:        res.CloneDir,
 		InternalClone:  opts.WorkDir == "",
 		InitAlreadyRan: initRan,
+		Security:       opts.Security,
 	}
 	var err error
 	res.DeployPreflight, err = Deploy(ctx, cfg, repo, deployOpts)
