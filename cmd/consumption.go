@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"text/tabwriter"
 	"time"
 
@@ -46,9 +47,9 @@ Pass one or more repos (owner/name) to scope the rollup to just those repos;
 with no args it covers the whole fleet. Combine with --by workflow to drill
 into a single repo's per-workflow spend.
 
-Discovery: queries each repo's audits-category discussions and filters by
-the api-consumption-report-daily tracker marker. Data: fetches the
-referenced workflow run's aw_info.json and run_summary.json artifacts.
+Discovery and data depend on --source (see below). The default --source logs
+enumerates each repo's agentic workflows via the Actions API and sums AI
+credits from gh aw logs --json per workflow.
 
 Temporal modes (mutually exclusive):
   --latest                        most-recent valid report per repo (default)
@@ -59,9 +60,13 @@ Grouping axis:
   --by repo|profile|cost-center|workflow   (default: repo)
 
 Data source:
-  --source logs        AI credits from gh aw logs --json per workflow (default;
-                       needs no deployed api-consumption-report workflow)
-  --source artifacts   legacy: api-consumption-report discussions + run artifacts
+  --source logs        (default) enumerate agentic workflows via the Actions
+                       API; AI credits from gh aw logs --json per workflow.
+                       Needs no deployed api-consumption-report workflow.
+  --source artifacts   legacy: discover via audits-category discussions
+                       filtered by the api-consumption-report-daily tracker
+                       marker; data from the run's aw_info.json and
+                       run_summary.json artifacts.
 
 Budget highlighting:
   --budget AIC         mark rows whose AIC strictly exceeds this ceiling`,
@@ -143,6 +148,12 @@ func buildBudget(cmd *cobra.Command, flags *consumptionFlags) (*float64, error) 
 	if !cmd.Flags().Changed("budget") {
 		//nolint:nilnil // a nil ceiling is the valid "no --budget supplied" signal
 		return nil, nil
+	}
+	if math.IsNaN(flags.budget) || math.IsInf(flags.budget, 0) {
+		return nil, fmt.Errorf(
+			"--budget value %g invalid: expected a finite AIC ceiling",
+			flags.budget,
+		)
 	}
 	if flags.budget < 0 {
 		return nil, fmt.Errorf(

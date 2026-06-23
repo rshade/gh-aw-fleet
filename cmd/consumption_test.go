@@ -190,6 +190,25 @@ func TestConsumption_BudgetFlagValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("non-finite budget rejected before config loading", func(t *testing.T) {
+		for _, val := range []string{"NaN", "Inf", "+Inf", "-Inf"} {
+			root := NewRootCmd()
+			var out, errBuf bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&errBuf)
+			root.SetArgs([]string{"--dir", t.TempDir(), "consumption", "--budget", val})
+
+			err := root.Execute()
+
+			if err == nil {
+				t.Fatalf("Execute(--budget %s): expected non-finite budget error; got nil", val)
+			}
+			if !strings.Contains(err.Error(), "--budget") || !strings.Contains(err.Error(), "finite") {
+				t.Fatalf("--budget %s: error %q does not describe finite --budget", val, err.Error())
+			}
+		}
+	})
+
 	t.Run("zero budget accepted", func(t *testing.T) {
 		root := NewRootCmd()
 		var out, errBuf bytes.Buffer
