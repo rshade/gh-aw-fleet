@@ -12,12 +12,16 @@ import (
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
+//nolint:gochecknoglobals // test seam for command-level option propagation.
+var runFleetSync = fleet.Sync
+
 func newSyncCmd(flagDir *string) *cobra.Command {
 	var (
 		flagApply   bool
 		flagPrune   bool
 		flagForce   bool
 		flagWorkDir string
+		flagStrict  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "sync <repo>",
@@ -48,16 +52,17 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 				return notTrackedErr
 			}
 			opts := fleet.SyncOpts{
-				Apply:   flagApply,
-				Prune:   flagPrune,
-				Force:   flagForce,
-				WorkDir: flagWorkDir,
+				Apply:    flagApply,
+				Prune:    flagPrune,
+				Force:    flagForce,
+				WorkDir:  flagWorkDir,
+				Security: fleet.SecurityOpts{Strict: flagStrict},
 			}
-			res, syncErr := fleet.Sync(cmd.Context(), cfg, repo, opts)
+			res, syncErr := runFleetSync(cmd.Context(), cfg, repo, opts)
 			if jsonMode {
 				return emitSyncEnvelope(cmd, repo, flagApply, res, syncErr)
 			}
-			printSync(cmd, res, flagApply, flagPrune)
+			printSync(cmd, res, flagApply, flagPrune, syncErr)
 			return syncErr
 		},
 	}
@@ -69,10 +74,11 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 		"Overwrite existing workflow files (passes --force to gh aw add)")
 	cmd.Flags().StringVar(&flagWorkDir, "work-dir", "",
 		"Existing clone to sync (skips git clone + auto-cleanup)")
+	cmd.Flags().BoolVar(&flagStrict, "strict", false, strictFlagUsage)
 	return cmd
 }
 
-func printSync(cmd *cobra.Command, res *fleet.SyncResult, apply, prune bool) {
+func printSync(cmd *cobra.Command, res *fleet.SyncResult, apply, prune bool, syncErr error) {
 	if res == nil {
 		return
 	}
@@ -95,7 +101,7 @@ func printSync(cmd *cobra.Command, res *fleet.SyncResult, apply, prune bool) {
 		fmt.Fprintln(w, "\n  Run with --prune --apply to remove drift workflows (this is destructive).")
 	}
 
-	if !apply {
+	if !apply && !fleet.IsStrictSecurityError(syncErr) {
 		fmt.Fprintln(w, "\nRe-run with --apply to add missing workflows and (with --prune) remove drift.")
 	}
 }

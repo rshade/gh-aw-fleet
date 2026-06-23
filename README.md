@@ -10,7 +10,7 @@ Documentation: <https://rshade.github.io/gh-aw-fleet/>
 
 ## Status
 
-Released as **v0.1.0** (April 2026). Pre-1.0: public surfaces (CLI flags,
+Pre-1.0 (see the latest-release badge above). Public surfaces (CLI flags,
 `fleet.json` schema) may still change before v1.0. The core reconcile loop
 (`deploy`, `sync`, `upgrade`, `add`) plus read-only drift detection
 (`status`) is functional. `template fetch` works but is still being
@@ -322,6 +322,13 @@ Apply the deploy (commits, pushes, opens a PR in the target repo):
 gh-aw-fleet deploy acme/widgets --apply
 ```
 
+Fail a deploy dry-run or apply when the Layer 1 scanner reports HIGH findings:
+
+```bash
+gh-aw-fleet deploy acme/widgets --strict
+gh-aw-fleet deploy acme/widgets --strict --apply
+```
+
 Reconcile a repo (add missing workflows, flag unexpected ones):
 
 ```bash
@@ -349,9 +356,9 @@ gh-aw-fleet status -o json \
 | --- | --- |
 | `list` | List tracked repos and their resolved workflow sets |
 | `add <owner/repo>` | Add a repo to `fleet.local.json` (dry-run by default) |
-| `deploy <repo>` | Deploy the declared workflow set via `gh aw add` + PR |
-| `sync <repo>` | Reconcile to declared profile (add missing, flag drift) |
-| `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade` |
+| `deploy <repo>` | Deploy the declared workflow set via `gh aw add` + PR; `--strict` blocks HIGH Layer 1 security findings |
+| `sync <repo>` | Reconcile to declared profile (add missing, flag drift); `--strict` blocks HIGH Layer 1 security findings |
+| `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade`; `--strict` blocks HIGH Layer 1 security findings |
 | `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD` |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
 | `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones) |
@@ -588,6 +595,31 @@ Example `fleet.local.json` snippet:
 See [`specs/010-compile-strict-public/quickstart.md`](specs/010-compile-strict-public/quickstart.md)
 for the operator troubleshooting walkthrough.
 
+#### Security strict gate
+
+`deploy`, `sync`, and `upgrade` also accept `--strict`. This is a separate
+security gate, not the `compile_strict` config field above and not `gh aw
+compile --strict`. The flag is per invocation only and is never written to
+`fleet.json` or `fleet.local.json`.
+
+Without `--strict`, security findings remain advisory: they are emitted on
+stderr, included in JSON `warnings[]`, and added to PR bodies when a PR is
+created. With `--strict`, any HIGH Layer 1 finding blocks before commit, push, or
+PR creation. MEDIUM, LOW, INFO, and `promptinj:` findings remain advisory.
+
+Strict aborts write a clone-root `findings.json` containing every finding from
+that run and preserve the work-dir clone for inspection. The same gate applies
+to dry-runs, so CI can use commands such as:
+
+```bash
+gh-aw-fleet deploy acme/widgets --strict
+gh-aw-fleet sync acme/widgets --strict
+gh-aw-fleet upgrade --all --strict --output json
+```
+
+For `upgrade --all --strict --output json`, NDJSON records are emitted through
+the blocked repo and then processing stops at that first strict failure.
+
 ## Bundled Profiles
 
 Each entry below lists what the profile adds, who it's for, and the
@@ -658,6 +690,11 @@ never leaves a stale dispatcher/init layout behind.
 **Dry-run by default.** `deploy`, `sync`, and `upgrade` default to
 dry-run mode. Pass `--apply` to commit, push, and open PRs. This prevents
 surprises.
+
+**Security strict is opt-in.** Add `--strict` to `deploy`, `sync`, or `upgrade`
+when HIGH Layer 1 security findings should hard-stop the run before mutation.
+The failure preserves the clone and writes `findings.json` for post-mortem
+inspection.
 
 **Conventional Commits.** All generated commits follow the format
 `ci(workflows): <description>`, making them easy to filter from

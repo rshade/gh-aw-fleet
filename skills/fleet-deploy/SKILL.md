@@ -21,14 +21,30 @@ Skip for:
 - Bumping workflow refs to latest — see `fleet-upgrade-review`.
 - Refreshing the upstream template catalog — see `fleet-eval-templates`.
 
-## Security findings (advisory)
+## Security findings
 
 The deploy pipeline now scans fetched workflow markdown for embedded
 credentials, fleet-structural anti-patterns, and (when actionlint is
 installed) compiled-YAML lint issues. Findings appear on stderr during
 dry-run and apply, and in a `## Security Findings` section in the opened
-PR body. Findings are advisory — they do not block the deploy. Review
-the section before merging the PR.
+PR body.
+
+By default, findings are advisory and do not block deploy or sync. When the user
+explicitly wants a hard gate, add `--strict` to the dry-run or apply command:
+
+```bash
+go run . deploy <owner>/<repo> --strict
+go run . deploy <owner>/<repo> --strict --apply
+go run . sync <owner>/<repo> --strict
+```
+
+`--strict` blocks HIGH Layer 1 findings before commit, push, or PR creation. It
+does not change `gh aw compile --strict`; that compile-strict policy is still
+reported separately as `compile-strict:`. MEDIUM, LOW, INFO, and `promptinj:`
+findings remain advisory. On a strict abort, the tool preserves the clone and
+writes `<clone>/findings.json` with every finding from the run. Report that path
+to the user and inspect it before deciding whether to fix the workflow or rerun
+without `--strict`.
 
 ## The flow
 
@@ -50,6 +66,12 @@ Then dry-run:
 go run . deploy <owner>/<repo>
 ```
 
+If the user asked for strict gating, dry-run with:
+
+```bash
+go run . deploy <owner>/<repo> --strict
+```
+
 The output includes (as applicable):
 
 - `gh aw init: ran (repo was not yet initialized)` — the target didn't have the dispatcher agent; init ran in the scratch clone.
@@ -57,6 +79,7 @@ The output includes (as applicable):
 - `skipped: N` — already-present workflows.
 - `failed: N` — each with a line or two of error text, followed by `hint: ...` lines surfaced by `fleet.CollectHints`.
 - On stderr (zerolog), exactly one `compile_strict_resolved` info event names the deploy-time compile-strict policy that will apply on `--apply`. Fields: `repo`, `effective` (bool), `source` (`explicit` | `auto-public` | `auto-private` | `auto-fallback`). When the resolver fell back to fail-secure on a visibility-lookup failure, an additional `compile_strict_lookup_failed` warn event names the truncated reason. Read these before approving — they signal whether `gh aw compile --strict` will run during `--apply`.
+- If `--strict` blocks, the command returns non-zero after rendering findings, preserves the clone, and writes `findings.json`. Do not proceed to Turn 2 unless the user chooses to fix the findings or intentionally rerun without `--strict`.
 
 **Init refresh**: The first deploy after a `github/gh-aw` pin advance (or for repos never fleet-deployed) will run `gh aw init` and produce a larger PR diff including init artifacts. Subsequent deploys at the same version skip init via manifest version comparison.
 
@@ -78,9 +101,16 @@ If the user edits fleet.json between turns (for a pin change or new exclude), re
 go run . deploy <owner>/<repo> --apply
 ```
 
+If Turn 1 used strict gating and the user approved applying with the same policy:
+
+```bash
+go run . deploy <owner>/<repo> --strict --apply
+```
+
 Expected outcomes:
 
 - **Clean success**: output ends with `PR: https://github.com/...`. Report the URL to the user; declare the deploy complete.
+- **Strict security abort**: output includes security findings, exits non-zero, writes `<clone>/findings.json`, and creates no PR. Report the blocking count, clone path, and breadcrumb path. Ask whether to fix the findings or rerun without `--strict`; do not auto-downgrade the policy.
 - **gpg signing failure**: exit status 1, output contains `gpg failed to sign the data` or `gpg: signing failed`. The tool preserves the clone dir (`/tmp/gh-aw-fleet-<owner>-<repo>-<timestamp>`) with all files staged on the deploy branch. Two recovery options exist:
   1. **Resume via `--work-dir`** (preferred): re-run `go run . deploy <owner>/<repo> --apply --work-dir <clone-dir>`. The tool detects the staged changes, skips clone/init/add, and re-enters at the commit gate.
   2. **Manual-finish paste**: compose the shell paste below for the user to run in their own terminal where gpg-agent can prompt. Use this when the user explicitly asks for manual steps or when `--work-dir` resume is not desired.

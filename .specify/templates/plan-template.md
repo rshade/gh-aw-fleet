@@ -33,6 +33,14 @@
 
 [Gates determined based on constitution file]
 
+## Documentation Impact
+
+*GATE: Record which user-facing documentation surfaces this feature touches. Per the constitution's Development Workflow section, `README.md` and the `docs/` Starlight site MUST be updated in the same change that alters a surface they document. "None (internal-only)" is a valid, common answer.*
+
+- **Surfaces touched**: [e.g., README §Install, docs/configuration.md, docs/consumption.md — or "none (internal-only)"]
+- **Update planned**: [yes/no + one-line why; "no" is valid for internal-only changes]
+- **Hidden surfaces**: [any deliberately undocumented surface, e.g., the `__schema` command — or "none"]
+
 ## Project Structure
 
 ### Documentation (this feature)

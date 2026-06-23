@@ -113,6 +113,8 @@ Committed at repo root; shared with collaborators and subagents. Allows `go buil
 - N/A — pure read of a probed Renovate config in the work-dir clone; no on-disk state, no cache. Findings are transient on `DeployResult`/`SyncResult`/`UpgradeResult`. (012-renovate-conflict-scanner)
 - Go 1.26.4 local toolchain. + `gopkg.in/yaml.v3` (existing approved direct dep — YAML parse of the Dependabot config, already used by `internal/fleet/frontmatter`); stdlib `os`, `path/filepath`, `strings`. **No new third-party dependencies** (Constitution Principle I). (013-dependabot-conflict-scanner)
 - N/A — pure read of a probed Dependabot config in the work-dir clone; no on-disk state, no cache. Findings are transient on `DeployResult`/`SyncResult`/`UpgradeResult`. (013-dependabot-conflict-scanner)
+- Go 1.26.4 local toolchain; `go.mod` records the same floor. + Existing `github.com/spf13/cobra` v1.10.2 for flag wiring, existing `github.com/rs/zerolog` v1.x for stderr warnings, existing `internal/fleet/security`; stdlib `encoding/json`, `errors`, `fmt`, `os`, `path/filepath`, `strings`. No new third-party dependencies. (017-strict-security-gate)
+- No persistent config or cache. On strict abort only, write clone-root `findings.json` as a JSON array of all `security.Finding` values from that run; the file is a failure breadcrumb in the preserved work-dir clone. (017-strict-security-gate)
 
 ## Recent Changes
 - 016-ax-go-foundation: adopted `github.com/rshade/ax-go v0.2.0` the constitutional way; `internal/fleet/load.go` now uses import-isolated `config.ParseFile` / `config.Patch`, `cmd` exposes a hidden additive `__schema` command built on `schema.BuildSchema`/`schema.BuildMCPSchema` (mirroring `schema.NewSchemaCommand`, with MCP positional-argument augmentation), and `go.mod` now declares `go 1.26.4`. Import boundary is `config`/`schema`/`contract` only; no root `package ax`; `__schema`'s `error_envelope` is a phase-1 forward declaration.
@@ -125,5 +127,6 @@ Committed at repo root; shared with collaborators and subagents. Allows `go buil
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+shell commands, and other important information, read
+[specs/017-strict-security-gate/plan.md](./specs/017-strict-security-gate/plan.md)
 <!-- SPECKIT END -->

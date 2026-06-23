@@ -10,6 +10,9 @@ import (
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
+//nolint:gochecknoglobals // test seam for command-level option propagation.
+var runFleetDeploy = fleet.Deploy
+
 func newDeployCmd(flagDir *string) *cobra.Command {
 	var (
 		flagApply   bool
@@ -17,6 +20,7 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 		flagBranch  string
 		flagPRTitle string
 		flagWorkDir string
+		flagStrict  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "deploy <repo>",
@@ -40,17 +44,18 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 				return notTrackedErr
 			}
 			opts := fleet.DeployOpts{
-				Apply:   flagApply,
-				Force:   flagForce,
-				Branch:  flagBranch,
-				PRTitle: flagPRTitle,
-				WorkDir: flagWorkDir,
+				Apply:    flagApply,
+				Force:    flagForce,
+				Branch:   flagBranch,
+				PRTitle:  flagPRTitle,
+				WorkDir:  flagWorkDir,
+				Security: fleet.SecurityOpts{Strict: flagStrict},
 			}
-			res, deployErr := fleet.Deploy(cmd.Context(), cfg, repo, opts)
+			res, deployErr := runFleetDeploy(cmd.Context(), cfg, repo, opts)
 			if jsonMode {
 				return emitDeployEnvelope(cmd, repo, flagApply, res, deployErr)
 			}
-			printDeploy(cmd, res, flagApply)
+			printDeploy(cmd, res, flagApply, deployErr)
 			return deployErr
 		},
 	}
@@ -64,10 +69,11 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 		"PR title (default: auto-generated)")
 	cmd.Flags().StringVar(&flagWorkDir, "work-dir", "",
 		"Existing clone to deploy into (skips git clone + auto-cleanup; resumes at commit/push gate if staged changes or unpushed commits exist)")
+	cmd.Flags().BoolVar(&flagStrict, "strict", false, strictFlagUsage)
 	return cmd
 }
 
-func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
+func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool, deployErr error) {
 	if res == nil {
 		return
 	}
@@ -115,7 +121,7 @@ func printDeploy(cmd *cobra.Command, res *fleet.DeployResult, apply bool) {
 			res.CompileStrictSource)
 	}
 	emitDeployWarnings(res)
-	if !apply {
+	if !apply && !fleet.IsStrictSecurityError(deployErr) {
 		fmt.Fprintln(w, "\nRe-run with --apply to commit, push, and open the PR.")
 	}
 }

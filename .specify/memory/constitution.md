@@ -1,37 +1,41 @@
 <!--
 SYNC IMPACT REPORT
-Version change: 1.1.0 -> 1.2.0
-Rationale: Adds `github.com/rshade/ax-go` as an approved direct dependency for
-the shared AX foundation phase-1 adoption. MINOR bump: material expansion of
-the Third-Party Dependencies approved list; no principle removed or redefined.
+Version change: 1.2.0 -> 1.3.0
+Rationale: Adds a documentation-currency obligation. MINOR bump: material
+expansion of Development Workflow guidance (a new conditional MUST rule for
+user-facing docs) plus the docs/ Starlight site added to the Governance
+Layering section. No principle removed or redefined.
 
 Modified principles: none (all four principles unchanged).
 
-Sections added:
-  - none
+Sections added: none.
 
 Sections modified:
-  - Third-Party Dependencies: approved `github.com/rshade/ax-go` with the
-    required three-alternatives rationale and import-isolation note.
+  - Development Workflow: new conditional MUST rule requiring `README.md` and
+    the docs/ Starlight site be updated in the same change that alters a
+    surface they document; internal-only changes are exempt; deliberately
+    hidden surfaces MUST NOT be documented; the assessment is recorded in each
+    plan.md Documentation Impact gate.
+  - Governance / Layering: docs/ Starlight site added alongside `README.md` as
+    a human-facing layer; precedence sentence updated to match.
 
 Sections removed: none.
 
 Templates requiring updates:
+  ✅ .specify/templates/plan-template.md — added a "Documentation Impact" gate
+     after Constitution Check, mirroring the new rule.
   ✅ .specify/templates/constitution-template.md — generic scaffold; no version-
      specific content to mirror.
-  ✅ .specify/templates/plan-template.md — Constitution Check slot is generic
-     ("Gates determined based on constitution file"); resolves to current
-     principles at plan time. No hardcoded references to update.
-  ✅ .specify/templates/spec-template.md — no constitution or dependency
-     references detected.
-  ✅ .specify/templates/tasks-template.md — no constitution or dependency
-     references detected.
+  ✅ .specify/templates/spec-template.md — no documentation-policy references;
+     no changes needed.
+  ✅ .specify/templates/tasks-template.md — no documentation-policy references;
+     no changes needed.
   ⚠ .specify/templates/commands/*.md — directory does not exist; nothing to
      audit.
-  ⚠ CLAUDE.md / AGENTS.md — update required in this phase to record ax-go,
-     the go directive bump, the import-isolation invariant, and deferred AX
-     follow-up phases.
-  ✅ README.md — no dependency-policy content; no changes needed.
+  ✅ CLAUDE.md / AGENTS.md — docs-currency is governance, not a new
+     architectural invariant or operational command; no update required.
+  ✅ README.md — the stale v0.1.0 status line was corrected separately; this
+     amendment needs no further README change.
 
 Follow-up TODOs: none.
 -->
@@ -112,6 +116,7 @@ Indirect (transitive) dependencies in `go.mod`'s second `require()` block are no
 - Proposed changes enter via PRs that include at minimum: `go build`/`go vet` clean, and for behavior changes, evidence from a dry-run or a subagent test of an affected skill.
 - The four skills in `skills/` MUST be updated when a command they reference gains or loses a flag, when a new failure class surfaces a new `CollectHints` pattern, or when the three-turn flow materially changes.
 - `CLAUDE.md` MUST be updated when a new architectural invariant is established (e.g., a new source repo added to `SourceLayout`, a new loader precedence rule).
+- User-facing documentation MUST be updated in the same change that alters a surface it documents: `README.md` and the `docs/` Starlight site when a command gains or loses a flag, a subcommand ships or changes behavior, install / configuration / reconcile / consumption guidance drifts, or the published release status changes. Internal-only changes (scanners, loaders, manifest logic) with no user-facing surface carry no documentation obligation. Deliberately hidden surfaces (e.g. the `__schema` command) MUST NOT be documented. Each feature's `plan.md` records this assessment in its **Documentation Impact** gate.
 - Release cadence is continuous on the tool's own `main` branch. Fleet deployments use tagged source refs (`v0.68.3` etc.) via `fleet.json`; this is independent of the tool's own versioning.
 - Complexity MUST be justified: added abstractions and new deny/allow entries in `.claude/settings.json` require a one-line rationale in the PR description. New direct dependencies require a constitution amendment per the **Third-Party Dependencies** section above — a one-line PR rationale is not sufficient.
 
@@ -129,10 +134,10 @@ Every PR that touches a principle-implicated file SHOULD note which principles a
 
 Layering:
 
-- `README.md` — audience: humans. Describes what the project does and how to run it.
+- `README.md` and the `docs/` Starlight site — audience: humans. Describe what the project does and how to run it.
 - `CLAUDE.md` — audience: AI agents working in this repo. Encodes the operational subset (commands, invariants, non-obvious patterns).
 - This constitution — audience: anyone proposing change. Cross-cutting policy, versioned, amendable.
 
-When the three disagree, the constitution wins, followed by CLAUDE.md, followed by README.md. Disagreements surface as amendment proposals.
+When these layers disagree, the constitution wins, followed by CLAUDE.md, followed by the human-facing docs (`README.md` and the `docs/` site). Disagreements surface as amendment proposals.
 
-**Version**: 1.2.0 | **Ratified**: 2026-04-18 | **Last Amended**: 2026-06-21
+**Version**: 1.3.0 | **Ratified**: 2026-04-18 | **Last Amended**: 2026-06-22

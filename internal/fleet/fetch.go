@@ -117,7 +117,7 @@ func fetchSource(ctx context.Context, source string) (TemplateSource, FetchResul
 		name, _ := m["name"].(string)
 		path, _ := m["path"].(string)
 		sha, _ := m["sha"].(string)
-		if typ != "file" || !strings.HasSuffix(name, ".md") {
+		if typ != githubContentTypeFile || !strings.HasSuffix(name, ".md") {
 			continue
 		}
 		raw, rawErr := ghAPIRaw(ctx, fmt.Sprintf("/repos/%s/contents/%s?ref=%s", source, path, branchMain))

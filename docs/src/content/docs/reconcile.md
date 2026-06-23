@@ -60,6 +60,27 @@ One asymmetry matters: `gh aw update` follows each workflow's own frontmatter
 workflows during `upgrade`; use `sync --apply --force` when you need installed
 workflow frontmatter to match current fleet refs.
 
+## Security strict gate
+
+`deploy`, `sync`, and `upgrade` accept `--strict` when HIGH Layer 1 security
+findings should block the run. The flag is opt-in per invocation and is not
+stored in `fleet.json` or `fleet.local.json`.
+
+This is different from `gh aw compile --strict`. Compile-strict validates
+generated GitHub Actions syntax and is controlled by `compile_strict` repo config.
+The `gh-aw-fleet --strict` gate consumes the existing security scanner findings.
+
+When the gate blocks:
+
+- findings are still emitted on stderr and in JSON `warnings[]`;
+- `findings.json` is written at the work-dir clone root;
+- the clone is preserved for inspection, including dry-run temp clones;
+- commit, push, and PR creation do not run.
+
+Lower-severity findings and `promptinj:` findings remain advisory. For
+`upgrade --all --strict --output json`, NDJSON records are emitted through the
+blocked repo and then processing stops.
+
 ## The three-turn pattern
 
 Any command that mutates external repositories follows this operator flow:
@@ -76,6 +97,10 @@ force-pushes or commits directly to `main`.
 Scratch clones under `/tmp/gh-aw-fleet-*` are preserved after an apply failure.
 Do not delete them while debugging. Re-run with `--work-dir <clone>` to resume an
 interrupted apply once the cause is fixed.
+
+Strict security aborts preserve clones even during dry-run and add
+`findings.json` to the clone root so the operator can inspect the exact scanner
+output that caused the block.
 
 ## Diagnostics
 

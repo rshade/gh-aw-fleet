@@ -12,6 +12,9 @@ import (
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
+//nolint:gochecknoglobals // test seam for command-level option propagation.
+var runFleetUpgrade = fleet.Upgrade
+
 func newUpgradeCmd(flagDir *string) *cobra.Command {
 	var (
 		flagApply   bool
@@ -20,6 +23,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 		flagForce   bool
 		flagWorkDir string
 		flagAll     bool
+		flagStrict  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "upgrade [repo|--all]",
@@ -48,11 +52,12 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 				return err
 			}
 			opts := fleet.UpgradeOpts{
-				Apply:   flagApply,
-				Audit:   flagAudit,
-				Major:   flagMajor,
-				Force:   flagForce,
-				WorkDir: flagWorkDir,
+				Apply:    flagApply,
+				Audit:    flagAudit,
+				Major:    flagMajor,
+				Force:    flagForce,
+				WorkDir:  flagWorkDir,
+				Security: fleet.SecurityOpts{Strict: flagStrict},
 			}
 			if flagAll {
 				return runUpgradeAll(cmd, cfg, opts, flagApply, flagAudit, jsonMode)
@@ -72,6 +77,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 		"Existing clone to upgrade in (skips git clone + auto-cleanup)")
 	cmd.Flags().BoolVar(&flagAll, "all", false,
 		"Upgrade all repos in fleet.json")
+	cmd.Flags().BoolVar(&flagStrict, "strict", false, strictFlagUsage)
 	return cmd
 }
 
@@ -244,7 +250,7 @@ func runUpgradeSingle(
 		}
 		return notTrackedErr
 	}
-	res, upErr := fleet.Upgrade(cmd.Context(), cfg, repo, opts)
+	res, upErr := runFleetUpgrade(cmd.Context(), cfg, repo, opts)
 	if jsonMode {
 		return emitUpgradeEnvelope(cmd, repo, apply, res, upErr)
 	}
@@ -291,12 +297,15 @@ func runUpgradeAllJSON(cmd *cobra.Command, cfg *fleet.Config, opts fleet.Upgrade
 	}
 	sort.Strings(repos)
 	for _, repo := range repos {
-		res, upErr := fleet.Upgrade(cmd.Context(), cfg, repo, opts)
+		res, upErr := runFleetUpgrade(cmd.Context(), cfg, repo, opts)
 		if writeErr := emitUpgradeEnvelope(cmd, repo, apply, res, upErr); writeErr != nil && firstErr == nil {
 			firstErr = writeErr
 		}
 		if upErr != nil && firstErr == nil {
 			firstErr = upErr
+		}
+		if fleet.IsStrictSecurityError(upErr) {
+			break
 		}
 	}
 	return firstErr

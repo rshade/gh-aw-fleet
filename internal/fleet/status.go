@@ -144,7 +144,7 @@ func (ghStatusFetcher) listWorkflowsDir(ctx context.Context, repo string) ([]str
 		}
 		typ, _ := m["type"].(string)
 		name, _ := m["name"].(string)
-		if typ != "file" || !strings.HasSuffix(name, ".md") {
+		if typ != githubContentTypeFile || !strings.HasSuffix(name, ".md") {
 			continue
 		}
 		out = append(out, name)

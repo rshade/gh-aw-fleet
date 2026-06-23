@@ -126,6 +126,34 @@ func TestSchemaCommandMCPIncludesPositionalArgs(t *testing.T) {
 	}
 }
 
+func TestSchemaCommandIncludesStrictFlags(t *testing.T) {
+	stdout, stderr, err := executeSchemaCommand("__schema")
+	if err != nil {
+		t.Fatalf("__schema returned error: %v\nstderr: %s", err, stderr)
+	}
+
+	var got axschema.Schema
+	if decodeErr := json.Unmarshal([]byte(stdout), &got); decodeErr != nil {
+		t.Fatalf("__schema stdout is not valid schema JSON: %v\nstdout: %s", decodeErr, stdout)
+	}
+
+	for _, use := range []string{"deploy <repo>", "sync <repo>", "upgrade [repo|--all]"} {
+		cmd := requireSchemaCommand(t, got.Command, use)
+		flag := requireSchemaFlag(t, cmd, "strict")
+		if flag.Type != "bool" {
+			t.Fatalf("%s --strict type = %q; want bool", use, flag.Type)
+		}
+		if flag.Default != "false" {
+			t.Fatalf("%s --strict default = %q; want false", use, flag.Default)
+		}
+		for _, want := range []string{"HIGH Layer 1 security findings", "does not change gh aw compile --strict"} {
+			if !strings.Contains(flag.Usage, want) {
+				t.Fatalf("%s --strict usage = %q; want substring %q", use, flag.Usage, want)
+			}
+		}
+	}
+}
+
 func TestSchemaCommandRejectsUnknownFormat(t *testing.T) {
 	_, _, err := executeSchemaCommand("__schema", "--as", "bogus")
 	if err == nil {
@@ -193,6 +221,28 @@ func requireMCPProperty(t *testing.T, tool axschema.MCPTool, name string) map[st
 		t.Fatalf("%s inputSchema.properties missing %q; properties=%v", tool.Name, name, properties)
 	}
 	return property
+}
+
+func requireSchemaCommand(t *testing.T, root axschema.CommandSchema, use string) axschema.CommandSchema {
+	t.Helper()
+	for _, cmd := range root.Commands {
+		if cmd.Use == use {
+			return cmd
+		}
+	}
+	t.Fatalf("__schema command tree missing %q", use)
+	return axschema.CommandSchema{}
+}
+
+func requireSchemaFlag(t *testing.T, cmd axschema.CommandSchema, name string) axschema.FlagSchema {
+	t.Helper()
+	for _, flag := range cmd.Flags {
+		if flag.Name == name {
+			return flag
+		}
+	}
+	t.Fatalf("%s missing flag %q", cmd.Use, name)
+	return axschema.FlagSchema{}
 }
 
 func assertMCPStringProperty(t *testing.T, toolName string, property map[string]any) {
