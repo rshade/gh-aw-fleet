@@ -97,11 +97,12 @@ type DeployResult struct {
 	// result."
 	CompileStrictSource string `json:"compile_strict_source"`
 
-	// SecurityFindings is the sorted output of security.Run; nil when the
-	// scanner has not run (e.g. resume-from-work-dir paths that bypass
-	// addResolvedWorkflows). Findings are advisory: they never block the
-	// deploy. Surfaced on stderr (zerolog), in the JSON envelope
-	// warnings[], and in the PR body's `## Security Findings` section.
+	// SecurityFindings is the sorted output of security.Run; nil only when
+	// the scanner has not run. Findings are advisory by default but become
+	// blocking under the opt-in --strict gate (EvaluateStrictSecurityGate),
+	// which is evaluated on both the fresh and the --work-dir resume paths.
+	// Surfaced on stderr (zerolog), in the JSON envelope warnings[], and in
+	// the PR body's `## Security Findings` section.
 	SecurityFindings []security.Finding `json:"security_findings"`
 }
 
@@ -347,6 +348,20 @@ func handleWorkDirResume(
 				"omit --branch to resume on the existing branch",
 			opts.Branch, branch,
 		)
+	}
+
+	// Re-run the Layer 1 scanner before any resume mutation so --strict blocks
+	// a resumed run exactly as it does a fresh one. Without this, pointing
+	// --work-dir at a clone the gate just preserved would commit/push past the
+	// HIGH finding that aborted the original run. opts.WorkDir is non-empty on
+	// every resume, so the deferred cleanup is already disabled — the clone and
+	// its findings.json breadcrumb persist without the cleanup-flag dance the
+	// fresh tmp-clone path needs.
+	res.SecurityFindings = security.Run(ctx, res.CloneDir)
+	if gateErr := EvaluateStrictSecurityGate(
+		repo, res.CloneDir, opts.Security, res.SecurityFindings,
+	); gateErr != nil {
+		return res, true, gateErr
 	}
 
 	if staged {

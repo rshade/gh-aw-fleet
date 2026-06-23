@@ -1680,6 +1680,64 @@ func TestDeployCommitGateResumeApply_WritesManifestBeforeCommit(t *testing.T) {
 	}
 }
 
+// TestDeployStrictResumeBlocksBeforeMutation proves the strict gate is enforced
+// on the --work-dir resume path, not just the fresh pipeline: resuming a clone
+// that carries a HIGH Layer 1 finding must abort before any compile or commit,
+// preserve the clone, and write the findings.json breadcrumb. Without the gate
+// in handleWorkDirResume, an operator could bypass --strict by re-pointing
+// --work-dir at the very clone the gate preserved.
+func TestDeployStrictResumeBlocksBeforeMutation(t *testing.T) {
+	dir := newTestRepo(t, func(d string) {
+		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")
+		cmd.Dir = d
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("create deploy branch: %v", err)
+		}
+		wf := filepath.Join(d, ".github", "workflows", "strict-high.md")
+		if err := os.MkdirAll(filepath.Dir(wf), 0o755); err != nil {
+			t.Fatalf("mkdir workflow dir: %v", err)
+		}
+		content := "---\non:\n  schedule:\n    - cron: \"0 0 * * *\"\npermissions: write-all\n---\n"
+		if err := os.WriteFile(wf, []byte(content), 0o644); err != nil {
+			t.Fatalf("write workflow: %v", err)
+		}
+	})
+
+	// Any downstream compile seam firing means the gate did not abort first.
+	origStrict := runGhAwCompileStrict
+	origPlain := runGhAwCompile
+	t.Cleanup(func() {
+		runGhAwCompileStrict = origStrict
+		runGhAwCompile = origPlain
+	})
+	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+		t.Fatal("runGhAwCompileStrict invoked; strict gate must abort the resume first")
+		return "", nil
+	}
+	runGhAwCompile = func(_ context.Context, _ string) (string, error) {
+		t.Fatal("runGhAwCompile invoked; strict gate must abort the resume first")
+		return "", nil
+	}
+
+	res := &DeployResult{Repo: "acme/widgets", CloneDir: dir}
+	_, handled, err := handleWorkDirResume(
+		context.Background(), strictGateTestConfig("acme/widgets"), "acme/widgets", res,
+		DeployOpts{Apply: true, WorkDir: dir, Security: SecurityOpts{Strict: true}},
+	)
+	if !handled {
+		t.Fatal("handled = false; want true (resume signal present)")
+	}
+	assertStrictSecurityError(t, err, "acme/widgets")
+	assertClonePreservedWithFindings(t, dir)
+	if !hasStrictHighFinding(res.SecurityFindings) {
+		t.Fatalf("SecurityFindings = %#v; want %s", res.SecurityFindings, strictHighRuleID)
+	}
+	if res.BranchPushed != "" || res.PRURL != "" {
+		t.Fatalf("BranchPushed/PRURL = %q/%q; want no mutation on strict resume abort",
+			res.BranchPushed, res.PRURL)
+	}
+}
+
 func TestDeployPushGateResumeApply_RefreshesCompileStrictBeforePush(t *testing.T) {
 	dir := newTestRepo(t, func(d string) {
 		cmd := exec.Command("git", "checkout", "-b", "fleet/deploy-test")

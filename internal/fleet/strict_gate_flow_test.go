@@ -26,7 +26,7 @@ func TestDeployStrictDryRunPreservesTempClone(t *testing.T) {
 	assertStrictSecurityError(t, err, repo)
 	assertClonePreservedWithFindings(t, res.CloneDir)
 	t.Cleanup(func() { _ = os.RemoveAll(res.CloneDir) })
-	if !hasSecurityRule(res.SecurityFindings, strictHighRuleID) {
+	if !hasStrictHighFinding(res.SecurityFindings) {
 		t.Fatalf("SecurityFindings = %#v; want %s", res.SecurityFindings, strictHighRuleID)
 	}
 	if res.CompileStrictSource != "" {
@@ -74,7 +74,7 @@ func TestDeployNonStrictHighFindingRemainsAdvisory(t *testing.T) {
 		t.Fatal("Deploy returned no clone")
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(res.CloneDir) })
-	if !hasSecurityRule(res.SecurityFindings, strictHighRuleID) {
+	if !hasStrictHighFinding(res.SecurityFindings) {
 		t.Fatalf("SecurityFindings = %#v; want %s", res.SecurityFindings, strictHighRuleID)
 	}
 	if _, statErr := os.Stat(filepath.Join(res.CloneDir, FleetManifestPath)); statErr != nil {
@@ -97,7 +97,7 @@ func TestSyncStrictDelegatedDeployBlocksAndPreservesClone(t *testing.T) {
 	if res.DeployPreflight == nil {
 		t.Fatal("DeployPreflight = nil; want delegated Deploy strict result")
 	}
-	if !hasSecurityRule(res.SecurityFindings, strictHighRuleID) {
+	if !hasStrictHighFinding(res.SecurityFindings) {
 		t.Fatalf("SecurityFindings = %#v; want %s", res.SecurityFindings, strictHighRuleID)
 	}
 }
@@ -278,8 +278,8 @@ func assertClonePreservedWithFindings(t *testing.T, cloneDir string) {
 	}
 }
 
-func hasSecurityRule(findings []security.Finding, ruleID string) bool {
+func hasStrictHighFinding(findings []security.Finding) bool {
 	return slices.ContainsFunc(findings, func(finding security.Finding) bool {
-		return finding.RuleID == ruleID
+		return finding.RuleID == strictHighRuleID
 	})
 }
