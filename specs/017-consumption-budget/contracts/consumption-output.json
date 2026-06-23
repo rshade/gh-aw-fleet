@@ -1,0 +1,54 @@
+{
+  "_comment": "Additive deltas to the consumption JSON envelope (009 contract). schema_version stays 1 (FR-008). New fields when --budget is supplied: result.budget (omitempty), group.over_budget, top_burner.over_budget.",
+  "schema_version": 1,
+  "command": "consumption",
+  "result": {
+    "loaded_from": "fleet.local.json",
+    "fetch_mode": "latest",
+    "group_by": "repo",
+    "source": "logs",
+    "budget": 50.0,
+    "groups": [
+      {
+        "key": "rshade/finfocus",
+        "github_api_calls": 1200,
+        "safe_output_calls": 8,
+        "aic": 73.5,
+        "cost": 0.74,
+        "report_count": 1,
+        "over_budget": true
+      },
+      {
+        "key": "rshade/gh-aw-fleet",
+        "github_api_calls": 300,
+        "safe_output_calls": 2,
+        "aic": 12.0,
+        "cost": 0.12,
+        "report_count": 1,
+        "over_budget": false
+      },
+      {
+        "key": "rshade/all-failures",
+        "github_api_calls": 0,
+        "safe_output_calls": 0,
+        "report_count": 1,
+        "over_budget": false,
+        "_comment_nil_aic": "aic absent (all runs failed) -> never over budget (FR-009)"
+      }
+    ],
+    "top_burners": [
+      {
+        "workflow": "daily-malicious-code-scan",
+        "runs": 30,
+        "api_calls": 900,
+        "avg_duration_s": 42.5,
+        "aic": 61.0,
+        "cost": 0.61,
+        "over_budget": true
+      }
+    ]
+  },
+  "_no_budget_variant": {
+    "_comment": "When --budget is NOT supplied: `budget` and `over_budget` are omitted, preserving byte-identical pre-feature JSON output. schema_version remains unchanged."
+  }
+}
