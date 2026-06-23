@@ -65,7 +65,19 @@ Four axes:
 
 Any value outside the four-axis set is a hard error — cobra rejects with `--by value "X" invalid: expected one of repo, profile, cost-center, workflow`.
 
-### Step 3 — invoke
+### Step 3 — optionally add a review ceiling
+
+Use `--budget <AIC>` when the user supplies a ceiling or asks for spend hotspots against a threshold.
+
+```bash
+gh-aw-fleet consumption --budget 50
+```
+
+The ceiling is in AIC, the native billing unit shown in the `AIC` column. A row is over budget only when its AIC is present and strictly greater than the ceiling; equal-to-ceiling rows and `-`/nil-AIC rows are not over budget. In text output, over-budget rows show `!` in a trailing `OVER` column. In JSON output, `result.budget` echoes the ceiling and each row carries `over_budget` when a budget was supplied.
+
+This is still read-only budget review. `--budget` does not cap spend, halt commands, alert externally, write comments/issues, or change the exit code for breaches. Any number of over-budget rows, including all rows, still exits 0. Only malformed input, such as a negative or non-numeric ceiling, is a usage error.
+
+### Step 4 — invoke
 
 ```bash
 gh-aw-fleet consumption [repo...] [--latest|--trailing Nd|--since YYYY-MM-DD] --by <axis>
@@ -77,7 +89,7 @@ Add `--output json` if you want to pipe through jq. The envelope is the standard
 
 The command prints a stderr breadcrumb (`(loaded fleet.json + fleet.local.json)`) and structured warnings; stdout carries the rollup table and the `TOP 10 BURNERS:` footer.
 
-### Step 4 — read the diagnostics
+### Step 5 — read the diagnostics
 
 The rollup may emit per-repo warnings on stderr. Two patterns to expect under the default `--source logs`:
 
@@ -88,16 +100,17 @@ Warnings are non-fatal. The command always exits 0 when discovery + fetch succee
 
 **Legacy `--source artifacts` notes:** If using the deprecated artifacts path, expect an additional warning: **`Run artifact for <repo> (run #N on <date>) is past the ~90-day run-log retention window.`** This occurs when the underlying workflow-run artifacts were garbage-collected by the platform. Long-trend questions beyond ~90 days are out of scope (FR-024); shorten the window or switch to `--source logs`.
 
-### Step 5 — frame the answer
+### Step 6 — frame the answer
 
 The raw table is rarely the answer. Pick the framing that matches the question:
 
 - **Snapshot question** ("how are we doing?"): lead with the fleet total AI credits (sum of the `AIC` column for `--by repo`), then call out the top 3 repos by credit usage. The `TOP 10 BURNERS:` footer names the highest-traffic individual workflows by AIC — quote 2-3 of them.
 - **Cost-concentration question** ("where do we trim?"): use `--by profile` or `--by cost-center` and call out the heaviest row. Note any `<unset>` bucket — those repos aren't attributed to a budget owner and that's usually a tagging gap to fix before any real trimming decision.
 - **Workflow-specific question** ("is `<workflow>` worth it?"): use `--by workflow`, pull out the named workflow's row, and compare its `AIC` / `COST` to the next-most-expensive workflow. Numbers in isolation rarely change anyone's mind; a comparison ("`workflow-X` is 3× the AIC of the next-most-expensive workflow `Y`") does.
+- **Threshold question** ("what is over budget?"): include `--budget <AIC>`, then lead with the rows marked `OVER`. Do not describe the marker as an alert or enforcement event; it is an operator-pulled highlight.
 - **Trend question** ("are we trending up?"): the command doesn't store historical state, so you can't directly compare windows. Run two invocations (`--trailing 7d` and `--trailing 14d`) and infer the delta (last 7d ÷ first 7d ≈ 2 means flat; >2 means growth, <2 means decline). Flag that this is approximate — daily variance can be large.
 
-### Step 6 — recommend (only if user asked)
+### Step 7 — recommend (only if user asked)
 
 If the user asks "what should I do?":
 
@@ -114,6 +127,7 @@ Never apply changes from this skill. Recommendations are read-only — operator 
 - **No caching.** Each invocation re-discovers. If the user runs the rollup twice in a session and gets slightly different numbers, that's because in-progress reports flipped to finalized between invocations — not a bug. Surface this when totals shift unexpectedly.
 - **Multi-profile additivity is the documented semantic.** Don't apologize for double-counting under `--by profile` — it's intentional (FR-014, research.md Decision 5). Operators learn to sum across profile rows only when they want a fleet total, not when comparing profile costs.
 - **AI credits and cost are nil-until-positive.** If `aic` / `cost` fields are zero or absent, the rollup renders `-` for those columns (FR-018, Decision 6). Don't treat the dash as "this repo costs zero dollars" — it means "no AIC data available." Under `--source logs`, all fields are populated from agentic run summaries when available; under `--source artifacts`, the cost field is structurally nil under the Copilot AI-Credits model (that path predates the AIC schema). Frame conclusions around API_CALLS when AIC is sparse.
+- **Budget highlighting is not enforcement.** `--budget` is a display filter over the already-aggregated AIC values. It never pushes an alert, opens a GitHub artifact, caps spend, or changes the exit code because rows breached the ceiling.
 - **The `<unset>` cost-center bucket is a real signal, not noise.** When the operator asks "where is my spend attributed?", an `<unset>` row means "you haven't told the tool, and I'm not going to invent an answer."
 - **Don't volunteer raw JSON unless asked.** The text-mode tabwriter is the operator-facing surface; the JSON envelope is for downstream piping. Show the table; only break out JSON if the user pipes through jq or asks for the wire format.
 
@@ -198,10 +212,13 @@ User: what's our consumption?
 You:
   - Run `gh-aw-fleet consumption`.
   - All repos emit "No consumption reports discovered" warnings.
-  - Report: "No consumption reports are available — the
-    api-consumption-report workflow isn't deployed to any repo in
-    the fleet yet. Add `observability-plus` to a repo's profile list
-    in fleet.local.json and re-run after its first daily run."
+  - Report: "No consumption reports are available — the default
+    logs source found no agentic workflow runs to aggregate yet.
+    Run `gh-aw-fleet list <repo>` to confirm workflows are deployed;
+    if none are present, add a profile that includes agentic workflows
+    and re-run after the first workflow execution. If you deliberately
+    used `--source artifacts`, deploy `observability-plus` and wait for
+    its first daily run."
   - Stop. Do not invent numbers.
 ```
 

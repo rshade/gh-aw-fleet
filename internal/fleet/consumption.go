@@ -214,6 +214,9 @@ type WorkflowConsumption struct {
 	AvgDurationS float64  `json:"avg_duration_s"`
 	AIC          *float64 `json:"aic,omitempty"`
 	Cost         *float64 `json:"cost,omitempty"`
+	// OverBudget is present when a budget ceiling was supplied and reports
+	// whether this workflow row strictly exceeded that ceiling.
+	OverBudget *bool `json:"over_budget,omitempty"`
 }
 
 // ConsumptionGroup is one aggregated row in the consumption rollup. The Key
@@ -233,16 +236,21 @@ type ConsumptionGroup struct {
 	AIC             *float64 `json:"aic,omitempty"`
 	Cost            *float64 `json:"cost,omitempty"`
 	ReportCount     int      `json:"report_count"`
+	// OverBudget is present when a budget ceiling was supplied and reports
+	// whether this group row strictly exceeded that ceiling.
+	OverBudget *bool `json:"over_budget,omitempty"`
 }
 
 // ConsumptionResult is the JSON envelope payload for `gh-aw-fleet
 // consumption`. Slice fields are normalized to non-nil empty slices by
 // initSlices (cmd/output.go) so JSON marshaling renders them as [].
 type ConsumptionResult struct {
-	LoadedFrom string                `json:"loaded_from"`
-	FetchMode  string                `json:"fetch_mode"`
-	GroupBy    string                `json:"group_by"`
-	Source     string                `json:"source,omitempty"`
+	LoadedFrom string `json:"loaded_from"`
+	FetchMode  string `json:"fetch_mode"`
+	GroupBy    string `json:"group_by"`
+	Source     string `json:"source,omitempty"`
+	// Budget is the optional AIC ceiling supplied by the operator.
+	Budget     *float64              `json:"budget,omitempty"`
 	Groups     []ConsumptionGroup    `json:"groups"`
 	TopBurners []WorkflowConsumption `json:"top_burners"`
 }
