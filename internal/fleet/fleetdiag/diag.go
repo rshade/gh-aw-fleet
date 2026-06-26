@@ -62,12 +62,12 @@ const (
 	// names the work-dir clone path for inspection and the `compile_strict: false`
 	// opt-out path in fleet.local.json.
 	DiagCompileStrictFailed = "compile_strict_failed"
-	// DiagGhAwTooOld fires when `gh aw compile --help` does not advertise the
-	// `--strict` flag — the installed `gh aw` extension predates the minimum
-	// supported version (v0.79.2). The hint names `gh extension upgrade aw`.
+	// DiagGhAwTooOld fires when the installed `gh aw` extension predates a
+	// required feature or schema version, such as compile --strict or logs JSON
+	// AI-credit fields. The hint names the required minimum version.
 	DiagGhAwTooOld = "gh_aw_too_old"
-	// DiagGhAwMissing fires when the `gh aw compile --help` probe itself fails
-	// (binary not found or exec error). The hint names
-	// `gh extension install github/gh-aw`.
+	// DiagGhAwMissing fires when a `gh aw` setup probe itself fails (binary not
+	// found, extension missing, or exec error). The hint names
+	// gh extension install github/gh-aw.
 	DiagGhAwMissing = "gh_aw_missing"
 )

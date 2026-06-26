@@ -1,0 +1,62 @@
+{
+  "summary": {
+    "total_runs": 5,
+    "total_aic": 30.0,
+    "total_github_api_calls": 12,
+    "total_safe_items": 0
+  },
+  "runs": [
+    {
+      "run_id": 1,
+      "workflow_name": "Mixed Noop",
+      "status": "completed",
+      "conclusion": "success",
+      "aic": 10.0,
+      "github_api_calls": 3,
+      "action_minutes": 2,
+      "created_at": "2026-06-20T00:00:00Z"
+    },
+    {
+      "run_id": 2,
+      "workflow_name": "Mixed Noop",
+      "status": "completed",
+      "conclusion": "success",
+      "aic": 20.0,
+      "github_api_calls": 4,
+      "action_minutes": 3,
+      "created_at": "2026-06-21T00:00:00Z"
+    },
+    {
+      "run_id": 3,
+      "workflow_name": "Mixed Noop",
+      "status": "completed",
+      "conclusion": "failure",
+      "github_api_calls": 5,
+      "action_minutes": 1,
+      "created_at": "2026-06-22T00:00:00Z"
+    },
+    {
+      "run_id": 4,
+      "workflow_name": "Mixed Noop",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "created_at": "2026-06-23T00:00:00Z"
+    },
+    {
+      "run_id": 5,
+      "workflow_name": "Mixed Noop",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-06-24T00:00:00Z"
+    }
+  ],
+  "mcp_tool_usage": {
+    "summary": [
+      {
+        "server_name": "safeoutputs",
+        "tool_name": "noop",
+        "call_count": 2
+      }
+    ]
+  }
+}

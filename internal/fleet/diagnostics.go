@@ -7,6 +7,7 @@
 package fleet
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/rshade/gh-aw-fleet/internal/fleet/fleetdiag"
@@ -19,6 +20,63 @@ import (
 // can depend on Diagnostic without creating an import cycle with this
 // package. Callers continue to use fleet.Diagnostic unchanged.
 type Diagnostic = fleetdiag.Diagnostic
+
+// DiagnosticError is an error that carries a structured diagnostic for
+// machine-readable envelope consumers.
+type DiagnosticError struct {
+	Code    string         // Code is the stable diagnostic code.
+	Message string         // Message is the operator-facing diagnostic text.
+	Fields  map[string]any `json:"fields,omitempty"` // Fields carries structured diagnostic context.
+	Cause   error          // Cause is the underlying error, when one exists.
+}
+
+// Error implements error.
+func (e *DiagnosticError) Error() string {
+	if e == nil {
+		return ""
+	}
+	switch {
+	case e.Message != "" && e.Cause != nil:
+		return e.Message + ": " + e.Cause.Error()
+	case e.Message != "":
+		return e.Message
+	case e.Cause != nil:
+		return e.Cause.Error()
+	default:
+		return e.Code
+	}
+}
+
+// Unwrap returns the underlying cause.
+func (e *DiagnosticError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+// DiagnosticFromError extracts a structured diagnostic from err when one is
+// present in the error chain.
+func DiagnosticFromError(err error) (Diagnostic, bool) {
+	var diagErr *DiagnosticError
+	if errors.As(err, &diagErr) && diagErr != nil {
+		return Diagnostic{
+			Code:    diagErr.Code,
+			Message: diagErr.Message,
+			Fields:  diagErr.Fields,
+		}, true
+	}
+
+	var compileErr *CompileStrictError
+	if errors.As(err, &compileErr) && compileErr != nil {
+		return Diagnostic{
+			Code:    compileErr.Code,
+			Message: compileErr.Message,
+			Fields:  compileErr.Fields,
+		}, true
+	}
+	return Diagnostic{}, false
+}
 
 // Stable diagnostic codes. Snake_case identifiers consumed by downstream
 // agents to gate on classes of warning/hint without parsing free-form text.

@@ -74,13 +74,13 @@ Budget highlighting:
 			return runConsumption(cmd, flagDir, &flags, args)
 		},
 	}
-	cmd.Flags().BoolVar(&flags.latest, "latest", true, "Most-recent valid report per repo (default)")
-	cmd.Flags().StringVar(&flags.trailing, "trailing", "", "Trailing window like 7d")
-	cmd.Flags().StringVar(&flags.since, "since", "", "Since date in YYYY-MM-DD")
+	cmd.Flags().BoolVar(&flags.latest, flagLatest, true, "Most-recent valid report per repo (default)")
+	cmd.Flags().StringVar(&flags.trailing, flagTrailing, "", "Trailing window like 7d")
+	cmd.Flags().StringVar(&flags.since, flagSince, "", "Since date in YYYY-MM-DD")
 	cmd.Flags().StringVar(&flags.by, "by", "repo", "Group-by axis: repo|profile|cost-center|workflow")
 	cmd.Flags().StringVar(&flags.source, "source", "logs", "Data source: logs|artifacts")
 	cmd.Flags().Float64Var(&flags.budget, "budget", 0, "Highlight rows whose AIC strictly exceeds this ceiling")
-	cmd.MarkFlagsMutuallyExclusive("latest", "trailing", "since")
+	cmd.MarkFlagsMutuallyExclusive(flagLatest, flagTrailing, flagSince)
 	return cmd
 }
 
@@ -165,25 +165,33 @@ func buildBudget(cmd *cobra.Command, flags *consumptionFlags) (*float64, error) 
 	return &v, nil
 }
 
-// buildFetchMode translates the mutually-exclusive temporal flags into a
-// FetchMode. Cobra has already enforced mutual exclusion; this only parses
-// the values.
+// buildFetchMode translates consumption's mutually-exclusive temporal flags
+// into a FetchMode, defaulting to FetchLatest.
 func buildFetchMode(flags *consumptionFlags) (fleet.FetchMode, error) {
+	return parseFetchMode(flags.latest, flags.trailing, flags.since, fleet.FetchMode{Kind: fleet.FetchLatest})
+}
+
+// parseFetchMode translates the mutually-exclusive --latest/--trailing/--since
+// flag values into a FetchMode, falling back to fallback when none is set.
+// Cobra has already enforced the mutual exclusion; this only parses the values.
+func parseFetchMode(latest bool, trailing, since string, fallback fleet.FetchMode) (fleet.FetchMode, error) {
 	switch {
-	case flags.trailing != "":
-		n, err := fleet.ParseTrailing(flags.trailing)
+	case trailing != "":
+		n, err := fleet.ParseTrailing(trailing)
 		if err != nil {
 			return fleet.FetchMode{}, err
 		}
 		return fleet.FetchMode{Kind: fleet.FetchTrailing, Days: n}, nil
-	case flags.since != "":
-		t, err := time.Parse("2006-01-02", flags.since)
+	case since != "":
+		t, err := time.Parse("2006-01-02", since)
 		if err != nil {
-			return fleet.FetchMode{}, fmt.Errorf("--since value %q invalid: expected YYYY-MM-DD", flags.since)
+			return fleet.FetchMode{}, fmt.Errorf("--since value %q invalid: expected YYYY-MM-DD", since)
 		}
 		return fleet.FetchMode{Kind: fleet.FetchSince, Since: t.UTC()}, nil
-	default:
+	case latest:
 		return fleet.FetchMode{Kind: fleet.FetchLatest}, nil
+	default:
+		return fallback, nil
 	}
 }
 
@@ -254,9 +262,9 @@ func byColumnHeader(by fleet.GroupByKind) string {
 	case fleet.GroupByWorkflow:
 		return "WORKFLOW"
 	case fleet.GroupByRepo:
-		return "REPO"
+		return columnHeaderRepo
 	}
-	return "REPO"
+	return columnHeaderRepo
 }
 
 // formatCost renders a *float64 cost as $%.2f when populated, else "-".

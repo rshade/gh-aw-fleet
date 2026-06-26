@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gh-aw-fleet overview --output json envelope",
+  "description": "The standard envelope (cmd.SchemaVersion = 1, UNCHANGED) wrapping an OverviewResult. Additive payload — no schema bump (SC-004). Example values illustrate a finfocus-shaped fleet: a no-op-heavy aligned repo, an all-failed aligned repo, and a drifted repo.",
+  "type": "object",
+  "required": ["schema_version", "command", "result", "warnings", "hints"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "command": { "const": "overview" },
+    "repo": { "type": "string", "description": "empty for overview (fleet-wide)" },
+    "apply": { "const": false },
+    "result": { "$ref": "#/definitions/OverviewResult" },
+    "warnings": { "type": "array", "items": { "$ref": "#/definitions/Diagnostic" } },
+    "hints": { "type": "array", "items": { "$ref": "#/definitions/Diagnostic" } }
+  },
+  "definitions": {
+    "OverviewResult": {
+      "type": "object",
+      "required": ["loaded_from", "window", "repos", "total"],
+      "properties": {
+        "loaded_from": { "type": "string", "example": "fleet.json + fleet.local.json" },
+        "window": { "type": "string", "enum-like": ["latest", "trailing-7d", "since-2026-06-01"], "example": "trailing-7d" },
+        "repos": { "type": "array", "items": { "$ref": "#/definitions/RepoOverview" } },
+        "total": { "$ref": "#/definitions/OverviewTotal" }
+      }
+    },
+    "RepoOverview": {
+      "type": "object",
+      "required": ["repo", "drift_state", "runs", "failures", "noops", "runs_available"],
+      "properties": {
+        "repo": { "type": "string" },
+        "drift_state": { "type": "string", "enum": ["aligned", "drifted", "errored"] },
+        "drift_detail": { "type": ["object", "null"], "description": "RepoStatus; omitted when aligned with no detail" },
+        "runs": { "type": "integer", "description": "successes + failures (health denominator)" },
+        "failures": { "type": "integer" },
+        "noops": { "type": "integer", "description": "no-op successes; clamped to [0, successes]" },
+        "health_rate": { "type": ["number", "null"], "description": "successes/runs in [0,1]; null when runs==0" },
+        "aic": { "type": ["number", "null"], "description": "nil-until-positive" },
+        "cost": { "type": ["number", "null"], "description": "aic * 0.01; nil-until-positive" },
+        "runs_available": { "type": "boolean", "description": "false when the run-log fan-out failed for this repo" },
+        "runs_error": { "type": "string", "description": "present only when runs_available is false" }
+      }
+    },
+    "OverviewTotal": {
+      "type": "object",
+      "required": ["runs", "failures", "noops", "aligned", "drifted", "errored"],
+      "properties": {
+        "runs": { "type": "integer" },
+        "failures": { "type": "integer" },
+        "noops": { "type": "integer" },
+        "health_rate": { "type": ["number", "null"], "description": "pooled (runs-failures)/runs, NOT an average of per-repo rates" },
+        "aic": { "type": ["number", "null"] },
+        "cost": { "type": ["number", "null"] },
+        "aligned": { "type": "integer" },
+        "drifted": { "type": "integer" },
+        "errored": { "type": "integer" }
+      }
+    },
+    "Diagnostic": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "example": "repo_inaccessible" },
+        "message": { "type": "string" },
+        "fields": { "type": "object", "description": "e.g. {\"repo\":\"acme/api\",\"signal\":\"runs\"}" }
+      }
+    }
+  },
+  "example": {
+    "schema_version": 1,
+    "command": "overview",
+    "repo": "",
+    "apply": false,
+    "result": {
+      "loaded_from": "fleet.json + fleet.local.json",
+      "window": "trailing-7d",
+      "repos": [
+        { "repo": "rshade/finfocus", "drift_state": "aligned", "runs": 42, "failures": 2, "noops": 36, "health_rate": 0.952, "aic": 118.40, "cost": 1.18, "runs_available": true },
+        { "repo": "acme/api", "drift_state": "aligned", "runs": 9, "failures": 9, "noops": 0, "health_rate": 0.0, "aic": null, "cost": null, "runs_available": true },
+        { "repo": "acme/widgets", "drift_state": "drifted", "drift_detail": { "repo": "acme/widgets", "drift_state": "drifted", "drifted": [ { "name": "ci-doctor", "desired_ref": "v0.79.2", "actual_ref": "v0.78.0" } ] }, "runs": 18, "failures": 0, "noops": 4, "health_rate": 1.0, "aic": 47.10, "cost": 0.47, "runs_available": true }
+      ],
+      "total": { "runs": 69, "failures": 11, "noops": 40, "health_rate": 0.841, "aic": 165.50, "cost": 1.65, "aligned": 2, "drifted": 1, "errored": 0 }
+    },
+    "warnings": [],
+    "hints": []
+  }
+}

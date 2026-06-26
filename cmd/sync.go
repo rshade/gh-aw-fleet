@@ -113,7 +113,7 @@ func emitSyncWarnings(res *fleet.SyncResult) {
 	if len(res.Drift) > 0 {
 		zlog.Warn().
 			Str(diagnosticFieldRepo, res.Repo).
-			Strs("drift", res.Drift).
+			Strs(diagnosticFieldDrift, res.Drift).
 			Msg(syncDriftMessage)
 	}
 	emitSecurityFindingWarnings(res.SecurityFindings)
@@ -134,7 +134,7 @@ func emitSyncEnvelope(cmd *cobra.Command, repo string, apply bool, res *fleet.Sy
 			warnings = append(warnings, fleet.Diagnostic{
 				Code:    fleet.DiagDriftDetected,
 				Message: syncDriftMessage,
-				Fields:  map[string]any{"drift": res.Drift},
+				Fields:  map[string]any{diagnosticFieldDrift: res.Drift},
 			})
 		}
 		warnings = appendFindingDiagnostics(warnings, res.SecurityFindings)

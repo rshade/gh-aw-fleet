@@ -28,6 +28,7 @@ export default defineConfig({
 						{ label: 'Configuration', slug: 'configuration' },
 						{ label: 'Reconcile Workflow', slug: 'reconcile' },
 						{ label: 'Consumption and FinOps', slug: 'consumption' },
+						{ label: 'Fleet Overview', slug: 'overview' },
 						{ label: 'Roadmap', slug: 'roadmap' },
 					],
 				},

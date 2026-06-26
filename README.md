@@ -350,6 +350,22 @@ gh-aw-fleet status -o json \
   | jq '.result.repos | map(select(.drift_state == "drifted")) | length'
 ```
 
+Show a joined fleet dashboard for drift, recent run health, no-op run rate,
+and AI-credit spend. The default window is trailing 7 days; run failures are
+advisory, and the exit code is still drift-only:
+
+```bash
+gh-aw-fleet overview
+gh-aw-fleet overview rshade/finfocus --trailing 7d
+gh-aw-fleet overview --output json
+```
+
+`overview` renders `REPO DRIFT RUNS FAIL NOOP HEALTH AIC COST`, followed by a
+pooled `TOTAL` row and detail blocks for drifted, errored, or unhealthy repos.
+`NOOP` counts successful runs that took no action but still consumed credits.
+The command reuses the same `gh aw logs --json` fan-out as `consumption`, so it
+can take minutes on larger fleets.
+
 ## Commands
 
 | Command | Description |
@@ -360,6 +376,7 @@ gh-aw-fleet status -o json \
 | `sync <repo>` | Reconcile to declared profile (add missing, flag drift); `--strict` blocks HIGH Layer 1 security findings |
 | `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade`; `--strict` blocks HIGH Layer 1 security findings |
 | `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD` |
+| `overview [repo...]` | Joined drift, run-health, no-op, AIC, and cost dashboard; defaults to `--trailing 7d`; exits non-zero only on drift/errored repos |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
 | `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones) |
 
@@ -379,9 +396,9 @@ All commands accept these persistent flags:
   aggregators).
 - **`-o`, `--output <format>`** (default: `text`) — Output format: `text`
   (tabular human view) or `json` (machine-readable envelopes for
-  scripting). Supported on `list`, `deploy`, `sync`, `upgrade`, and
-  `status` (`upgrade --all` emits NDJSON). Rejected with a clear error on
-  `template fetch` and `add`.
+  scripting). Supported on `list`, `deploy`, `sync`, `upgrade`, `status`,
+  `consumption`, and `overview` (`upgrade --all` emits NDJSON). Rejected with
+  a clear error on `template fetch` and `add`.
 
 For multi-repo failure debugging,
 [`skills/fleet-deploy/SKILL.md`](skills/fleet-deploy/SKILL.md) recommends
