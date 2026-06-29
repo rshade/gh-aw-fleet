@@ -48,6 +48,7 @@ and calling Claude when a deploy or merge needs judgment.`,
 		newSyncCmd(&flagDir),
 		newUpgradeCmd(&flagDir),
 		newConsumptionCmd(&flagDir),
+		newOverviewCmd(&flagDir),
 	)
 	root.AddCommand(newSchemaCmd(root))
 	return root

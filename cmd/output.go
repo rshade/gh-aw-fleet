@@ -29,6 +29,7 @@ const (
 	commandConsumption = "consumption"
 	commandDeploy      = "deploy"
 	commandList        = "list"
+	commandOverview    = "overview"
 	commandStatus      = "status"
 	commandSync        = "sync"
 	commandUpgrade     = "upgrade"
@@ -38,6 +39,7 @@ const (
 const strictFlagUsage = "Fail when HIGH Layer 1 security findings are present (does not change gh aw compile --strict)"
 
 const (
+	diagnosticFieldDrift  = "drift"
 	diagnosticFieldRepo   = "repo"
 	diagnosticFieldSecret = "secret"
 	diagnosticFieldURL    = "url"
@@ -172,7 +174,7 @@ func rejectJSONMode(cmd *cobra.Command, subcommand string) error {
 }
 
 // preResultFailureEnvelope writes a result:null envelope wrapping err as a
-// hint diagnostic, then returns err so the caller can propagate the non-zero
+// diagnostic hint, then returns err so the caller can propagate the non-zero
 // exit code. Used by every subcommand's JSON path when an error blocks result
 // construction (config parse, repo not in fleet, missing tool).
 func preResultFailureEnvelope(
@@ -181,11 +183,25 @@ func preResultFailureEnvelope(
 	apply bool,
 	err error,
 ) error {
-	hints := ensureFailureHint(nil, err)
+	hints := failureHintDiagnostics(err)
 	if writeErr := writeEnvelope(cmd, command, repo, apply, nil, nil, hints); writeErr != nil {
 		return writeErr
 	}
 	return err
+}
+
+func failureHintDiagnostics(err error) []fleet.Diagnostic {
+	if err == nil {
+		return nil
+	}
+	if diag, ok := fleet.DiagnosticFromError(err); ok {
+		return []fleet.Diagnostic{diag}
+	}
+	hints := fleet.CollectHintDiagnostics(err.Error())
+	if len(hints) > 0 {
+		return hints
+	}
+	return ensureFailureHint(nil, err)
 }
 
 // initSlices replaces every required nil slice field in v with a non-nil

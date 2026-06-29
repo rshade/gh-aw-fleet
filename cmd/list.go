@@ -12,7 +12,10 @@ import (
 	"github.com/rshade/gh-aw-fleet/internal/fleet"
 )
 
-const tabPadding = 2
+const (
+	tabPadding       = 2
+	columnHeaderRepo = "REPO"
+)
 
 func newListCmd(flagDir *string) *cobra.Command {
 	return &cobra.Command{

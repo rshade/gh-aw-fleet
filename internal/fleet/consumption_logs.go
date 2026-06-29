@@ -91,11 +91,49 @@ type logsRun struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// mcpToolUsage decodes the .mcp_tool_usage block of `gh aw logs --json`.
+// Only the noop summary entry is consumed (run-rate signal); the rest is ignored.
+type mcpToolUsage struct {
+	Summary []mcpToolSummary `json:"summary"`
+}
+
+// mcpToolSummary is one aggregate tool-usage row from gh aw logs.
+type mcpToolSummary struct {
+	ServerName string `json:"server_name"` // ServerName is the MCP server name, e.g. "safeoutputs".
+	ToolName   string `json:"tool_name"`   // ToolName is the MCP tool name, e.g. "noop".
+	CallCount  int    `json:"call_count"`  // CallCount is the aggregate call count in the gh aw logs window.
+}
+
+const (
+	mcpServerSafeOutputs = "safeoutputs"
+	mcpToolNoop          = "noop"
+)
+
 // logsPayload bundles the decoded `gh aw logs --json` output for one
 // (repo, workflow) call.
 type logsPayload struct {
-	Summary logsSummary `json:"summary"`
-	Runs    []logsRun   `json:"runs"`
+	Summary      logsSummary  `json:"summary"`
+	Runs         []logsRun    `json:"runs"`
+	MCPToolUsage mcpToolUsage `json:"mcp_tool_usage"`
+}
+
+// noopCount returns the call_count for {safeoutputs, noop} (0 if absent).
+func noopCount(payload logsPayload) int {
+	for _, s := range payload.MCPToolUsage.Summary {
+		if s.ServerName == mcpServerSafeOutputs && s.ToolName == mcpToolNoop {
+			return s.CallCount
+		}
+	}
+	return 0
+}
+
+// repoRunData is one workflow's window-filtered runs plus its decoded tool-usage
+// aggregate, as returned per workflow by collectRepoRuns.
+type repoRunData struct {
+	Workflow       string       // GitHub Actions display name (not the fleet slug)
+	Runs           []logsRun    // window-filtered via filterRunsByWindow
+	MCPToolUsage   mcpToolUsage // for noopCount; ignored by consumption
+	SafeItemsCount int          // computed via safeItemsForRuns
 }
 
 // aicToUSDRate converts AI credits to USD: one credit is $0.01 (issue #103).
@@ -125,23 +163,50 @@ func aicToUSD(aic *float64) *float64 {
 func ensureLogsSourceGhAwVersion(ctx context.Context) error {
 	detected, err := ghAwVersion(ctx)
 	if err != nil {
-		return fmt.Errorf("gh aw --version probe failed for --source logs: %w. "+
-			"Install gh-aw %s or newer, or rerun with --source artifacts",
-			err, logsSourceMinVersion)
+		message := fmt.Sprintf(
+			"gh aw --version probe failed for logs source. %s "+
+				"Install gh-aw %s or newer; commands with --source can rerun with --source artifacts.",
+			ghAwMissingHint,
+			logsSourceMinVersion,
+		)
+		return &DiagnosticError{
+			Code:    DiagGhAwMissing,
+			Message: message,
+			Fields: map[string]any{
+				fieldMinimumVersion: logsSourceMinVersion,
+			},
+			Cause: err,
+		}
 	}
 	if detected == "" {
-		return fmt.Errorf("gh aw --version did not report a vMAJOR.MINOR.PATCH token; "+
-			"--source logs requires gh-aw %s or newer. Rerun with --source artifacts to use the legacy path",
-			logsSourceMinVersion)
+		return &DiagnosticError{
+			Code: DiagGhAwTooOld,
+			Message: fmt.Sprintf("gh aw --version did not report a vMAJOR.MINOR.PATCH token; "+
+				"logs source requires gh-aw %s or newer. Commands with --source can rerun with --source artifacts.",
+				logsSourceMinVersion),
+			Fields: map[string]any{
+				fieldDetectedVersion: "(version unknown)",
+				fieldMinimumVersion:  logsSourceMinVersion,
+			},
+		}
 	}
 	cmp, cmpErr := compareVersionTokens(detected, logsSourceMinVersion)
 	if cmpErr != nil {
 		return fmt.Errorf("compare gh-aw version for --source logs: %w", cmpErr)
 	}
 	if cmp < 0 {
-		return fmt.Errorf("gh aw is too old for --source logs: detected %s, minimum %s required. "+
-			"Install with `gh extension install github/gh-aw --pin %s`, or rerun with --source artifacts",
-			detected, logsSourceMinVersion, logsSourceMinVersion)
+		return &DiagnosticError{
+			Code: DiagGhAwTooOld,
+			Message: fmt.Sprintf("Local `gh aw` version is too old for logs source (detected %s; minimum %s). "+
+				"Install with `gh extension install github/gh-aw --pin %s`; commands with --source can rerun with --source artifacts.",
+				detected, logsSourceMinVersion, logsSourceMinVersion),
+			Fields: map[string]any{
+				fieldDetectedVersion: detected,
+				fieldMinimumVersion:  logsSourceMinVersion,
+			},
+			Cause: fmt.Errorf("gh aw is too old for logs source: detected %s, minimum %s required",
+				detected, logsSourceMinVersion),
+		}
 	}
 	return nil
 }
@@ -342,17 +407,14 @@ func safeItemsForRuns(payload logsPayload, runs []logsRun) int {
 	return total
 }
 
-// logSourceToReports builds one repo-level ConsumptionReport from `gh aw logs
-// --json`, fanning out across the repo's agentic workflows (the slug→display
-// resolution `gh aw logs` requires). Mirrors collectRepoReports' return shape so
-// the aggregation layer downstream is source-agnostic. The api-consumption-report
-// workflow need not be deployed (issue #103).
-func logSourceToReports(
+// collectRepoRuns factors the core gh aw logs fan-out. It runs ghWorkflowsAPI
+// then ghLogsAPI, filtering runs by window and collecting them per workflow.
+func collectRepoRuns(
 	ctx context.Context,
 	repo string,
 	mode FetchMode,
 	now time.Time,
-) ([]*ConsumptionReport, []Diagnostic) {
+) ([]repoRunData, []Diagnostic) {
 	var diags []Diagnostic
 	workflows, err := ghWorkflowsAPI(ctx, repo)
 	if err != nil {
@@ -366,15 +428,7 @@ func logSourceToReports(
 	}
 	sortWorkflowRefs(workflows)
 
-	var (
-		perWF       []WorkflowConsumption
-		totalCalls  int
-		totalSafe   int
-		aicSum      float64
-		aicAny      bool
-		newest      time.Time
-		newestRunID int64
-	)
+	var runData []repoRunData
 	for _, wf := range workflows {
 		payload, callErr := ghLogsAPI(ctx, repo, wf.Name, mode)
 		if callErr != nil {
@@ -386,15 +440,51 @@ func logSourceToReports(
 		if len(runs) == 0 {
 			continue
 		}
-		row := summarizeRuns(wf.Name, runs)
+		runData = append(runData, repoRunData{
+			Workflow:       wf.Name,
+			Runs:           runs,
+			MCPToolUsage:   payload.MCPToolUsage,
+			SafeItemsCount: safeItemsForRuns(payload, runs),
+		})
+	}
+	return runData, diags
+}
+
+// logSourceToReports builds one repo-level ConsumptionReport from `gh aw logs
+// --json`, fanning out across the repo's agentic workflows (the slug→display
+// resolution `gh aw logs` requires). Mirrors collectRepoReports' return shape so
+// the aggregation layer downstream is source-agnostic. The api-consumption-report
+// workflow need not be deployed (issue #103).
+func logSourceToReports(
+	ctx context.Context,
+	repo string,
+	mode FetchMode,
+	now time.Time,
+) ([]*ConsumptionReport, []Diagnostic) {
+	runData, diags := collectRepoRuns(ctx, repo, mode, now)
+	if len(runData) == 0 && len(diags) > 0 {
+		return nil, diags
+	}
+
+	var (
+		perWF       []WorkflowConsumption
+		totalCalls  int
+		totalSafe   int
+		aicSum      float64
+		aicAny      bool
+		newest      time.Time
+		newestRunID int64
+	)
+	for _, data := range runData {
+		row := summarizeRuns(data.Workflow, data.Runs)
 		perWF = append(perWF, row)
 		totalCalls += row.APICalls
-		totalSafe += safeItemsForRuns(payload, runs)
+		totalSafe += data.SafeItemsCount
 		if row.AIC != nil {
 			aicSum += *row.AIC
 			aicAny = true
 		}
-		for _, r := range runs {
+		for _, r := range data.Runs {
 			if r.CreatedAt.After(newest) {
 				newest, newestRunID = r.CreatedAt, r.RunID
 			}

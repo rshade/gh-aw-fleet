@@ -1144,9 +1144,9 @@ func runCompileStrictIfNeeded(ctx context.Context, res compileStrictResult, cfg 
 			Code:    DiagGhAwTooOld,
 			Message: message,
 			Fields: map[string]any{
-				fieldRepo:          repo,
-				"detected_version": detected,
-				"minimum_version":  CompileStrictMinVersion,
+				fieldRepo:            repo,
+				fieldDetectedVersion: detected,
+				fieldMinimumVersion:  CompileStrictMinVersion,
 			},
 			Cause: fmt.Errorf(
 				"gh aw is too old: %s detected, minimum %s required",

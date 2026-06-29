@@ -33,10 +33,13 @@ const (
 )
 
 const (
-	fieldCloneDir = "clone_dir"
-	fieldHint     = "hint"
-	fieldPath     = "path"
-	fieldRepo     = "repo"
+	fieldCloneDir        = "clone_dir"
+	fieldDetectedVersion = "detected_version"
+	fieldHint            = "hint"
+	fieldMinimumVersion  = "minimum_version"
+	fieldPath            = "path"
+	fieldRepo            = "repo"
+	fieldSignal          = "signal"
 )
 
 const (
