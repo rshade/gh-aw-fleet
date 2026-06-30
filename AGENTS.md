@@ -131,5 +131,5 @@ Committed at repo root; shared with collaborators and subagents. Allows `go buil
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-[specs/017-strict-security-gate/plan.md](./specs/017-strict-security-gate/plan.md)
+[specs/019-security-finding-prompt/plan.md](./specs/019-security-finding-prompt/plan.md)
 <!-- SPECKIT END -->

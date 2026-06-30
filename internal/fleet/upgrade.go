@@ -173,6 +173,12 @@ func Upgrade(ctx context.Context, cfg *Config, repo string, opts UpgradeOpts) (*
 		return res, manifestErr
 	}
 
+	if confirmErr := confirmSecurityFindings(
+		repo, res.SecurityFindings, opts.Security, &cleanupClone,
+	); confirmErr != nil {
+		return res, confirmErr
+	}
+
 	return createUpgradePR(ctx, res)
 }
 
@@ -189,6 +195,10 @@ func finishNoChangeUpgrade(
 	}
 	if !manifestBackfilled {
 		return res, nil
+	}
+	// Apply-only path, so the clone-cleanup flag is already false; pass nil.
+	if confirmErr := confirmSecurityFindings(repo, res.SecurityFindings, opts.Security, nil); confirmErr != nil {
+		return res, confirmErr
 	}
 	return createUpgradePR(ctx, res)
 }

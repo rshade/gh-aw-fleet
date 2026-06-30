@@ -46,6 +46,28 @@ writes `<clone>/findings.json` with every finding from the run. Report that path
 to the user and inspect it before deciding whether to fix the workflow or rerun
 without `--strict`.
 
+### Interactive confirmation on `--apply`
+
+Separate from `--strict`, an `--apply` that produces **any** finding pauses for
+a last-chance `⚠  <tally>. Proceed with commit? [y/N]` confirmation before it
+commits, pushes, or opens a PR — but only at an interactive terminal. The
+default is **No**; declining aborts cleanly, exits non-zero, and preserves the
+clone (resume with `--work-dir <clone> --yes`). This is a normal in-tool gate,
+not a crash — when you (the assistant) run `--apply` and findings are present,
+stdout is typically not a TTY, so the prompt is auto-skipped and the apply
+proceeds; the findings still print on stderr and in the PR body.
+
+To skip the prompt deliberately while keeping every finding visible, pass
+`--yes`:
+
+```bash
+go run . deploy <owner>/<repo> --apply --yes
+```
+
+`--yes` bypasses only the prompt — it does not suppress stderr findings, the
+PR-body `## Security Findings` section, or the `--strict` gate. Use it only
+after the user has reviewed the dry-run findings in Turn 1.
+
 ## The flow
 
 Three turns. Don't collapse them — the confirmation gates are deliberate.
@@ -111,6 +133,7 @@ Expected outcomes:
 
 - **Clean success**: output ends with `PR: https://github.com/...`. Report the URL to the user; declare the deploy complete.
 - **Strict security abort**: output includes security findings, exits non-zero, writes `<clone>/findings.json`, and creates no PR. Report the blocking count, clone path, and breadcrumb path. Ask whether to fix the findings or rerun without `--strict`; do not auto-downgrade the policy.
+- **Operator decline at the prompt** (interactive runs only): output ends with `aborted by operator: <N> security finding(s) ... re-run with --yes to skip the prompt`, exits non-zero, creates no PR, and preserves the clone. This is a deliberate choice, not a failure — relay it plainly and ask whether the user wants to re-run with `--yes` or fix the findings first. Don't auto-add `--yes` without the user's go-ahead.
 - **gpg signing failure**: exit status 1, output contains `gpg failed to sign the data` or `gpg: signing failed`. The tool preserves the clone dir (`/tmp/gh-aw-fleet-<owner>-<repo>-<timestamp>`) with all files staged on the deploy branch. Two recovery options exist:
   1. **Resume via `--work-dir`** (preferred): re-run `go run . deploy <owner>/<repo> --apply --work-dir <clone-dir>`. The tool detects the staged changes, skips clone/init/add, and re-enters at the commit gate.
   2. **Manual-finish paste**: compose the shell paste below for the user to run in their own terminal where gpg-agent can prompt. Use this when the user explicitly asks for manual steps or when `--work-dir` resume is not desired.

@@ -14,6 +14,7 @@ const promptInjectionRulePrefix = "promptinj:"
 // SecurityOpts controls invocation-scoped security policy.
 type SecurityOpts struct {
 	Strict bool // block on HIGH non-promptinj security findings
+	Yes    bool // skip the interactive findings confirmation prompt; does NOT suppress stderr or PR-body findings
 }
 
 // StrictSecurityError is returned when the opt-in strict security gate blocks.

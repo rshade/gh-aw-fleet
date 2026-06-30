@@ -92,6 +92,15 @@ commit, push, or PR steps. On strict abort, the clone is preserved and
 --strict` stops at the first blocked repo; JSON mode emits the blocked repo's
 envelope before stopping.
 
+Separate from `--strict`, an `--apply` upgrade that produced **any** finding
+pauses for a `⚠  <tally>. Proceed with commit? [y/N]` confirmation at an
+interactive terminal (default No). When you run `--apply` non-interactively the
+prompt is auto-skipped and the upgrade proceeds, with findings still on stderr
+and in the PR body. Pass `--yes` to skip the prompt deliberately while keeping
+every finding visible; `--yes` does not suppress findings or the `--strict`
+gate. For `upgrade --all`, the prompt is per repo and a decline halts that repo
+and the batch (fail-fast), exactly like a strict block.
+
 Dry-run output shows:
 - `gh aw upgrade` log (dispatcher updates, action bumps).
 - `gh aw update` log (per-workflow pulls, 3-way merges, compile results).
@@ -124,6 +133,7 @@ go run . upgrade <owner>/<repo> --strict --apply
 Outcomes match `fleet-deploy`:
 - **Clean success**: output ends with `PR: <url>`. Report the URL.
 - **Strict security abort**: no branch, commit, push, or PR is created. Report the clone path and `findings.json`; do not rerun without `--strict` unless the user explicitly chooses advisory-only behavior.
+- **Operator decline at the prompt** (interactive runs only): output ends with `aborted by operator: ... re-run with --yes`, exits non-zero, creates no PR, and preserves the clone. Relay it as a deliberate choice; ask whether to re-run with `--yes` or fix the findings. Don't add `--yes` without the user's go-ahead.
 - **gpg signing failure**: same failure mode; generate the manual-finish paste.
 - **Conflict (missed in dry-run)**: report, don't retry.
 

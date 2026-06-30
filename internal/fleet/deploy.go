@@ -296,12 +296,26 @@ func Deploy(ctx context.Context, cfg *Config, repo string, opts DeployOpts) (*De
 		return res, manifestErr
 	}
 
+	return finalizeDeployCommit(ctx, res, repo, opts, &cleanupClone)
+}
+
+// finalizeDeployCommit is the fresh-path commit gate: it returns (res, nil) on a
+// no-op apply (nothing added and nothing staged), runs the interactive findings
+// confirmation, and opens the PR. Declining preserves the clone via cleanupClone
+// and returns an *OperatorDeclinedError before createDeployPR runs.
+func finalizeDeployCommit(
+	ctx context.Context, res *DeployResult, repo string, opts DeployOpts, cleanupClone *bool,
+) (*DeployResult, error) {
 	staged, err := hasStagedOrUnstagedWorkflowChanges(ctx, res.CloneDir)
 	if err != nil {
 		return res, err
 	}
 	if len(res.Added) == 0 && !staged {
 		return res, nil
+	}
+	confirmErr := confirmSecurityFindings(repo, res.SecurityFindings, opts.Security, cleanupClone)
+	if confirmErr != nil {
+		return res, confirmErr
 	}
 	return createDeployPR(ctx, res, repo, opts, "")
 }
@@ -365,24 +379,7 @@ func handleWorkDirResume(
 	}
 
 	if staged {
-		fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at commit gate)\n", opts.WorkDir)
-		engine := cfg.EffectiveEngine(repo)
-		res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
-		res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
-		if !opts.Apply {
-			effective, source := logCompileStrictResolution(ctx, cfg, repo)
-			res.CompileStrictSource = source
-			res.CompileStrictEffective = effective
-			return res, true, nil
-		}
-		if compileErr := refreshResumeCompileStrict(ctx, cfg, repo, res); compileErr != nil {
-			return res, true, compileErr
-		}
-		if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
-			return res, true, manifestErr
-		}
-		out, prErr := createDeployPR(ctx, res, repo, opts, branch)
-		return out, true, prErr
+		return resumeAtCommitGate(ctx, cfg, repo, res, opts, branch)
 	}
 
 	fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at push gate)\n", opts.WorkDir)
@@ -398,10 +395,47 @@ func handleWorkDirResume(
 		res.CompileStrictEffective = effective
 		return res, true, nil
 	}
+	// The refresh helper may amend the saved commit; ask first so a decline
+	// leaves the resumed branch history untouched.
+	if confirmErr := confirmSecurityFindings(repo, res.SecurityFindings, opts.Security, nil); confirmErr != nil {
+		return res, true, confirmErr
+	}
 	if compileErr := refreshResumePushCompileStrict(ctx, cfg, repo, res, branch); compileErr != nil {
 		return res, true, compileErr
 	}
 	out, prErr := pushAndCreatePR(ctx, res, repo, opts, branch, nil)
+	return out, true, prErr
+}
+
+// resumeAtCommitGate finishes a --work-dir resume that has staged .github/
+// changes: it refreshes preflight + compile-strict, writes the manifest, runs
+// the interactive findings confirmation, and opens the PR. A dry-run returns
+// after logging the resolved compile-strict policy. The clone is already
+// preserved on every resume, so the confirmation passes a nil cleanup flag.
+// Returns the (result, handled, err) tuple handleWorkDirResume propagates.
+func resumeAtCommitGate(
+	ctx context.Context, cfg *Config, repo string, res *DeployResult, opts DeployOpts, branch string,
+) (*DeployResult, bool, error) {
+	fmt.Fprintf(os.Stderr, "(resumed from --work-dir %s at commit gate)\n", opts.WorkDir)
+	engine := cfg.EffectiveEngine(repo)
+	res.MissingSecret, res.SecretKeyURL = checkEngineSecret(ctx, repo, engine)
+	res.ActionsDisabled, res.WorkflowTokenReadOnly = checkActionsSettings(ctx, repo)
+	if !opts.Apply {
+		effective, source := logCompileStrictResolution(ctx, cfg, repo)
+		res.CompileStrictSource = source
+		res.CompileStrictEffective = effective
+		return res, true, nil
+	}
+	if compileErr := refreshResumeCompileStrict(ctx, cfg, repo, res); compileErr != nil {
+		return res, true, compileErr
+	}
+	if manifestErr := writeDeployManifest(ctx, cfg, repo, res.CloneDir); manifestErr != nil {
+		return res, true, manifestErr
+	}
+	if confirmErr := confirmSecurityFindings(repo, res.SecurityFindings, opts.Security, nil); confirmErr != nil {
+		return res, true, confirmErr
+	}
+	out, prErr := createDeployPR(ctx, res, repo, opts, branch)
 	return out, true, prErr
 }
 

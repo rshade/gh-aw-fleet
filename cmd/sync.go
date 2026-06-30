@@ -22,6 +22,7 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 		flagForce   bool
 		flagWorkDir string
 		flagStrict  bool
+		flagYes     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "sync <repo>",
@@ -56,14 +57,14 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 				Prune:    flagPrune,
 				Force:    flagForce,
 				WorkDir:  flagWorkDir,
-				Security: fleet.SecurityOpts{Strict: flagStrict},
+				Security: securityOptsFor(flagStrict, flagYes, jsonMode),
 			}
 			res, syncErr := runFleetSync(cmd.Context(), cfg, repo, opts)
 			if jsonMode {
 				return emitSyncEnvelope(cmd, repo, flagApply, res, syncErr)
 			}
 			printSync(cmd, res, flagApply, flagPrune, syncErr)
-			return syncErr
+			return mapOperatorDecline(cmd, syncErr)
 		},
 	}
 	cmd.Flags().BoolVar(&flagApply, "apply", false,
@@ -75,6 +76,7 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 	cmd.Flags().StringVar(&flagWorkDir, "work-dir", "",
 		"Existing clone to sync (skips git clone + auto-cleanup)")
 	cmd.Flags().BoolVar(&flagStrict, "strict", false, strictFlagUsage)
+	cmd.Flags().BoolVar(&flagYes, "yes", false, yesFlagUsage)
 	return cmd
 }
 
