@@ -10,6 +10,22 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.2.5](https://github.com/rshade/gh-aw-fleet/compare/v0.2.4...v0.2.5) (2026-06-30)
+
+
+### Added
+
+* **consumption:** read-only over-budget highlighting (--budget) ([#160](https://github.com/rshade/gh-aw-fleet/issues/160)) ([0bf134c](https://github.com/rshade/gh-aw-fleet/commit/0bf134c0b9e92bb6671e39ff8e67a8d293188a7b)), closes [#129](https://github.com/rshade/gh-aw-fleet/issues/129)
+* **overview:** add read-only drift, run-health, and cost dashboard ([#172](https://github.com/rshade/gh-aw-fleet/issues/172)) ([21077df](https://github.com/rshade/gh-aw-fleet/commit/21077df3172131413581dd9d5e2bf8e94f52afc0)), closes [#153](https://github.com/rshade/gh-aw-fleet/issues/153)
+* **security:** add interactive findings confirmation and --yes flag ([#177](https://github.com/rshade/gh-aw-fleet/issues/177)) ([aac0fdb](https://github.com/rshade/gh-aw-fleet/commit/aac0fdba230ed8b00b7b0825b0a069945d31eaaf)), closes [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
+* **security:** add opt-in --strict gate for HIGH Layer 1 findings ([#161](https://github.com/rshade/gh-aw-fleet/issues/161)) ([c0d8776](https://github.com/rshade/gh-aw-fleet/commit/c0d8776b3b877fa0283fbcc4ef5551b1483f335d)), closes [#38](https://github.com/rshade/gh-aw-fleet/issues/38)
+
+
+### Fixed
+
+* **deps:** update dependency @astrojs/starlight to ^0.41.0 ([#168](https://github.com/rshade/gh-aw-fleet/issues/168)) ([145dd35](https://github.com/rshade/gh-aw-fleet/commit/145dd35ac039bd3d69bf97e866d0b2225684e2c3))
+* **deps:** update dependency starlight-links-validator to ^0.25.0 ([#169](https://github.com/rshade/gh-aw-fleet/issues/169)) ([6a0325c](https://github.com/rshade/gh-aw-fleet/commit/6a0325cb3766b29188cb8cef1deaee3ae5f990a5))
+
 ## [0.2.4](https://github.com/rshade/gh-aw-fleet/compare/v0.2.3...v0.2.4) (2026-06-22)
 
 
