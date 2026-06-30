@@ -55,6 +55,26 @@ func (r failOnReadReader) Read([]byte) (int, error) {
 	return 0, io.EOF
 }
 
+// stubCleanActionlint installs a no-op `actionlint` binary at the front of PATH
+// so the actionlint scanner resolves a binary and emits nothing, instead of the
+// `actionlint:not-installed` INFO finding it returns when the binary is absent.
+// Without this, the "zero findings" placement tests pass only on hosts that
+// happen to have actionlint installed (dev machines) and fail in CI, where the
+// graceful-degradation INFO finding is non-empty and — correctly, per FR-015 —
+// fires the confirmation prompt. The stub exits 0 with empty output, which the
+// scanner treats as "no diagnostics," making the baseline deterministic in both
+// environments. Mirrors the fake-gh fixture idiom; safe to combine because the
+// stub binary name does not collide.
+func stubCleanActionlint(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	script := "#!/bin/sh\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "actionlint"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write stub actionlint: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 func gitOutput(t *testing.T, dir string, arg ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", arg...)
@@ -239,6 +259,7 @@ func TestDeployZeroFindingsNoPrompt(t *testing.T) {
 	_ = installFakeGhForSync(t, remote)
 	installHealthyDeployAPIs(t, repo)
 	stubGhAwVersionForStrictTests(t)
+	stubCleanActionlint(t)          // zero findings regardless of host actionlint
 	withInteractivePrompt(t, "n\n") // queued decline must be ignored
 
 	res, err := Deploy(context.Background(), strictGateTestConfig(repo), repo, DeployOpts{Apply: true})
@@ -318,6 +339,7 @@ func TestSyncPruneOnlyDropsStaleFindingsBeforePrompt(t *testing.T) {
 	repo := "rshade/prompt-sync-prune-stale"
 	remote := newTestRepo(t, seedHighSecurityWorkflow)
 	_ = installFakeGhForSync(t, remote)
+	stubCleanActionlint(t) // pruned repo is finding-free regardless of host actionlint
 	withPromptStdinUnread(t, true)
 
 	res, err := Sync(context.Background(), strictGateTestConfig(repo), repo, SyncOpts{
