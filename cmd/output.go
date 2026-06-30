@@ -38,6 +38,11 @@ const (
 // strictFlagUsage is the shared --strict help text for deploy, sync, and upgrade.
 const strictFlagUsage = "Fail when HIGH Layer 1 security findings are present (does not change gh aw compile --strict)"
 
+// yesFlagUsage is the shared --yes help text for deploy, sync, and upgrade. It
+// skips only the interactive findings confirmation — the stderr findings and
+// the PR-body Security Findings section are still produced.
+const yesFlagUsage = "Skip the interactive security-findings confirmation prompt (findings still print on stderr and in the PR body)"
+
 const (
 	diagnosticFieldDrift  = "drift"
 	diagnosticFieldRepo   = "repo"
@@ -135,6 +140,30 @@ func foldCompileStrictError(
 		Message: cse.Message,
 		Fields:  cse.Fields,
 	}), true
+}
+
+// securityOptsFor builds the invocation's SecurityOpts. It forces Yes in JSON
+// mode: a prompt written to stdout would corrupt the JSON envelope and a
+// machine cannot answer it, so --output json is treated as non-interactive
+// (FR-018). Centralizing this keeps the deploy/sync/upgrade RunE closures
+// simple and the JSON-suppression rule in one place.
+func securityOptsFor(strict, yes, jsonMode bool) fleet.SecurityOpts {
+	return fleet.SecurityOpts{Strict: strict, Yes: yes || jsonMode}
+}
+
+// mapOperatorDecline converts a fleet *OperatorDeclinedError into a clean,
+// silent, non-zero exit: it prints the actionable abort message to stderr and
+// returns a commandExitError so main.go skips the fatal-crash logger and the
+// decline is never routed through the diagnostic hint engine. Any other error
+// (including nil) passes through unchanged. Called on the text-mode return
+// paths of deploy/sync/upgrade; the JSON paths suppress the prompt entirely
+// (FR-018), so a decline cannot arise there.
+func mapOperatorDecline(cmd *cobra.Command, err error) error {
+	if err == nil || !fleet.IsOperatorDeclinedError(err) {
+		return err
+	}
+	fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
+	return newCommandExitError(err, 1, true)
 }
 
 // outputMode reads the resolved --output value. PersistentPreRunE has already

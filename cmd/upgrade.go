@@ -24,6 +24,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 		flagWorkDir string
 		flagAll     bool
 		flagStrict  bool
+		flagYes     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "upgrade [repo|--all]",
@@ -57,7 +58,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 				Major:    flagMajor,
 				Force:    flagForce,
 				WorkDir:  flagWorkDir,
-				Security: fleet.SecurityOpts{Strict: flagStrict},
+				Security: securityOptsFor(flagStrict, flagYes, jsonMode),
 			}
 			if flagAll {
 				return runUpgradeAll(cmd, cfg, opts, flagApply, flagAudit, jsonMode)
@@ -78,6 +79,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 	cmd.Flags().BoolVar(&flagAll, "all", false,
 		"Upgrade all repos in fleet.json")
 	cmd.Flags().BoolVar(&flagStrict, "strict", false, strictFlagUsage)
+	cmd.Flags().BoolVar(&flagYes, "yes", false, yesFlagUsage)
 	return cmd
 }
 
@@ -235,7 +237,7 @@ func runUpgradeAll(
 	}
 	results, allErr := fleet.UpgradeAll(cmd.Context(), cfg, opts)
 	printUpgradeAll(cmd, results, audit)
-	return allErr
+	return mapOperatorDecline(cmd, allErr)
 }
 
 // runUpgradeSingle routes the single-repo path. Validates the repo is tracked
@@ -255,7 +257,7 @@ func runUpgradeSingle(
 		return emitUpgradeEnvelope(cmd, repo, apply, res, upErr)
 	}
 	printUpgrade(cmd, res, apply)
-	return upErr
+	return mapOperatorDecline(cmd, upErr)
 }
 
 // emitUpgradeEnvelope writes a single-repo upgrade envelope. Hints come from

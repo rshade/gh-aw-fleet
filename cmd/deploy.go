@@ -21,6 +21,7 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 		flagPRTitle string
 		flagWorkDir string
 		flagStrict  bool
+		flagYes     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "deploy <repo>",
@@ -49,14 +50,14 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 				Branch:   flagBranch,
 				PRTitle:  flagPRTitle,
 				WorkDir:  flagWorkDir,
-				Security: fleet.SecurityOpts{Strict: flagStrict},
+				Security: securityOptsFor(flagStrict, flagYes, jsonMode),
 			}
 			res, deployErr := runFleetDeploy(cmd.Context(), cfg, repo, opts)
 			if jsonMode {
 				return emitDeployEnvelope(cmd, repo, flagApply, res, deployErr)
 			}
 			printDeploy(cmd, res, flagApply, deployErr)
-			return deployErr
+			return mapOperatorDecline(cmd, deployErr)
 		},
 	}
 	cmd.Flags().BoolVar(&flagApply, "apply", false,
@@ -70,6 +71,7 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 	cmd.Flags().StringVar(&flagWorkDir, "work-dir", "",
 		"Existing clone to deploy into (skips git clone + auto-cleanup; resumes at commit/push gate if staged changes or unpushed commits exist)")
 	cmd.Flags().BoolVar(&flagStrict, "strict", false, strictFlagUsage)
+	cmd.Flags().BoolVar(&flagYes, "yes", false, yesFlagUsage)
 	return cmd
 }
 

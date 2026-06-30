@@ -81,6 +81,36 @@ Lower-severity findings and `promptinj:` findings remain advisory. For
 `upgrade --all --strict --output json`, NDJSON records are emitted through the
 blocked repo and then processing stops.
 
+## Interactive findings confirmation
+
+Separate from `--strict`, an `--apply` that produces one or more findings (of
+any severity) pauses for a last-chance confirmation before it commits, pushes,
+or opens a PR — but only at an interactive terminal:
+
+```text
+⚠  2 HIGH, 1 MEDIUM. Proceed with commit? [y/N]
+```
+
+The default is **No**. Declining aborts cleanly, exits non-zero, and preserves
+the work-dir clone for inspection (resume with `--work-dir <clone> --yes`).
+Accepting proceeds, and the PR body still includes the `## Security Findings`
+section.
+
+Findings have three independent surfaces — stderr warnings, this prompt, and
+the PR-body section. `--strict` is a non-interactive hard block on HIGH
+findings; the prompt is an interactive last-chance gate on any finding.
+
+The prompt is skipped — without suppressing the stderr or PR-body surfaces — by:
+
+- `--yes` on `deploy`, `sync`, or `upgrade`;
+- a non-interactive stdout (piped, redirected, or CI), so nothing hangs;
+- `--output json`, which is treated as non-interactive even at a TTY so the
+  envelope stays valid.
+
+Use `--strict` when you want a non-interactive *block* rather than an
+auto-proceed. The prompt only fires on `--apply` (never on dry-runs) and after
+the `--strict` gate. `--yes` is per invocation and never written to config.
+
 ## The three-turn pattern
 
 Any command that mutates external repositories follows this operator flow:

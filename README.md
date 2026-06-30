@@ -637,6 +637,46 @@ gh-aw-fleet upgrade --all --strict --output json
 For `upgrade --all --strict --output json`, NDJSON records are emitted through
 the blocked repo and then processing stops at that first strict failure.
 
+#### Interactive findings confirmation and `--yes`
+
+Independent of `--strict`, an `--apply` that produces one or more security
+findings (of **any** severity) pauses for a last-chance confirmation before it
+commits, pushes, or opens a PR — but only when stdout is an interactive
+terminal:
+
+```text
+⚠  2 HIGH, 1 MEDIUM. Proceed with commit? [y/N]
+```
+
+The safe default is **No**: a bare Enter, `n`, or any non-`y` answer aborts
+cleanly, exits non-zero, and preserves the work-dir clone so you can inspect it
+and resume with `--work-dir <clone> --yes`. Answering `y` proceeds, and the PR
+body still carries the `## Security Findings` section.
+
+The prompt is the **third** independent surface for findings, alongside the
+stderr warnings and the PR-body section. It differs from `--strict`: `--strict`
+is a non-interactive hard block on HIGH findings; the prompt is an interactive
+last-chance gate on any finding.
+
+Three things skip the prompt without hiding the findings:
+
+- `--yes` on `deploy`, `sync`, or `upgrade` — proceed without the question;
+  stderr findings and the PR-body section are still produced.
+- A non-interactive stdout (piped, redirected, or CI) — the apply proceeds
+  automatically so nothing ever hangs. Use `--strict` when you want a
+  non-interactive *block* instead.
+- `--output json` — treated as non-interactive even at a TTY, so the JSON
+  envelope is never corrupted by a prompt.
+
+```bash
+gh-aw-fleet deploy acme/widgets --apply --yes        # skip the prompt
+gh-aw-fleet deploy acme/widgets --apply | tee out.txt # piped: no prompt, no hang
+```
+
+The prompt only fires on `--apply` (dry-runs never prompt) and only after the
+`--strict` gate, so a HIGH strict block still wins. `--yes` is per invocation
+and is never written to `fleet.json` or `fleet.local.json`.
+
 ## Bundled Profiles
 
 Each entry below lists what the profile adds, who it's for, and the

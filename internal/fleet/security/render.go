@@ -57,6 +57,16 @@ func RenderForPRBody(findings []Finding) string {
 	return b.String()
 }
 
+// SeveritySummary returns the per-severity tally used by both the PR-body
+// summary and the interactive findings prompt — e.g. "2 HIGH, 1 MEDIUM" —
+// in HIGH→MEDIUM→LOW→INFO order, omitting zero counts. Returns the empty
+// string when len(findings) == 0. It is a thin exported wrapper over the
+// unexported severityTally so the prompt's one-line summary stays identical
+// to the PR-body summary (one severity-counting code path).
+func SeveritySummary(findings []Finding) string {
+	return severityTally(findings)
+}
+
 // numSeverityBuckets is the count of distinct severity values whose
 // counts are tallied in the PR-body summary line (HIGH, MEDIUM, LOW,
 // INFO). The Renovate config scanner emits LOW (FR-015).

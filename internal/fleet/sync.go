@@ -246,6 +246,13 @@ func applyDeployOrPrune(
 		if stageErr := gitCmd(ctx, res.CloneDir, addToken, ".github/"); stageErr != nil {
 			return fmt.Errorf("git add manifest after prune: %w", stageErr)
 		}
+		// Apply-only path, so the clone-cleanup flag is already false; pass nil.
+		// The add path (len(res.Missing) > 0, above) inherits Deploy's single
+		// prompt, so this is the only standalone sync confirmation.
+		res.SecurityFindings = security.Run(ctx, res.CloneDir)
+		if confirmErr := confirmSecurityFindings(repo, res.SecurityFindings, opts.Security, nil); confirmErr != nil {
+			return confirmErr
+		}
 		return commitAndPushPrune(ctx, res)
 	}
 	return nil

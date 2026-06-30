@@ -16,6 +16,13 @@ type schemaExitCoder interface {
 	ExitCode() int
 }
 
+// schemaCommandUses returns the cobra Use strings for the three mutation
+// commands, shared by the per-command flag-schema tests (kept in one place so
+// goconst doesn't flag the repeated literals).
+func schemaCommandUses() []string {
+	return []string{"deploy <repo>", "sync <repo>", "upgrade [repo|--all]"}
+}
+
 func TestSchemaCommandEmitsAXSchema(t *testing.T) {
 	stdout, stderr, err := executeSchemaCommand("__schema")
 	if err != nil {
@@ -137,7 +144,7 @@ func TestSchemaCommandIncludesStrictFlags(t *testing.T) {
 		t.Fatalf("__schema stdout is not valid schema JSON: %v\nstdout: %s", decodeErr, stdout)
 	}
 
-	for _, use := range []string{"deploy <repo>", "sync <repo>", "upgrade [repo|--all]"} {
+	for _, use := range schemaCommandUses() {
 		cmd := requireSchemaCommand(t, got.Command, use)
 		flag := requireSchemaFlag(t, cmd, "strict")
 		if flag.Type != "bool" {
@@ -150,6 +157,32 @@ func TestSchemaCommandIncludesStrictFlags(t *testing.T) {
 			if !strings.Contains(flag.Usage, want) {
 				t.Fatalf("%s --strict usage = %q; want substring %q", use, flag.Usage, want)
 			}
+		}
+	}
+}
+
+func TestSchemaCommandIncludesYesFlags(t *testing.T) {
+	stdout, stderr, err := executeSchemaCommand("__schema")
+	if err != nil {
+		t.Fatalf("__schema returned error: %v\nstderr: %s", err, stderr)
+	}
+
+	var got axschema.Schema
+	if decodeErr := json.Unmarshal([]byte(stdout), &got); decodeErr != nil {
+		t.Fatalf("__schema stdout is not valid schema JSON: %v\nstdout: %s", decodeErr, stdout)
+	}
+
+	for _, use := range schemaCommandUses() {
+		cmd := requireSchemaCommand(t, got.Command, use)
+		flag := requireSchemaFlag(t, cmd, "yes")
+		if flag.Type != "bool" {
+			t.Fatalf("%s --yes type = %q; want bool", use, flag.Type)
+		}
+		if flag.Default != "false" {
+			t.Fatalf("%s --yes default = %q; want false", use, flag.Default)
+		}
+		if !strings.Contains(flag.Usage, "Skip the interactive") {
+			t.Fatalf("%s --yes usage = %q; want substring %q", use, flag.Usage, "Skip the interactive")
 		}
 	}
 }

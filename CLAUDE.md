@@ -45,5 +45,5 @@ Per-slice dependency and storage deltas:
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-[specs/018-overview-subcommand/plan.md](./specs/018-overview-subcommand/plan.md)
+[specs/019-security-finding-prompt/plan.md](./specs/019-security-finding-prompt/plan.md)
 <!-- SPECKIT END -->
