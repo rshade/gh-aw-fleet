@@ -108,8 +108,9 @@ the repo is aligned — the full `gh-aw-fleet` loop, end to end.
 
 From here:
 
-- **Solve a specific problem** — the [How-to guides](/gh-aw-fleet/gate-ci-on-drift/) cover
-  gating CI on drift, resuming an interrupted apply, and reviewing cost.
+- **Solve a specific problem** — [gate CI on fleet drift](/gh-aw-fleet/gate-ci-on-drift/),
+  [resume an interrupted apply](/gh-aw-fleet/resume-interrupted-apply/), or
+  [find your top credit burners](/gh-aw-fleet/find-top-credit-burners/).
 - **Look up a command or flag** — the [CLI reference](/gh-aw-fleet/cli/) lists every
   command, flag, and exit code.
 - **Understand the model** — [Reconcile workflow](/gh-aw-fleet/reconcile/) and

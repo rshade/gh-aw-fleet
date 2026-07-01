@@ -21,9 +21,10 @@ export default defineConfig({
 			],
 			plugins: [
 				// Reject relative links (./foo/): under a base path they resolve
-				// incorrectly, and this validator errors on them by default.
-				// Internal links must be base-prefixed root-relative, e.g.
-				// /gh-aw-fleet/foo/ (see docs/README.md → Content link convention).
+				// incorrectly. Pinned explicitly (matches the validator's own
+				// default) so a future default change can't silently disable
+				// this check. Internal links must be base-prefixed root-relative,
+				// e.g. /gh-aw-fleet/foo/ (see docs/README.md → Content link convention).
 				starlightLinksValidator({ errorOnRelativeLinks: true }),
 			],
 			sidebar: [
