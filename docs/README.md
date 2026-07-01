@@ -79,6 +79,15 @@ The accent ramp must target both selectors:
 Using only `:root` themes dark mode but lets light mode fall back to Starlight's
 default accent because `:root[data-theme="light"]` has higher specificity.
 
+## Content link convention
+
+Internal links between docs pages must be **base-prefixed root-relative** —
+`/gh-aw-fleet/<slug>/`, matching the `base` in `astro.config.mjs` — not relative
+(`./<slug>/`). `starlight-links-validator` runs with `errorOnRelativeLinks`
+enabled, so a relative link fails `npm run build` (and the docs CI job) with a
+`RelativeLink` error. When copying this wiring to another project, swap the
+`/gh-aw-fleet/` prefix for that project's `base`.
+
 ## Pipeline separation
 
 `.github/workflows/docs.yml` is separate from the Go release pipeline. It runs

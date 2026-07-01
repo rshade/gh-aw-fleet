@@ -19,13 +19,17 @@ the layer that knows every workflow pin across every managed repo.
 
 Single-fix hotfix releases are exempt.
 
-## Immediate focus
+## Recently shipped (v0.2.5)
 
-The current release focus pairs one cost item with one security item:
+The v0.2.5 release paired cost and security items:
 
 - Read-only over-budget highlighting in the consumption rollup (`--budget`).
 - Promotion of high-severity Layer 1 security findings from advisory to blocking
-  under an opt-in `--strict` flag.
+  under an opt-in `--strict` gate on `deploy`, `sync`, and `upgrade`.
+- Interactive findings confirmation plus a `--yes` bypass for non-interactive use.
+- A joined drift, run-health, no-op, and cost dashboard (`gh-aw-fleet overview`).
+
+For what's next, see the live issue list in the full `ROADMAP.md` linked above.
 
 ## Near-term FinOps
 
@@ -37,11 +41,11 @@ Planned cost-visibility work includes:
 
 ## Security
 
-Security work continues through the scanner pipeline:
+Security work continues through the scanner pipeline (the `--strict` blocking
+gate for HIGH findings shipped in v0.2.5; see above):
 
 - Layer 1 scanner coverage for secrets, compiled workflow hazards, and
   fleet-structural rules.
-- `--strict` promotion for high findings.
 - Future deeper scans for prompt-injection signatures and risky trigger patterns.
 
 ## Documentation and operator quality of life
