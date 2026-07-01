@@ -19,16 +19,43 @@ export default defineConfig({
 					href: 'https://github.com/rshade/gh-aw-fleet',
 				},
 			],
-			plugins: [starlightLinksValidator()],
+			plugins: [
+				// Reject relative links (./foo/): under a base path they resolve
+				// incorrectly, and this validator errors on them by default.
+				// Internal links must be base-prefixed root-relative, e.g.
+				// /gh-aw-fleet/foo/ (see docs/README.md → Content link convention).
+				starlightLinksValidator({ errorOnRelativeLinks: true }),
+			],
 			sidebar: [
 				{
-					label: 'Guide',
+					label: 'Tutorials',
+					items: [
+						{ label: 'Getting Started', slug: 'getting-started' },
+					],
+				},
+				{
+					label: 'How-to guides',
 					items: [
 						{ label: 'Install', slug: 'install' },
+						{ label: 'Recover from a gpg signing failure', slug: 'recover-from-gpg-failure' },
+						{ label: 'Gate CI on fleet drift', slug: 'gate-ci-on-drift' },
+						{ label: 'Resume an interrupted apply', slug: 'resume-interrupted-apply' },
+						{ label: 'Find your top credit burners', slug: 'find-top-credit-burners' },
+					],
+				},
+				{
+					label: 'Reference',
+					items: [
+						{ label: 'CLI reference', slug: 'cli' },
 						{ label: 'Configuration', slug: 'configuration' },
-						{ label: 'Reconcile Workflow', slug: 'reconcile' },
-						{ label: 'Consumption and FinOps', slug: 'consumption' },
 						{ label: 'Fleet Overview', slug: 'overview' },
+					],
+				},
+				{
+					label: 'Explanation',
+					items: [
+						{ label: 'Reconcile workflow', slug: 'reconcile' },
+						{ label: 'Consumption and FinOps', slug: 'consumption' },
 						{ label: 'Roadmap', slug: 'roadmap' },
 					],
 				},

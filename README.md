@@ -181,11 +181,10 @@ and `gh`.
 
 ### Install
 
-**Option 1 — One-liner installer (recommended).** Fetches the installer
-from the latest release's assets (immutable, pinned to a tagged version);
-the installer downloads the matching release archive for your OS/arch,
-verifies its SHA-256 against the release's `checksums.txt`, and drops the
-binary in your install directory.
+**Recommended — one-liner installer.** Fetches the installer from the
+latest release's assets, then downloads the matching archive for your
+OS/arch, verifies its SHA-256 against `checksums.txt`, and installs the
+binary:
 
 ```bash
 # Linux / macOS — installs to $HOME/.local/bin
@@ -200,171 +199,31 @@ iwr -UseBasicParsing https://github.com/rshade/gh-aw-fleet/releases/latest/downl
   | iex
 ```
 
-The release-asset URL is the recommended path — it pins to a tagged
-installer, not a moving `main`. If you're on a release that predates the
-installer assets and `releases/latest/download/install.*` 404s, fall back
-to the `main`-branch installer:
+Prefer `go install github.com/rshade/gh-aw-fleet@latest`, a manual release
+download, or a source build? Need to pin a version, change the install
+directory, or fix a `PATH` that doesn't include the binary? The
+**[Install guide](https://rshade.github.io/gh-aw-fleet/install/)** covers
+every option and the `main`-branch installer fallback.
+
+### First commands
 
 ```bash
-# Fallback — fetches install.sh from main
-curl -sSfL \
-  https://raw.githubusercontent.com/rshade/gh-aw-fleet/main/install.sh \
-  | bash
+gh-aw-fleet list                                 # tracked repos + resolved workflows
+gh-aw-fleet status                               # drift across the fleet (read-only)
+gh-aw-fleet add acme/widgets --profile default   # onboard a repo (dry-run)
+gh-aw-fleet deploy acme/widgets                  # preview a deploy (dry-run)
+gh-aw-fleet deploy acme/widgets --apply          # commit + push + open a PR
 ```
 
-```powershell
-# Fallback — fetches install.ps1 from main
-iwr -UseBasicParsing https://raw.githubusercontent.com/rshade/gh-aw-fleet/main/install.ps1 `
-  | iex
-```
+`add` writes to **`fleet.local.json`** (private, gitignored), not `fleet.json`.
+`deploy`, `sync`, and `upgrade` are dry-run by default; add `--apply` to commit,
+push, and open a PR on the target repo.
 
-Either way, the installer still installs a tagged release binary by
-default: the latest release unless you pin one.
-
-Customizing the install:
-
-- POSIX env vars — `VERSION=v0.2.0` pins a specific release (default:
-  latest); `INSTALL_DIR=/usr/local/bin` overrides the default location.
-- PowerShell parameters — `-Version v0.2.0` pins a release;
-  `-InstallDir <path>` overrides the install directory; `-NoPath` skips the
-  user-scope PATH update.
-
-PowerShell parameters require invoking the downloaded script as a
-`ScriptBlock`:
-
-```powershell
-$installer = [ScriptBlock]::Create(
-  (iwr -UseBasicParsing https://github.com/rshade/gh-aw-fleet/releases/latest/download/install.ps1).Content
-)
-& $installer -Version v0.2.0 -InstallDir "$env:LOCALAPPDATA\gh-aw-fleet\bin" -NoPath
-```
-
-**Option 2 — Manual release download.** Pre-built binaries are published
-for Linux, macOS, and Windows on amd64 and arm64:
-
-```bash
-# Example: Linux amd64
-gh release download --repo rshade/gh-aw-fleet --pattern '*linux_amd64.tar.gz'
-tar -xzf gh-aw-fleet_*_linux_amd64.tar.gz
-sudo mv gh-aw-fleet /usr/local/bin/
-```
-
-See the
-[latest release](https://github.com/rshade/gh-aw-fleet/releases/latest)
-for all available platform archives and checksums.
-
-**Option 3 — `go install`.** Installs into `$(go env GOPATH)/bin`:
-
-```bash
-go install github.com/rshade/gh-aw-fleet@latest
-```
-
-**Option 4 — Build from source.** For contributors and anyone working off
-`main`:
-
-```bash
-git clone https://github.com/rshade/gh-aw-fleet.git
-cd gh-aw-fleet
-go build -o gh-aw-fleet .
-```
-
-> **Note on examples below:** all command examples use bare `gh-aw-fleet`
-> and assume the binary is on your `PATH`. Option 1 installs to
-> `$HOME/.local/bin` by default — make sure that's on your PATH. Option 3
-> installs to `$(go env GOPATH)/bin`, which is not automatically on PATH —
-> add it yourself if `which gh-aw-fleet` comes back empty. Option 2 lets
-> you pick the destination. If you built from source via Option 4 and
-> didn't install the binary, prefix every `gh-aw-fleet` command with `./`
-> to run it from the build directory.
-
-### Example Workflow
-
-List tracked repos and their resolved workflow sets:
-
-```bash
-gh-aw-fleet list
-```
-
-Fetch the upstream catalog (templates.json) so you can review new
-workflows:
-
-```bash
-gh-aw-fleet template fetch
-```
-
-Onboard a new repo into `fleet.local.json` with a profile (`acme/widgets`
-is a placeholder — substitute your `<owner>/<repo>`). Dry-run first, then
-`--apply`:
-
-```bash
-# dry-run; prints planned change
-gh-aw-fleet add acme/widgets --profile default
-# interactive: prompts for confirmation
-gh-aw-fleet add acme/widgets --profile default --apply
-# non-interactive (CI / scripts): skips prompt
-gh-aw-fleet add acme/widgets --profile default --apply --yes
-```
-
-The repo entry is written to **`fleet.local.json`** (the private,
-gitignored config), not `fleet.json` (the committed example). See
-[Two config files](#two-config-files) below.
-
-Dry-run a deploy to one repo (shows what would be added, no changes
-made):
-
-```bash
-gh-aw-fleet deploy acme/widgets
-```
-
-Apply the deploy (commits, pushes, opens a PR in the target repo):
-
-```bash
-gh-aw-fleet deploy acme/widgets --apply
-```
-
-Fail a deploy dry-run or apply when the Layer 1 scanner reports HIGH findings:
-
-```bash
-gh-aw-fleet deploy acme/widgets --strict
-gh-aw-fleet deploy acme/widgets --strict --apply
-```
-
-Reconcile a repo (add missing workflows, flag unexpected ones):
-
-```bash
-gh-aw-fleet sync HavenTrack/goa-service-shared --apply
-```
-
-Upgrade all repos to the latest gh-aw and agentics versions:
-
-```bash
-gh-aw-fleet upgrade --all --apply
-```
-
-Check drift across the fleet without cloning anything (exits 0 only when
-every repo is aligned — chain it before a deploy in CI):
-
-```bash
-gh-aw-fleet status
-gh-aw-fleet status -o json \
-  | jq '.result.repos | map(select(.drift_state == "drifted")) | length'
-```
-
-Show a joined fleet dashboard for drift, recent run health, no-op run rate,
-and AI-credit spend. The default window is trailing 7 days; run failures are
-advisory, and the exit code is still drift-only:
-
-```bash
-gh-aw-fleet overview
-gh-aw-fleet overview rshade/finfocus --trailing 7d
-gh-aw-fleet overview --output json
-```
-
-`overview` renders `REPO DRIFT RUNS FAIL NOOP HEALTH AIC COST`, followed by a
-pooled `TOTAL` row and detail blocks for drifted, errored, or unhealthy repos.
-`NOOP` counts successful runs that took no action but still consumed credits.
-The command reuses the same `gh aw logs --json` fan-out as `consumption`, so it
-can take minutes on larger fleets.
+New here? The
+**[Getting Started tutorial](https://rshade.github.io/gh-aw-fleet/getting-started/)**
+walks an empty fleet through to a reviewed pull request, and the
+**[CLI reference](https://rshade.github.io/gh-aw-fleet/cli/)** lists every command,
+flag, and exit code.
 
 ## Commands
 
@@ -375,35 +234,20 @@ can take minutes on larger fleets.
 | `deploy <repo>` | Deploy the declared workflow set via `gh aw add` + PR; `--strict` blocks HIGH Layer 1 security findings |
 | `sync <repo>` | Reconcile to declared profile (add missing, flag drift); `--strict` blocks HIGH Layer 1 security findings |
 | `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade`; `--strict` blocks HIGH Layer 1 security findings |
-| `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD` |
+| `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD`, flag over-budget rows with `--budget <AIC>` |
 | `overview [repo...]` | Joined drift, run-health, no-op, AIC, and cost dashboard; defaults to `--trailing 7d`; exits non-zero only on drift/errored repos |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
 | `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones) |
 
+See the [CLI reference](https://rshade.github.io/gh-aw-fleet/cli/) for every
+flag, argument, and exit code.
+
 ## Configuration
 
-### Global flags
-
-All commands accept these persistent flags:
-
-- **`--dir <path>`** (default: `.`) — Directory containing `fleet.json` /
-  `fleet.local.json`.
-- **`--log-level <level>`** (default: `info`) — Log verbosity: `trace`,
-  `debug`, `info`, `warn`, `error`. Use `debug` to see every subprocess
-  invocation, timing, and exit code.
-- **`--log-format <format>`** (default: `console`) — Log format: `console`
-  (human-readable on stderr) or `json` (structured logs for `jq` /
-  aggregators).
-- **`-o`, `--output <format>`** (default: `text`) — Output format: `text`
-  (tabular human view) or `json` (machine-readable envelopes for
-  scripting). Supported on `list`, `deploy`, `sync`, `upgrade`, `status`,
-  `consumption`, and `overview` (`upgrade --all` emits NDJSON). Rejected with
-  a clear error on `template fetch` and `add`.
-
-For multi-repo failure debugging,
-[`skills/fleet-deploy/SKILL.md`](skills/fleet-deploy/SKILL.md) recommends
-`--log-level=debug --log-format=json 2>/tmp/log.json` and traversing
-subprocess events with `jq`.
+`gh-aw-fleet` is configured through two files (below) plus a set of global
+flags (`--dir`, `--log-level`, `--log-format`, `-o`/`--output`) and
+per-command flags catalogued in the
+[CLI reference](https://rshade.github.io/gh-aw-fleet/cli/).
 
 ### Two config files
 
@@ -438,244 +282,19 @@ To start from scratch, copy `fleet.example.json` to `fleet.local.json`
 (or to `fleet.json` if you want it committed) and edit, or use
 `gh-aw-fleet add` to generate entries.
 
-### fleet.json schema
+### Full schema and flags
 
-The declarative desired state. Top-level keys:
+The complete configuration and CLI surface lives on the docs site:
 
-- **`version`**: Schema version (currently `1`).
-- **`defaults`**: Fleet-wide defaults. Currently: `engine` (e.g.,
-  `"copilot"` for all repos unless overridden).
-- **`profiles`**: Named bundles of workflows. See
-  [Bundled Profiles](#bundled-profiles) below.
-- **`repos`**: Per-repo desired state (profiles, excludes, extras,
-  overrides).
-
-Example fragment:
-
-```json
-{
-  "version": 1,
-  "defaults": {
-    "engine": "copilot"
-  },
-  "profiles": {
-    "default": {
-      "description": "Baseline every tracked repo gets.",
-      "sources": {
-        "github/gh-aw": { "ref": "v0.79.2" },
-        "githubnext/agentics": {
-          "ref": "96b9d4c39aa22359c0b38265927eadb31dcf4e2a"
-        }
-      },
-      "workflows": [
-        { "name": "audit-workflows", "source": "github/gh-aw" },
-        { "name": "ci-doctor", "source": "githubnext/agentics" }
-      ]
-    }
-  },
-  "repos": {
-    "acme/widgets": {
-      "profiles": ["default"],
-      "extra": [
-        {
-          "name": "shadow-engineer",
-          "source": "local",
-          "path": ".github/workflows/shadow-engineer.md"
-        }
-      ]
-    }
-  }
-}
-```
-
-### Annotations (HuJson)
-
-`fleet.json`, `fleet.local.json`, `templates.json`, and
-`profiles/default.json` all accept [HuJson](https://github.com/tailscale/hujson)
-syntax — a JSON superset that allows `//` line comments, `/* */` block
-comments, and trailing commas. Operators can document *why* a pin is set,
-why a workflow is excluded, or why a repo opts into a `*-plus` profile
-right next to the data.
-
-The loader checks for `<base>.hujson` first and falls back to `<base>.json`
-if the HuJson variant is absent; having both files present for the same
-base name is rejected as ambiguous so the unread file can't silently drift.
-Writes preserve operator-authored comments — `gh-aw-fleet add` and
-`fleet template fetch` only touch the keys they need to change.
-
-Example:
-
-```hujson
-{
-  "version": 1,
-  "profiles": {
-    "default": {
-      // Pinned to the v0.79.2 tag — never `main`, which ships unreleased
-      // features like `mount-as-clis` that break the installed CLI.
-      "sources": {
-        "github/gh-aw": { "ref": "v0.79.2" },
-      },
-      "workflows": [
-        { "name": "audit-workflows", "source": "github/gh-aw" },
-      ],
-    },
-  },
-  "repos": {
-    "acme/widgets": {
-      "profiles": ["default", "security-plus"], // legal asked for SAST
-    },
-  },
-}
-```
-
-### RepoSpec
-
-Per-repo configuration. Keys:
-
-- **`profiles`** (required): List of profile names to apply.
-- **`engine`** (optional): AI engine override (e.g., `"gpt-4"`). Defaults
-  to `defaults.engine`.
-- **`compile_strict`** (optional): Tri-state toggle for
-  `gh aw compile --strict` on this repo's deploy and upgrade pipelines.
-  Omit to auto-detect from repo visibility (see "Compile-strict resolution"
-  below). Set to `true` to force strict ON regardless of visibility; set to
-  `false` to force strict OFF (e.g., a legacy public repo that has
-  workflows that can't yet pass strict validation).
-- **`extra`** (optional): Additional workflows not from any profile.
-  Source can be `"local"` (lives in the target repo) or an upstream repo
-  name.
-- **`exclude`** (optional): List of workflow names to skip (useful when a
-  profile mostly fits but one or two workflows don't).
-- **`overrides`** (optional): Map of workflow name → custom path (if the
-  upstream path doesn't match convention).
-
-#### Compile-strict resolution
-
-`gh-aw-fleet deploy` and `gh-aw-fleet upgrade` invoke `gh aw compile --strict`
-on the work-dir clone after `gh aw add` / `gh aw upgrade` succeeds and
-before `git add .github/`. The decision is driven by `RepoSpec.compile_strict`
-with this resolution order (FR-003):
-
-1. **Explicit override** — when `compile_strict` is present in `fleet.json` /
-   `fleet.local.json`, its value wins. The visibility lookup is skipped
-   entirely.
-2. **Auto-detect from visibility** — when `compile_strict` is absent, the
-   tool calls `gh api /repos/<owner>/<repo>` once per invocation and reads
-   the `visibility` field. `"public"` → strict ON; `"private"` or
-   `"internal"` or any other value → strict OFF.
-3. **Fail-secure on lookup failure** — when the visibility lookup errors
-   (HTTP 403/404/5xx, network failure, malformed JSON), the resolver
-   defaults to strict ON and emits one `warn`-level structured log line
-   naming the repo and a truncated reason. Setting `compile_strict`
-   explicitly bypasses this path.
-
-The `--output json` envelope on both Deploy and Upgrade gains three fields:
-
-- `compile_strict_applied` (`bool`) — `true` ONLY when the strict compile
-  ran and exited 0 in this invocation. Always `false` in dry-run mode.
-- `compile_strict_effective` (`bool`) — the resolver's verdict for this
-  repo, independent of whether compile actually ran. In dry-run mode this
-  is the "would apply on `--apply`" signal; in `--apply` mode it equals
-  `compile_strict_applied` unless the probe or compile aborted.
-- `compile_strict_source` (`string`) — one of `"explicit"`, `"auto-public"`,
-  `"auto-private"`, `"auto-fallback"`, or `""` (resolver didn't run —
-  early error path).
-
-**Minimum `gh aw` version**: `v0.79.2` (the FinOps baseline floor; `compile
---strict` itself has shipped since `v0.68.3`). The tool probes `gh aw compile
---help` before invoking compile and aborts with an actionable diagnostic when
-`--strict` is absent. Install with `gh extension install github/gh-aw --pin
-v0.79.2` — v0.79.x are pre-releases, so a bare `gh extension upgrade aw` stops
-at the latest stable.
-
-Example `fleet.local.json` snippet:
-
-```jsonc
-{
-  "repos": {
-    "rshade/regular-public-repo": {
-      "profiles": ["default"]
-      // omitted → auto-detect (public → strict ON)
-    },
-    "rshade/gh-aw-fleet": {
-      "profiles": ["default"],
-      "compile_strict": true        // explicit force-on (skips visibility lookup)
-    },
-    "rshade/legacy-public": {
-      "profiles": ["default"],
-      "compile_strict": false       // opt out for a workflow that can't yet be strict
-    }
-  }
-}
-```
-
-See [`specs/010-compile-strict-public/quickstart.md`](specs/010-compile-strict-public/quickstart.md)
-for the operator troubleshooting walkthrough.
-
-#### Security strict gate
-
-`deploy`, `sync`, and `upgrade` also accept `--strict`. This is a separate
-security gate, not the `compile_strict` config field above and not `gh aw
-compile --strict`. The flag is per invocation only and is never written to
-`fleet.json` or `fleet.local.json`.
-
-Without `--strict`, security findings remain advisory: they are emitted on
-stderr, included in JSON `warnings[]`, and added to PR bodies when a PR is
-created. With `--strict`, any HIGH Layer 1 finding blocks before commit, push, or
-PR creation. MEDIUM, LOW, INFO, and `promptinj:` findings remain advisory.
-
-Strict aborts write a clone-root `findings.json` containing every finding from
-that run and preserve the work-dir clone for inspection. The same gate applies
-to dry-runs, so CI can use commands such as:
-
-```bash
-gh-aw-fleet deploy acme/widgets --strict
-gh-aw-fleet sync acme/widgets --strict
-gh-aw-fleet upgrade --all --strict --output json
-```
-
-For `upgrade --all --strict --output json`, NDJSON records are emitted through
-the blocked repo and then processing stops at that first strict failure.
-
-#### Interactive findings confirmation and `--yes`
-
-Independent of `--strict`, an `--apply` that produces one or more security
-findings (of **any** severity) pauses for a last-chance confirmation before it
-commits, pushes, or opens a PR — but only when stdout is an interactive
-terminal:
-
-```text
-⚠  2 HIGH, 1 MEDIUM. Proceed with commit? [y/N]
-```
-
-The safe default is **No**: a bare Enter, `n`, or any non-`y` answer aborts
-cleanly, exits non-zero, and preserves the work-dir clone so you can inspect it
-and resume with `--work-dir <clone> --yes`. Answering `y` proceeds, and the PR
-body still carries the `## Security Findings` section.
-
-The prompt is the **third** independent surface for findings, alongside the
-stderr warnings and the PR-body section. It differs from `--strict`: `--strict`
-is a non-interactive hard block on HIGH findings; the prompt is an interactive
-last-chance gate on any finding.
-
-Three things skip the prompt without hiding the findings:
-
-- `--yes` on `deploy`, `sync`, or `upgrade` — proceed without the question;
-  stderr findings and the PR-body section are still produced.
-- A non-interactive stdout (piped, redirected, or CI) — the apply proceeds
-  automatically so nothing ever hangs. Use `--strict` when you want a
-  non-interactive *block* instead.
-- `--output json` — treated as non-interactive even at a TTY, so the JSON
-  envelope is never corrupted by a prompt.
-
-```bash
-gh-aw-fleet deploy acme/widgets --apply --yes        # skip the prompt
-gh-aw-fleet deploy acme/widgets --apply | tee out.txt # piped: no prompt, no hang
-```
-
-The prompt only fires on `--apply` (dry-runs never prompt) and only after the
-`--strict` gate, so a HIGH strict block still wins. `--yes` is per invocation
-and is never written to `fleet.json` or `fleet.local.json`.
+- **[Configuration](https://rshade.github.io/gh-aw-fleet/configuration/)** — the
+  full `fleet.json` schema (`version`, `defaults`, `profiles`, `sources`,
+  `workflows`), every `RepoSpec` field (`compile_strict`, `tier`, `cost_center`,
+  `extra`, `exclude`, `overrides`), the compile-strict resolution order, and
+  HuJson (`//` comments, trailing commas) support.
+- **[CLI reference](https://rshade.github.io/gh-aw-fleet/cli/)** — global flags,
+  every command's flags, and exit codes.
+- **[Reconcile workflow](https://rshade.github.io/gh-aw-fleet/reconcile/)** — the
+  `--strict` security gate, interactive findings confirmation, and `--yes`.
 
 ## Bundled Profiles
 
@@ -774,33 +393,12 @@ output for known error patterns and surfaces remediation hints. Examples:
 
 ### gpg signing failed during `--apply`
 
-This is the most common `--apply` failure mode. The tool runs
-`git commit` non-interactively, so a signing-required git config that
-needs a passphrase prompt has nowhere to surface it. **The tool never
-bypasses signing** (no `--no-gpg-sign`, no `commit.gpgsign=false`) — it
-preserves the in-progress clone so you can finish the commit in your own
-shell where gpg-agent can prompt you.
-
-When `--apply` fails on gpg signing:
-
-1. The clone directory is preserved at
-   `/tmp/gh-aw-fleet-<owner>-<repo>-<timestamp>/` with all files staged
-   on the deploy branch.
-2. `cd` into that directory and finish manually:
-
-   ```bash
-   cd /tmp/gh-aw-fleet-<owner>-<repo>-<timestamp>
-   git commit -m 'ci(workflows): add <N> agentic workflows via gh-aw-fleet'
-   # branch is fleet/deploy-<timestamp>
-   git push -u origin <branch-name>
-   gh pr create \
-     --title "ci(workflows): add <N> agentic workflows via gh-aw-fleet" \
-     --body "..."
-   ```
-
-3. The full template (with body, conventional-commits validation rules,
-   and edge-case handling for `gh aw init` and skipped workflows) is in
-   [`skills/fleet-deploy/SKILL.md`](skills/fleet-deploy/SKILL.md).
+The most common `--apply` failure: the tool runs `git commit`
+non-interactively, so a signing-required config with a passphrase prompt
+has nowhere to surface it. The tool never bypasses signing — it preserves
+the clone so you can finish the commit in your own shell. See
+**[Recover from a gpg signing failure](https://rshade.github.io/gh-aw-fleet/recover-from-gpg-failure/)**
+for the manual-finish recipe.
 
 ### `Unknown property: mount-as-clis` and similar pre-flight failures
 
@@ -844,17 +442,10 @@ a file its own strict check rejects.
 
 ### Resuming after a partial failure
 
-The `--work-dir <path>` flag points `deploy` / `upgrade` / `sync` at an
-existing clone instead of cloning fresh. Use it with the
-`/tmp/gh-aw-fleet-*` directory preserved from a failed run to re-attempt
-without re-cloning.
-
-When `deploy --apply --work-dir <path>` is run against a preserved clone
-that has staged workflow changes, the tool resumes at the commit gate
-(skipping clone, `gh aw init`, and `gh aw add`). If the user manually
-committed after a GPG failure, the tool detects the unpushed commits and
-resumes at the push gate, proceeding directly to `git push` and
-`gh pr create`.
+The `--work-dir <path>` flag re-runs `deploy` / `sync` / `upgrade` against
+a preserved `/tmp/gh-aw-fleet-*` clone instead of cloning fresh, resuming
+at the commit or push gate. See
+**[Resume an interrupted apply](https://rshade.github.io/gh-aw-fleet/resume-interrupted-apply/)**.
 
 ## Known Limitations & Roadmap
 
@@ -868,6 +459,18 @@ resumes at the push gate, proceeding directly to `git push` and
 
 ## Further reading
 
+- **Docs site** — <https://rshade.github.io/gh-aw-fleet/>:
+  [Getting Started](https://rshade.github.io/gh-aw-fleet/getting-started/)
+  (tutorial); the how-to guides
+  ([gate CI on drift](https://rshade.github.io/gh-aw-fleet/gate-ci-on-drift/),
+  [recover from gpg](https://rshade.github.io/gh-aw-fleet/recover-from-gpg-failure/),
+  [resume an apply](https://rshade.github.io/gh-aw-fleet/resume-interrupted-apply/),
+  [find credit burners](https://rshade.github.io/gh-aw-fleet/find-top-credit-burners/));
+  the [CLI reference](https://rshade.github.io/gh-aw-fleet/cli/) and
+  [Configuration](https://rshade.github.io/gh-aw-fleet/configuration/); and the
+  [Reconcile](https://rshade.github.io/gh-aw-fleet/reconcile/) and
+  [Consumption and FinOps](https://rshade.github.io/gh-aw-fleet/consumption/)
+  explanations.
 - **[CONTEXT.md](CONTEXT.md)** — the project constitution. Architectural
   identity, hard scope boundaries, and what this tool deliberately does
   *not* do. Read before proposing features.
@@ -890,11 +493,6 @@ resumes at the push gate, proceeding directly to `git push` and
     materialize a chosen workflow set as a `fleet.json` profile.
 - **[CLAUDE.md](CLAUDE.md)** — invariants for AI coding agents working
   in this repo. Useful for human contributors too as a quick reference.
-- **[docs/finops.md](docs/finops.md)** — cost tracking for agentic
-  workflows. Frames the two-layer model: deployed aggregate rollup (Layer 1,
-  via `api-consumption-report` and `gh-aw-fleet consumption`) and optional
-  per-run attribution (Layer 2, via agentics `cost-tracker`). Explains the
-  trade-offs and why the fleet stops where it does.
 
 ## Contributing & Development
 

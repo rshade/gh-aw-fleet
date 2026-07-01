@@ -77,6 +77,11 @@ When the gate blocks:
 - the clone is preserved for inspection, including dry-run temp clones;
 - commit, push, and PR creation do not run.
 
+Compiled `*.lock.yml` files can themselves trip HIGH `actionlint` findings — most
+commonly the generated `concurrency: queue` key, which standard `actionlint`
+rejects — and block the gate on output you cannot edit. Suppress them per repo
+with a `.github/actionlint.yaml` ignore file.
+
 Lower-severity findings and `promptinj:` findings remain advisory. For
 `upgrade --all --strict --output json`, NDJSON records are emitted through the
 blocked repo and then processing stops.

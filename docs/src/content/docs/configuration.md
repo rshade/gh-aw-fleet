@@ -135,11 +135,41 @@ Repo fields:
 - `compile_strict`: optional boolean override for `gh aw compile --strict`.
 - `extra`: optional workflows outside any profile.
 - `exclude`: optional workflow names to omit from the resolved profile set.
+- `overrides`: optional map of workflow name to a custom path, for when the
+  upstream path does not match the source's convention.
 - `cost_center`: optional free-form billing tag used by
   `gh-aw-fleet consumption --by cost-center`.
 
 `extra` can reference local workflows or upstream sources. Local extras point at
 workflow markdown already present in the target repository.
+
+## Compile-strict resolution
+
+`deploy` and `upgrade` run `gh aw compile --strict` on the clone after `gh aw
+add` / `gh aw upgrade`, before staging changes. The `compile_strict` field
+controls whether that strict compile runs, resolved in this order:
+
+1. **Explicit override** — a `compile_strict` value in `fleet.json` /
+   `fleet.local.json` wins; the visibility lookup is skipped.
+2. **Auto-detect from visibility** — when `compile_strict` is absent, the tool
+   reads the repo's `visibility` via `gh api /repos/<owner>/<repo>`. `public`
+   turns strict on; `private`, `internal`, or anything else turns it off.
+3. **Fail-secure** — if the visibility lookup fails (HTTP error, network failure,
+   malformed JSON), the resolver defaults to strict on and logs one `warn` line.
+
+The `--output json` envelope for `deploy` and `upgrade` reports the outcome in
+three fields:
+
+- `compile_strict_applied` (`bool`) — true only when the strict compile ran and
+  exited `0` this invocation; always false in dry-run.
+- `compile_strict_effective` (`bool`) — the resolver's verdict regardless of
+  whether compile ran (the "would apply on `--apply`" signal in dry-run).
+- `compile_strict_source` (`string`) — `explicit`, `auto-public`, `auto-private`,
+  `auto-fallback`, or `""`.
+
+This is separate from the per-invocation `--strict` security gate (see
+[Reconcile workflow](/gh-aw-fleet/reconcile/)): compile-strict validates the generated
+GitHub Actions YAML, while the security gate blocks on scanner findings.
 
 ## Overlay granularity
 

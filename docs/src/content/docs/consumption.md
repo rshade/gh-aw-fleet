@@ -69,6 +69,22 @@ a `cost_center` tag fold into the literal `<unset>` bucket.
 - `--trailing 7d`: all runs in the trailing 7-day window.
 - `--since 2026-06-01`: all runs on or after the given date.
 
+### Budget highlighting: `--budget`
+
+Pass `--budget <AIC>` to flag rows whose AI-credit total strictly exceeds the
+given ceiling. It is read-only: it surfaces cost concentration at a glance but
+never enforces or blocks anything.
+
+```bash
+# Flag any group (and top burner) over 500 AIC
+gh-aw-fleet consumption --by repo --budget 500
+```
+
+With a ceiling set, the table and the `TOP 10 BURNERS` footer gain a trailing
+`OVER` column that marks each over-ceiling row with `!`. In `--output json`, the
+same signal appears as an over-budget field on each group instead of a column.
+The ceiling must be a finite, non-negative number.
+
 ### Command examples
 
 ```bash
@@ -158,8 +174,6 @@ These open issues track the fleet's cost-visibility build-out:
   `--source logs`, bounded concurrency and no-download fast path.
 - [#119](https://github.com/rshade/gh-aw-fleet/issues/119):
   paginate Actions workflow discovery for the logs source.
-- [#129](https://github.com/rshade/gh-aw-fleet/issues/129):
-  read-only over-budget highlighting in the rollup (`--budget`).
 - [#59](https://github.com/rshade/gh-aw-fleet/issues/59):
   surface Copilot credit attribution once `aw_info.json` stabilizes upstream.
 - [#105](https://github.com/rshade/gh-aw-fleet/issues/105):

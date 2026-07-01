@@ -89,7 +89,7 @@ but the logs fan-out is still the slow path.
 
 ## See Also
 
-- [`gh-aw-fleet consumption`](./consumption/) for grouped AIC rollups by repo,
+- [`gh-aw-fleet consumption`](/gh-aw-fleet/consumption/) for grouped AIC rollups by repo,
   profile, cost center, or workflow.
 - [`AGENTS.md`](https://github.com/rshade/gh-aw-fleet/blob/main/AGENTS.md) for
   implementation notes on the shared `gh aw logs` fan-out.
