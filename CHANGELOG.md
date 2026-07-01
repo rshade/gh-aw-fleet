@@ -10,6 +10,18 @@
 
 * **logging:** `⚠ WARNING:` lines for missing Actions secrets (deploy) and workflow drift (sync) moved from stdout (tabwriter) to stderr (structured `warn`-level log events). Scripts that grepped stdout for `⚠ WARNING:` should switch to stderr. The `hint:` plaintext lines on stdout are unchanged and are additionally emitted as structured `warn` events on stderr.
 
+## [0.2.6](https://github.com/rshade/gh-aw-fleet/compare/v0.2.5...v0.2.6) (2026-07-01)
+
+
+### Fixed
+
+* **deps:** update module github.com/rshade/ax-go to v0.3.0 ([#178](https://github.com/rshade/gh-aw-fleet/issues/178)) ([2d5dc3e](https://github.com/rshade/gh-aw-fleet/commit/2d5dc3e63d7254e14f2e0eed6be85b4e2be47754))
+
+
+### Documentation
+
+* add tutorial/how-to/reference pages and de-duplicate README ([#184](https://github.com/rshade/gh-aw-fleet/issues/184)) ([b7c04fc](https://github.com/rshade/gh-aw-fleet/commit/b7c04fc880a288e5f3b200b0eb661f7ca3589913))
+
 ## [0.2.5](https://github.com/rshade/gh-aw-fleet/compare/v0.2.4...v0.2.5) (2026-06-30)
 
 
