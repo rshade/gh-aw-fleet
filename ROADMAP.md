@@ -15,7 +15,7 @@ is biased toward *operator ergonomics* (resume, preflight, packaging) over
 *feature surface area* (new commands, new abstractions). When in doubt: less
 code, more delegation.
 
-The project is at **v0.2.4** (2026-06-22). The 2026-06-01 transition to
+The project is at **v0.2.5** (2026-06-30). The 2026-06-01 transition to
 usage-based Copilot billing has shifted the near-term agenda: fleet operators
 need cross-repo cost visibility, and fleet — uniquely positioned to know which
 repo runs which profile pinned to which ref — is the natural layer to provide
@@ -34,73 +34,101 @@ fleet-layer tool existing.
 
 **Identifying candidates**:
 
-- **Cost**: items labeled `cost` on GitHub — #102 (Near-Term),
-  #106 / #107 / #113 / #53 / #59 / #60 (Future);
-  #57 / #103 / #108 / #104 / #129 / #153 shipped in the v0.2.x line and since.
+- **Cost**: items labeled `cost` on GitHub — #102 (Immediate Focus),
+  #198 (Near-Term), #106 / #107 / #113 / #53 / #59 / #60 (Future);
+  #57 / #103 / #108 / #104 / #129 / #153 shipped in the v0.2.x line.
 - **Security**: items labeled `security` on GitHub — the security epic
-  #36 with child #40 (Immediate Focus) and #39 (Future); the `--strict`
-  HIGH-finding promotion #38, the supply-chain conflict scanners #101 / #100,
-  and #49 (all shipped).
+  #36 with the `--strict`-gate remediation pair #180 / #179 (Immediate Focus)
+  and `--deep-scan` #39 (Future); the `--strict` HIGH-finding promotion #38,
+  the defense-in-depth UX child #40, the supply-chain conflict scanners
+  #101 / #100, and #49 (all shipped).
 
 **Status**: release-please cuts **patch** bumps for `0.x` (latest tag
-**v0.2.4**, 2026-06-22; `main` has unreleased commits awaiting the next tag).
-v0.2.0 satisfied the rule (#54 / #55 / #56 cost prereqs, #37 Layer 1 security
-scanner); the v0.2.1-v0.2.4 line shipped the cost half repeatedly — the
-consumption rollup (#57), the `gh aw logs --json` AIC source (#103 / PR #116),
-and the v0.79.2 FinOps baseline (#108) — alongside the security half (#49
-`--strict` on public repos, plus the supply-chain conflict scanners #101 / #100
-and the trigger-risk lint #104). The cost + security trio now **closed** on
-`main` and awaiting the next tag: the over-budget highlight (#129, cost,
-PR #160), the HIGH-finding `--strict` promotion (#38, security, PR #161) — both
-closed 2026-06-23 — and the cross-repo `overview` wedge (#153, cost, closed
-2026-06-29). Immediate Focus has rotated to the security epic's
-defense-in-depth UX child (#40, security) to seed the following release's
-security slot.
+**v0.2.5**, 2026-06-30). v0.2.0 satisfied the rule (#54 / #55 / #56 cost
+prereqs, #37 Layer 1 security scanner); the v0.2.1-v0.2.4 line shipped the cost
+half repeatedly — the consumption rollup (#57), the `gh aw logs --json` AIC
+source (#103 / PR #116), and the v0.79.2 FinOps baseline (#108) — alongside the
+security half (#49 `--strict` on public repos, plus the supply-chain conflict
+scanners #101 / #100 and the trigger-risk lint #104). **v0.2.5 shipped** the
+cost + security trio that had been on `main`: the over-budget highlight (#129,
+cost, PR #160) and the HIGH-finding `--strict` promotion (#38, security,
+PR #161) — both closed 2026-06-23 — plus the cross-repo `overview` wedge (#153,
+cost, closed 2026-06-29) and the defense-in-depth UX child (#40, security,
+closed 2026-06-30). The **post-v0.2.5 in-flight release** carries the
+`--strict`-gate remediation pair (#180 `fix`, #179 `feat`, both security) in
+Immediate Focus, now **balanced** by the promoted cost item #102 forecast `[L]`
+(picked over #198 `--compare` as the foundational FinOps core). Because #179 is
+a `feat`, #102 must land in the release that carries it; a #180-only
+`fix`-hotfix release would be composition-exempt.
 
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
 
 ## Immediate Focus (next release in progress)
 
-Latest tag is **v0.2.4** (2026-06-22). The cross-repo `overview` wedge (#153,
-cost) **closed 2026-06-29** and now awaits the next release-please tag (see
-Completed Milestones), joining the over-budget highlight (#129, cost, PR #160)
-and the HIGH-finding `--strict` promotion (#38, security, PR #161) already
-closed 2026-06-23. That trio covers the in-flight release's cost + security
-slots. With overview shipped, Immediate Focus has rotated to the security
-epic's defense-in-depth UX child (#40, security), seeding the *following*
-release's security slot. Its drill-down companion #154 (whose
-`ship after overview lands` trigger is now met) and CI gate #155 remain
-eligible for a later rotation.
+Latest tag is **v0.2.5** (2026-06-30), which shipped the #129 / #153 / #38 / #40
+cost + security set (see Completed Milestones). The **post-v0.2.5 in-flight
+release** holds the coupled `--strict`-gate remediation pair surfaced while
+testing v0.2.5 (PR #164): `--strict` blocks on ~21 HIGH `actionlint:*` findings
+on gh-aw **compiler-generated** `*.lock.yml` files that operators cannot fix, so
+the gate ships correct but **un-enableable** on a real agentics fleet. #180 is
+the immediate severity fix; #179 is the declarative waiver follow-on. Both are
+`security`. Paired with them is the cost item **#102 forecast**, promoted to
+balance the release's composition. The overview drill-down companion #154
+(`ship after overview lands` trigger now met) and CI gate #155 remain eligible
+for a later rotation.
 
-> `/roadmap sync` (2026-06-28) promoted #40 to single-WIP after #153 closed the
-> same day. Gate state: depth 0 → target 1, composition balanced (the closed
-> trio #129 / #153 cost + #38 security covers the in-flight release), so exactly
-> one slot opened. #40 was the mechanical top (+20: epic-eligible +15, medium
-> +5) — the operator promoted it this round (reversing the 2026-06-23 deferral)
-> now that #153 has shipped. Demote/rotate again once #40 lands; #154 (+15,
-> trigger now met) is the strongest next candidate.
+> `/roadmap sync` (2026-07-07) kept BOTH #180 + #179 in Immediate Focus per
+> operator direction (they're one coupled gate fix), then promoted **#102
+> forecast** to fill the cost slot. Gate state: depth 2 security,
+> `target_focus_depth` 1 → +1 cost-composition bump → `effective_target` 2, but
+> the security pair already occupied both slots leaving **cost uncovered**.
+> Since #179 is a `feat`, the next feature-bearing release must pair a cost item;
+> #102 (+30 fills cost slot, foundational FinOps core) was picked over #198
+> `--compare` `[L]` (+30, derivative post-hoc lens). Result: depth 3 by operator
+> direction — 2 security + 1 cost, composition now balanced. If #180 ships alone
+> first as a `fix`-hotfix it stays composition-exempt; #102 must land in the
+> release that carries #179.
 
-- [ ] [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
-  Defense-in-depth UX: stderr + interactive prompt + PR body Security Findings
-  section `[M]` `security`
-  *Child of the security epic #36 (promotion-eligible since Layer 1 #37 shipped
-  and the `--strict` promotion #38 closed). Surfaces scanner findings across
-  three channels — structured stderr, an interactive confirm prompt, and a
-  PR-body "Security Findings" section — so advisory findings stop dead-ending in
-  logs. Advisory-only; pairs with the still-open `--deep-scan` sibling #39.*
-  *Promoted by /roadmap sync on 2026-06-28 — refills the single WIP slot vacated
-  by #153; seeds the following release's security composition slot.*
+- [ ] [#180](https://github.com/rshade/gh-aw-fleet/issues/180)
+  `fix(security)`: demote actionlint compiled-lock-file findings from HIGH to
+  MEDIUM `[S]` `security`
+  *`actionlint` only ever runs on `.github/workflows/*.lock.yml` (compiler
+  output marked `DO NOT EDIT`); a single `concurrency: queue: max` syntax-check
+  false-positive drags the whole file to HIGH, blocking `--strict` on ~21
+  unactionable findings. Cap `actionlint:*` at MEDIUM so they stay advisory but
+  never block. The immediate unblock for `--strict`.*
+- [ ] [#179](https://github.com/rshade/gh-aw-fleet/issues/179)
+  `feat(security)`: add fleet-side suppression/waiver for the `--strict` gate
+  `[M]` `security`
+  *Declarative `security.suppress` block in `fleet.json` (overlay-able via
+  `fleet.local.json`), matched by rule + file glob, applied at the blocking
+  computation only — suppressed findings still surface as advisory, preserving
+  the audit trail. The durable waiver that lets operators enable `--strict`
+  without being permanently blocked by findings in artifacts they don't author.
+  Follow-on to #180; child of the security epic #36.*
+- [ ] [#102](https://github.com/rshade/gh-aw-fleet/issues/102)
+  `gh-aw-fleet forecast` — fleet-wide pre-spend cost projection `[L]` `cost`
+  `finops`
+  *Wrap `gh aw forecast --json` across the fleet, aggregate projected AIC
+  (P50/P95 per #108's spike), group `--by repo|profile|cost-center|tier`. The
+  cost half of the in-flight release's composition — pre-spend/preventive,
+  thematically paired with the security-hardening work.*
+  *Promoted by /roadmap sync on 2026-07-07 — fills the cost composition slot for
+  #179's feature-bearing release; picked over #198 as the foundational FinOps
+  core.*
 
 ## Near-Term Vision (v0.4 — FinOps build-out + operator QoL)
 
-With the FinOps build-out shipped and the cost + security composition trio
-(#129, #153, #38) now closed and awaiting the next tag, Immediate Focus holds
-the security epic's defense-in-depth UX child (#40). Near-Term holds the
-overview drill-down companion (#154, trigger now met), the remaining FinOps
-work — forecast (#102) and consumption scale-hardening (#119) — plus the
-deploy/consumption follow-ups (#112 / #115), a diagnostics expansion (#99), the
-docs-theme adoption (#147), and four docs items (#94 / #95 / #127 / #128).
+With the FinOps build-out and the cost + security composition trio
+(#129, #153, #38, #40) now **shipped in v0.2.5**, Immediate Focus holds the
+`--strict`-gate remediation pair (#180 / #179, security) paired with the cost
+item forecast (#102). Near-Term holds the overview drill-down companion (#154,
+trigger now met), the model-support advisory (#201), the remaining FinOps work —
+consumption scale-hardening (#119) and the period-over-period `--compare` lens
+(#198) — plus the deploy/consumption follow-ups (#112 / #115), a diagnostics
+expansion (#99), the docs-theme adoption (#147), and four docs items
+(#94 / #95 / #127 / #128).
 
 ### Observability / cross-repo wedge
 
@@ -116,6 +144,16 @@ observability; this CLI view ships standalone and locally first.
   *Wraps `gh aw logs` and groups failed runs by root cause (via `CollectHints`)
   so overview's FAIL counts don't dead-end in the GitHub UI. Drill-down
   companion to #153.*
+- [ ] [#201](https://github.com/rshade/gh-aw-fleet/issues/201)
+  `overview`: flag repos failing on unsupported/deprecated Copilot models `[M]`
+  *Extend the read-only `overview` run-health path with an advisory that names
+  which repos are 400-ing on `model_not_supported` (and which model), so
+  operators fix it (set `GH_AW_DEFAULT_MODEL_COPILOT`) before every scheduled
+  run silently fails. Fleet-wide and silent today: once each repo's compiler
+  skew clears, gh-aw's baked default (`claude-sonnet-4.6`) 400s on this
+  subscription; gh-aw also deprecates models over time (dropped `gpt-5-mini` in
+  v0.81.5). Triaged into Near-Term by `/roadmap sync` 2026-07-07 (was
+  untriaged).*
 
 ### FinOps / cost visibility
 
@@ -124,10 +162,15 @@ The 2026-06-01 usage-based Copilot billing transition makes AI-credit
 (#108, shipped in v0.2.2) captured the upstream `--json` surfaces these
 build on.
 
-- [ ] [#102](https://github.com/rshade/gh-aw-fleet/issues/102) `gh-aw-fleet
-  forecast` — fleet-wide pre-spend cost projection `[L]` `cost` `finops`
-  *Wrap `gh aw forecast --json` across the fleet, aggregate projected AIC
-  (P50/P95 per #108's spike), group `--by repo|profile|cost-center|tier`.*
+- [ ] [#198](https://github.com/rshade/gh-aw-fleet/issues/198)
+  `consumption --compare` — period-over-period spend delta by workflow `[L]`
+  `cost` `finops`
+  *The "why did spend change?" lens: run the existing per-`--by` rollup over the
+  current window and the immediately-preceding equal-length window, join on the
+  group key, and rank per-key AIC deltas by magnitude. Completes the FinOps
+  quartet (rollup answers *what*, `--budget` a static threshold, forecast
+  *future*; `--compare` answers *what moved*). A ranked cost candidate to pair
+  with #179's feature-bearing release.*
 - [ ] [#119](https://github.com/rshade/gh-aw-fleet/issues/119) Paginate
   Actions workflow discovery for the logs consumption source `[M]`
   `finops`
@@ -240,21 +283,29 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   Add security scanning to `upgrade`/`sync`/`deploy` pipeline `[L]`
   *Umbrella: insert a scanner layer that catches secrets, dangerous
   compiled-YAML patterns, and fleet-structural violations before PRs merge.
-  Layer 1 (#37) shipped 2026-05-07 and the `--strict` promotion (#38) shipped
-  2026-06-23; #40 was promoted to Immediate Focus 2026-06-28, and #39 remains
-  eligible for promotion under the epic's own rule.*
+  Layer 1 (#37) shipped 2026-05-07, the `--strict` promotion (#38) shipped
+  2026-06-23, and the defense-in-depth UX child (#40) shipped 2026-06-30 (v0.2.5).
+  The `--strict`-gate remediation pair #180 / #179 (now in Immediate Focus)
+  makes `--strict` enableable on a real fleet; #39 remains eligible for
+  promotion under the epic's own rule.*
   - [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
     scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
     (shipped 2026-05-07)
   - [x] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict`
     flag: promote HIGH Layer 1 findings from advisory to blocking `[S]`
     (shipped 2026-06-23, PR #161)
+  - [x] [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
+    Defense-in-depth UX: stderr + interactive prompt + PR body Security
+    Findings section `[M]` (shipped 2026-06-30, v0.2.5)
+  - [ ] [#180](https://github.com/rshade/gh-aw-fleet/issues/180) `fix`: demote
+    actionlint compiled-lock-file findings from HIGH to MEDIUM `[S]` —
+    **now in Immediate Focus** (the `--strict`-gate unblock)
+  - [ ] [#179](https://github.com/rshade/gh-aw-fleet/issues/179) `feat`:
+    fleet-side `security.suppress` waiver for the `--strict` gate `[M]` —
+    **now in Immediate Focus** (durable waiver; follow-on to #180)
   - [ ] [#39](https://github.com/rshade/gh-aw-fleet/issues/39)
     `--deep-scan` flag: prompt-injection regex signatures + optional
     classifier `[L]`
-  - [ ] [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
-    Defense-in-depth UX: stderr + interactive prompt + PR body Security
-    Findings section `[M]` — **now in Immediate Focus (promoted 2026-06-28)**
 - [ ] Pin hygiene validator `[S]`
   *New `fleet validate` command: scan `fleet.json` and every resolved
   `SourceRef` for floating refs (`main`, `latest`, branch names) and fail on
@@ -271,6 +322,16 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   `author_association` filter). Zero-clone via `gh api`; shares plumbing with
   the proposed `status` subcommand (#10). Natural Layer 2 rule for #37's
   scanner framework once that lands.*
+- [ ] [#197](https://github.com/rshade/gh-aw-fleet/issues/197) Extend
+  `renovate.json` to protect the gh-aw-generated `agentics-maintenance.yml`
+  from action bumps `[S]` `security`
+  *`renovate.json`'s `*.lock.yml` file-scoped disable rule misses
+  `agentics-maintenance.yml` (gh-aw-generated but plain `.yml`), so its
+  standard-action pins (`actions/checkout`, `actions/cache`) stay re-bumpable —
+  Renovate already drifted them and the #193 recompile reset them. Extend the
+  rule to cover the generated non-lock file. Incident-driven follow-up to the
+  Renovate conflict scanner #100. Triaged by `/roadmap sync` 2026-07-07 (was
+  mislabeled `dependencies` — a noise label — and off the roadmap).*
 
 ### FinOps (deferred / upstream-blocked)
 
@@ -463,27 +524,37 @@ were deferred at v1 to keep the initial command surface small.
 
 ### 2026-Q2
 
+- [x] [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
+  Defense-in-depth UX: stderr + interactive prompt + PR body Security Findings
+  section `[M]` `security`
+  *Closed 2026-06-30 (shipped in v0.2.5). Child of the security epic #36,
+  promotion-eligible since Layer 1 (#37) shipped. Surfaces scanner findings
+  across three channels — structured stderr, an interactive confirm prompt, and
+  a PR-body "Security Findings" section — so advisory findings stop dead-ending
+  in logs. Advisory-only. Filled v0.2.5's security composition slot alongside
+  the #38 `--strict` promotion; its `--strict`-enableable follow-ups #180 / #179
+  are now in Immediate Focus.*
 - [x] [#153](https://github.com/rshade/gh-aw-fleet/issues/153)
   `gh-aw-fleet overview` — unified cross-repo health + cost + drift view `[L]`
   `cost` `finops` `cross-repo`
-  *Closed 2026-06-29. One read-only dashboard joining run health
-  (failures/success %), cost (AIC/USD), and drift per repo, reusing the
+  *Closed 2026-06-29 (shipped in v0.2.5). One read-only dashboard joining run
+  health (failures/success %), cost (AIC/USD), and drift per repo, reusing the
   `Status()` + `gh aw logs` fan-outs. Shipped standalone and locally;
-  `unblocks: 146` (control-plane epic). Anchored the in-flight release's cost
-  composition slot; drill-down companion #154 and CI gate #155 now eligible.*
+  `unblocks: 146` (control-plane epic). Anchored v0.2.5's cost composition slot;
+  drill-down companion #154 and CI gate #155 now eligible.*
 - [x] [#129](https://github.com/rshade/gh-aw-fleet/issues/129) Read-only
   over-budget highlighting in the rollup (`--budget`) `[M]` `cost` `finops`
   `spec-first`
-  *Closed 2026-06-23 (PR #160). Optional per-row AIC ceiling that highlights
-  hot rollup rows — the read-only "operate / anomaly" lens (no cap, no alert,
-  exit 0). Filled the in-flight release's cost composition slot.*
+  *Closed 2026-06-23 (PR #160, shipped in v0.2.5). Optional per-row AIC ceiling
+  that highlights hot rollup rows — the read-only "operate / anomaly" lens (no
+  cap, no alert, exit 0). Filled v0.2.5's cost composition slot.*
 - [x] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict` flag:
   promote HIGH Layer 1 findings from advisory to blocking `[S]` `security`
-  *Closed 2026-06-23 (PR #161). Child of the security epic #36, promotion-
-  eligible since Layer 1 (#37) shipped 2026-05-07. Flips advisory HIGH findings
-  to blocking under opt-in `--strict` across deploy/sync/upgrade. Filled the
-  in-flight release's security composition slot; #36's remaining children
-  (#39 / #40) stay eligible for future promotion.*
+  *Closed 2026-06-23 (PR #161, shipped in v0.2.5). Child of the security epic
+  #36, promotion-eligible since Layer 1 (#37) shipped 2026-05-07. Flips advisory
+  HIGH findings to blocking under opt-in `--strict` across deploy/sync/upgrade.
+  Filled v0.2.5's security composition slot (with #40). Surfaced the
+  un-enableable-gate problem the #180 / #179 remediation pair now fixes.*
 - [x] [#156](https://github.com/rshade/gh-aw-fleet/issues/156) Adopt `ax-go` as
   the AX foundation — phase 1 (amend constitution + config primitives +
   `__schema` discoverability) `[L]` `cross-repo` `spec-first`
@@ -721,21 +792,32 @@ Any roadmap item that violates these is rejected, not negotiated.
 
 [meta-spec]: ./CONTEXT.md#roadmap-meta-issue-body-convention
 
-> Tracked as GitHub issues: Immediate Focus — the security epic's
-> defense-in-depth UX child (#40, security), promoted 2026-06-28; Near-Term —
-> the overview drill-down companion (#154, trigger now met), the FinOps
-> build-out (#102, #119), the deploy/consumption follow-ups (#112, #115), a
+> Tracked as GitHub issues: Immediate Focus — the coupled `--strict`-gate
+> remediation pair #180 (`fix`, demote actionlint HIGH→MEDIUM) and #179 (`feat`,
+> `security.suppress` waiver), both security, kept together per operator
+> direction 2026-07-07, plus the promoted cost item #102 (forecast) that
+> balances the release's composition; Near-Term — the overview drill-down
+> companion (#154, trigger now met), the model-support advisory (#201), the
+> FinOps build-out (#198, #119), the deploy/consumption follow-ups (#112, #115),
+> a
 > diagnostics hint (#99), the docs-theme adoption (#147), and docs items (#94,
 > #95, #127, #128); Future Vision — the security epic (#36 with child #39), the
-> FinOps deferred set (#105, #106, #107, #113, #53, #59, #60), the control-plane
-> enablement cluster (#146 epic with #141–#145 and #163), the overview CI gate
-> (#155), and the Status refinements (#61, #62). Closed on `main` awaiting the
-> next tag: the in-flight cost + security composition trio #129 / #153 / #38
-> (#129 and #38 closed 2026-06-23, #153 closed 2026-06-29), alongside the ax-go
-> phase 1 (#156) and the `pkg/fleet` export (#148). Excluded as operational
-> noise: #5 (Dependency Dashboard) and the `[aw]` bot failure reports (#140 /
-> #151 / #157 / #165 / #166 / #167 / #174 / #175). Flagged for manual close:
-> #162 (Pluggable ConfigSource) duplicates #163 and is unlabeled — close it as
-> a dup (`/roadmap sync` lacks permission to close issues it did not open). The
-> unlinked Near-Term and Future items don't have issues yet — open them as work
-> picks up, then run `/roadmap sync`.
+> renovate-hardening follow-up (#197), the FinOps deferred set (#105, #106,
+> #107, #113, #53, #59, #60), the control-plane enablement cluster (#146 epic
+> with #141–#145 and #163), the overview CI gate (#155), and the Status
+> refinements (#61, #62). **Shipped in v0.2.5** (tagged 2026-06-30): the cost +
+> security set #129 / #153 / #38 / #40, alongside the ax-go phase 1 (#156) and
+> the `pkg/fleet` export (#148). Post-v0.2.5 in-flight: #180 / #179 (security) +
+> #102 forecast (cost, promoted 2026-07-07) — composition balanced; #102 must
+> land in the release carrying #179, or #180 ships first as a `fix`-hotfix.
+> Excluded as operational
+> noise: #5 (Dependency Dashboard), #200 (`[aw]` No-Op Runs), #196 (pin-align
+> chore, `dependencies`), and the `[aw]` bot failure reports (#140 / #151 /
+> #157 / #165 / #166 / #167 / #174 / #175 / #183 / #188 / #190–#192 / #199).
+> Flagged for manual close: #162 (Pluggable ConfigSource) duplicates #163 and is
+> unlabeled — close it as a dup (`/roadmap sync` lacks permission to close issues
+> it did not open). #197 was mislabeled `dependencies` (a noise label) and off
+> the roadmap; `/roadmap sync` reclassified it as a `security` follow-up (remove
+> the `dependencies` label to keep it tracked). The unlinked Near-Term and Future
+> items don't have issues yet — open them as work picks up, then run
+> `/roadmap sync`.
