@@ -1,10 +1,10 @@
 module github.com/rshade/gh-aw-fleet
 
-go 1.26.5
+go 1.26.7
 
 require (
 	github.com/rs/zerolog v1.35.1
-	github.com/rshade/ax-go v0.4.0
+	github.com/rshade/ax-go v0.5.0
 	github.com/spf13/cobra v1.10.2
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/zricethezav/gitleaks/v8 v8.30.1
@@ -64,7 +64,7 @@ require (
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.19.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
@@ -72,11 +72,11 @@ require (
 	github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
