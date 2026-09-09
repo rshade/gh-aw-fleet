@@ -28,9 +28,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.RELEASE_REF }}
 
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.26.x'
+      - uses: jdx/mise-action@v4
 
       - uses: goreleaser/goreleaser-action@v7
         with:

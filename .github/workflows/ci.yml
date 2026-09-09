@@ -20,10 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v4
+
+      - name: Verify go.mod matches mise.toml
+        run: make drift
+
+      - name: Cache Go modules and build
+        uses: actions/cache@v6
         with:
-          go-version: "1.26.x"
-          cache: true
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ hashFiles('go.sum') }}
+          restore-keys: go-
 
       - name: Download dependencies
         run: go mod download
@@ -38,6 +47,4 @@ jobs:
         run: make test
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12.2
+        run: make lint
