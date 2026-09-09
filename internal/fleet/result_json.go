@@ -26,8 +26,10 @@ type deployResultJSON struct {
 }
 
 // MarshalJSON encodes DeployResult with security_findings omitted when the
-// scanner did not run and emitted as [] when it ran clean.
-func (r DeployResult) MarshalJSON() ([]byte, error) {
+// scanner did not run and emitted as [] when it ran clean. It has a pointer
+// receiver, so marshaling a bare DeployResult value silently skips this method
+// and loses that normalization — always marshal via *DeployResult.
+func (r *DeployResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(deployResultJSON{
 		Repo:                   r.Repo,
 		CloneDir:               r.CloneDir,
@@ -95,8 +97,10 @@ type upgradeResultJSON struct {
 }
 
 // MarshalJSON encodes UpgradeResult with security_findings omitted when the
-// scanner did not run and emitted as [] when it ran clean.
-func (r UpgradeResult) MarshalJSON() ([]byte, error) {
+// scanner did not run and emitted as [] when it ran clean. It has a pointer
+// receiver, so marshaling a bare UpgradeResult value silently skips this method
+// and loses that normalization — always marshal via *UpgradeResult.
+func (r *UpgradeResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(upgradeResultJSON{
 		Repo:                   r.Repo,
 		CloneDir:               r.CloneDir,
