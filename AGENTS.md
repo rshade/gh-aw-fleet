@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common commands
 
 ```bash
+make ensure           # install the pinned toolchain from mise.toml
 go build ./...        # Compile. Run before claiming a change builds.
 go vet ./...          # Must pass before any edit is considered done.
 go run . <cmd>        # Run the CLI directly (e.g. `go run . list`).
@@ -30,7 +31,26 @@ make ci          # runs: fmt-check vet lint test  (this is the CI gate)
 
 **Do not claim a task complete until `make ci` passes locally.** `go build` passing means nothing — prior commits have landed lint/fmt failures that CI rejected because only build+vet were run. When in doubt, run `make ci`.
 
-**Toolchain note:** the current local development gate runs unpinned with Go 1.26.4 and golangci-lint v2.12.2. Run `make ci` directly; do not set `GOTOOLCHAIN` below Go 1.26.4. If local results look suspicious, confirm `go version` and `golangci-lint --version` before trusting the gate. The `go.mod` directive now records the same Go 1.26.4 floor.
+**Toolchain note:** tool versions are pinned in `mise.toml` — Go 1.27.1,
+golangci-lint 2.13.2, Node 24 — and nowhere else. Run `make ensure` (which runs
+`mise install`) after cloning or after a `mise.toml` change. CI installs the
+same pins via `jdx/mise-action@v4`, and `scripts/check-toolchain-drift.sh`
+fails CI when `go.mod` and `mise.toml` disagree on the Go version. Bump a
+version by editing `mise.toml` alone: the Makefile reads `GOLANGCI_LINT_VERSION`
+back out of it, and Renovate's `mise` manager opens bumps against it.
+Renovate proposes `mise.toml` and `go.mod` bumps under separate managers, so a
+Go version bump arrives as a red PR until `go mod edit -go=<version>` is run in
+the same branch — the drift guard prints that exact command when it fails.
+
+**Local PATH caveat — read this before trusting a local `make ci`.** mise's
+shims do *not* automatically win PATH on every machine. On a shell where
+`/github/go/bin` or an nvm shim directory is prepended ahead of
+`~/.local/share/mise/shims`, a bare `golangci-lint` or `node` still resolves to
+the older binary, and `make lint` silently uses it. Check with
+`which -a golangci-lint` and `node --version`; if mise is not winning, either
+run `mise exec -- make ci` or activate mise in your shell rc so its shims are
+prepended. CI is unaffected — `mise-action` exports its paths through
+`$GITHUB_PATH` in a clean runner with nothing to compete against.
 
 The CLI has two config files: `fleet.json` (public, committed, example tracking only `rshade/gh-aw-fleet`) and `fleet.local.json` (private, gitignored, real fleet state). `LoadConfig` reads `fleet.json` as the **base** and overlays `fleet.local.json` on top — when both exist they are merged (local profiles/repos/defaults add to or override base entries); when only one exists it is used directly. `go run . list` prints `(loaded fleet.json + fleet.local.json)`, `(loaded fleet.json)`, or `(loaded fleet.local.json)` to stderr so you know which mode is active.
 
@@ -98,10 +118,10 @@ The `skills/` directory contains six SKILL.md files codifying recurring operator
 Committed at repo root; shared with collaborators and subagents. Allows `go build/vet/test/run`, `gh aw/api/repo/pr`, `git` read ops, and common shell tools. Denies `git add`, `git commit`, `git rebase --continue`, `git push --force`, `git reset --hard`. When adding a new developer command, add it to the allowlist so subagents don't prompt.
 
 ## Active Technologies
-- Go 1.26.4 for the local development gate and `go.mod` directive, using `github.com/spf13/cobra` v1.10.2 for CLI wiring and `github.com/rs/zerolog` v1.x for structured logging on stderr.
+- Go, golangci-lint, and Node versions are pinned in `mise.toml`; see the Toolchain note above. `github.com/spf13/cobra` v1.10.2 for CLI wiring and `github.com/rs/zerolog` v1.x for structured logging on stderr.
 - `fleet.local.json` is the private, gitignored source of truth; `fleet.json` is the committed public example.
 - Structured logging: `internal/log.Configure(level, format)` wires a zerolog global logger in root's `PersistentPreRunE`; warnings/errors/subprocess summaries emit on stderr, tabwriter status stays on stdout.
-- AX foundation phase 1: `github.com/rshade/ax-go v0.2.0` is an approved direct dependency consumed only through import-isolated `config`, `schema`, and transitive stdlib-only `contract` packages; never import root `package ax`, which would pull OTel/gRPC/protobuf into the build. `internal/fleet/load.go` uses `config.ParseFile` / `config.Patch`; `cmd` exposes hidden additive `__schema` built on `schema.BuildSchema`/`schema.BuildMCPSchema` (mirroring `schema.NewSchemaCommand`, with MCP positional-argument augmentation). `__schema` advertises ax-go's `error_envelope` as a forward declaration only — consuming agents must not parse today's existing-command errors as ax envelopes until the deferred error-envelope phase lands. Follow-up phases: error-envelope adoption, `--output json` payload alignment, logger convergence, and idempotency/mode/dry-run context. See [specs/016-ax-go-foundation/plan.md](./specs/016-ax-go-foundation/plan.md).
+- AX foundation phase 1: `github.com/rshade/ax-go` is an approved direct dependency consumed only through import-isolated `config`, `schema`, and transitive stdlib-only `contract` packages; never import root `package ax`, which would pull OTel/gRPC/protobuf into the build. `internal/fleet/load.go` uses `config.ParseFile` / `config.Patch`; `cmd` exposes hidden additive `__schema` built on `schema.BuildSchema`/`schema.BuildMCPSchema` (mirroring `schema.NewSchemaCommand`, with MCP positional-argument augmentation). `__schema` advertises ax-go's `error_envelope` as a forward declaration only — consuming agents must not parse today's existing-command errors as ax envelopes until the deferred error-envelope phase lands. Follow-up phases: error-envelope adoption, `--output json` payload alignment, logger convergence, and idempotency/mode/dry-run context. See [specs/016-ax-go-foundation/plan.md](./specs/016-ax-go-foundation/plan.md).
 - Go 1.26.4 local toolchain. + `encoding/json` (stdlib, new usage site); `github.com/spf13/cobra` v1.10.2 (existing); `github.com/rs/zerolog` v1.35.1 (existing, landed in #34). No new third-party dependencies — constitution Principle I. (main)
 - N/A (no persistent state; envelope writes are transient to stdout). (main)
 - Go 1.26.4 local toolchain. + `github.com/spf13/cobra` v1.10.2 (CLI), `github.com/rs/zerolog` v1.x (stderr structured logging), `gopkg.in/yaml.v3` (frontmatter parsing — already in use), `encoding/json` (stdlib, JSON envelope). **No new third-party dependencies** (SC-006 / Constitution Principle I). (004-status-drift-detection)

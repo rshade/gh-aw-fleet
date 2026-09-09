@@ -14,7 +14,7 @@ the upstream tools over re-implementing their logic.
 
 ## Toolchain — read before flagging a compile error
 
-This module targets **Go 1.26.4** (`go.mod` directive and the CI gate). The
+This module targets **Go 1.27.1** (`go.mod` directive and the CI gate). The
 full modern standard library is available and correct. Do **not** report newer
 stdlib APIs as nonexistent or as "won't compile." In particular, these are
 valid:
@@ -25,7 +25,7 @@ valid:
 - The `slices`, `maps`, and `cmp` packages.
 
 If an API looks unfamiliar, assume the toolchain is newer than your training
-data and verify it against the Go 1.26 standard library before raising a
+data and verify it against the Go 1.27 standard library before raising a
 compile concern. Green CI on a PR is authoritative: a "won't compile" finding
 that contradicts a passing build is a false positive.
 

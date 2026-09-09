@@ -11,7 +11,7 @@ use [`gh aw`](https://github.com/github/gh-aw)-compiled agentic workflows.
 - The `gh` CLI, authenticated with `repo` and `workflow` scopes.
 - The `gh aw` extension pinned to the same `github/gh-aw` ref used by your fleet.
   The shipped default profile uses `v0.79.2`.
-- Go 1.26.4 or newer only if you install with `go install` or build from source.
+- Go 1.27.1 or newer only if you install with `go install` or build from source.
 
 Install the matching `gh aw` release explicitly:
 

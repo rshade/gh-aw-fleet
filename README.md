@@ -176,7 +176,7 @@ and `gh`.
   `gh extension install github/gh-aw --pin v0.79.2` — a bare
   `gh extension upgrade aw` stops at the latest *stable* (v0.77.5). Avoid
   `main`: it often contains unreleased features that break this tool.
-- Go 1.26.4+ **only if** installing via `go install` or building from
+- Go 1.27.1+ **only if** installing via `go install` or building from
   source
 
 ### Install
@@ -504,10 +504,6 @@ to start. Before opening a PR, run the full local gate:
 make ci         # fmt-check + vet + lint + test (the same gate CI runs)
 ```
 
-The local development gate is expected to run with Go 1.26.4 and
-golangci-lint v2.12.2. Run `make ci` directly; do not pin an older
-`GOTOOLCHAIN` unless you are deliberately debugging toolchain drift.
-
 Or step by step:
 
 ```bash
@@ -516,7 +512,21 @@ make lint       # golangci-lint — can take 5+ minutes; do not skip
 make test       # full test suite
 ```
 
-If `make ci` passes locally, CI will pass.
+If `make ci` passes locally, CI should pass — provided your local tools
+are the pinned ones. See [Toolchain](#toolchain) below.
+
+### Toolchain
+
+Tool versions are pinned in `mise.toml`. Install
+[mise](https://mise.jdx.dev/installing-mise.html), then:
+
+```bash
+make ensure   # installs Go, golangci-lint, and Node at the pinned versions
+make ci       # the full gate: fmt-check, vet, lint, test
+```
+
+If `which -a golangci-lint` shows another binary ahead of mise's shims, run
+`mise exec -- make ci` instead.
 
 **For AI coding agents** working in this repo, see [CLAUDE.md](CLAUDE.md)
 for the invariants (no bypassing gpg signing, no direct git invocations,

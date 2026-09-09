@@ -6,7 +6,7 @@ import (
 )
 
 func TestDeployResultMarshalJSONIncludesCompileStrictFields(t *testing.T) {
-	raw, err := json.Marshal(DeployResult{
+	raw, err := json.Marshal(&DeployResult{
 		Repo:                   "x/y",
 		CompileStrictApplied:   true,
 		CompileStrictEffective: true,
@@ -23,7 +23,7 @@ func TestDeployResultMarshalJSONIncludesCompileStrictFields(t *testing.T) {
 }
 
 func TestDeployResultMarshalJSONIncludesCompileStrictZeroFields(t *testing.T) {
-	raw, err := json.Marshal(DeployResult{Repo: "x/y"})
+	raw, err := json.Marshal(&DeployResult{Repo: "x/y"})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestSyncResultMarshalJSONIncludesNestedDeployCompileStrictFields(t *testing
 }
 
 func TestUpgradeResultMarshalJSONIncludesCompileStrictFields(t *testing.T) {
-	raw, err := json.Marshal(UpgradeResult{
+	raw, err := json.Marshal(&UpgradeResult{
 		Repo:                   "x/y",
 		CompileStrictApplied:   true,
 		CompileStrictEffective: true,

@@ -14,7 +14,8 @@ go run . overview  # Read-only drift, run-health, no-op, and AIC/cost dashboard.
 - Go 1.26.4 local toolchain + existing `github.com/spf13/cobra` and `github.com/rs/zerolog`; stdlib `encoding/json`, `errors`, `fmt`, `math`, `sort`, `sync`, `time`. No new direct dependencies. (018-overview-subcommand)
 - N/A — pure read dashboard; no persisted state or cache. Output is transient to stdout/stderr or the standard JSON envelope. (018-overview-subcommand)
 
-**Language**: Go 1.26.4 for the local development gate; `go.mod` currently declares module compatibility at `go 1.26.4`.
+**Language**: Go 1.27.1, pinned in `mise.toml` and matched by the `go.mod`
+directive; `scripts/check-toolchain-drift.sh` enforces that the two agree.
 
 ## Architecture big-picture
 
@@ -36,6 +37,16 @@ Per-slice dependency and storage deltas:
 - (018-overview-subcommand) Deps: no new direct dependencies — reuses cobra, zerolog, Status' fetcher seam, and the `gh aw logs` seams. Storage: N/A — read-only dashboard, no cache, no baseline. Adds a JSON payload under the existing envelope without bumping `cmd.SchemaVersion`.
 
 ## Recent Changes
+- 021-mise-toolchain-migration: `mise.toml` is the single source of truth for
+  Go (1.27.1), golangci-lint (2.13.2), and Node (24). CI installs via
+  `jdx/mise-action@v4` and runs `make lint` directly, so `actions/setup-go`,
+  `actions/setup-node`, and `golangci/golangci-lint-action` are gone;
+  `scripts/check-toolchain-drift.sh` gates `go.mod` against `mise.toml`. ax-go
+  moved v0.4.0 → v0.6.0 (delta in the consumed `config`/`schema`/`contract`
+  packages is two additive `contract` functions, so `__schema` output and both
+  `SchemaVersion` constants are unchanged). Also restores MCP positional
+  arguments, which had been silently dropped since ax-go v0.4.0 renamed MCP
+  tools from `gh-aw-fleet add` to `gh-aw-fleet-add`.
 - 016-ax-go-foundation: adopted `github.com/rshade/ax-go v0.2.0` the constitutional way; `internal/fleet/load.go` now uses import-isolated `config.ParseFile` / `config.Patch`, `cmd` exposes a hidden additive `__schema` command built on `schema.BuildSchema`/`schema.BuildMCPSchema` (mirroring `schema.NewSchemaCommand`, with MCP positional-argument augmentation), and `go.mod` now declares `go 1.26.4`. Import boundary is `config`/`schema`/`contract` only; no root `package ax`.
 - 013-dependabot-conflict-scanner: fifth advisory scanner in the slice-006 security registry — sibling of the Renovate scanner but with **one** conflict rule (Dependabot ignores by dependency name only, with no `*.lock.yml` file-glob analog): a `LOW` finding per `github-actions` update entry that does not ignore the gh-aw-actions family, whose remedy carries the name-only caveat (FR-004); `INFO` on unparseable YAML; new `security_dependabot` diag code; surfaces on `deploy`/`sync`/`upgrade` via the existing finding pipeline.
 - 012-renovate-conflict-scanner: fourth advisory scanner in the slice-006 security registry — `LOW` findings when a repo's Renovate config lacks the gh-aw-actions disable rule or the `.github/workflows/*.lock.yml` exclusion; `INFO` on unparseable config; new `security_renovate` diag code; surfaces on `deploy`/`sync`/`upgrade` via the existing finding pipeline.
