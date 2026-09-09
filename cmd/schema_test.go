@@ -96,9 +96,9 @@ func TestSchemaCommandMCPIncludesPositionalArgs(t *testing.T) {
 	}
 
 	for _, name := range []string{
-		rootCommandName + " add",
-		rootCommandName + " deploy",
-		rootCommandName + " sync",
+		mcpToolName("add"),
+		mcpToolName("deploy"),
+		mcpToolName("sync"),
 	} {
 		tool := requireMCPTool(t, got, name)
 		property := requireMCPProperty(t, tool, "repo")
@@ -109,8 +109,8 @@ func TestSchemaCommandMCPIncludesPositionalArgs(t *testing.T) {
 	}
 
 	for _, name := range []string{
-		rootCommandName + " status",
-		rootCommandName + " upgrade",
+		mcpToolName("status"),
+		mcpToolName("upgrade"),
 	} {
 		tool := requireMCPTool(t, got, name)
 		property := requireMCPProperty(t, tool, "repo")
@@ -120,7 +120,7 @@ func TestSchemaCommandMCPIncludesPositionalArgs(t *testing.T) {
 		}
 	}
 
-	consumption := requireMCPTool(t, got, rootCommandName+" "+commandConsumption)
+	consumption := requireMCPTool(t, got, mcpToolName(commandConsumption))
 	repos := requireMCPProperty(t, consumption, "repos")
 	if gotType, _ := repos["type"].(string); gotType != "array" {
 		t.Fatalf("consumption repos type = %q; want array", gotType)

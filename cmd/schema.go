@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"runtime/debug"
+	"strings"
 
 	"github.com/rshade/ax-go/contract"
 	"github.com/rshade/ax-go/schema"
@@ -14,6 +15,10 @@ const (
 	mcpSchemaFieldType  = "type"
 	mcpSchemaTypeArray  = "array"
 	mcpSchemaTypeString = "string"
+	// mcpToolNameSeparator joins command path segments in ax-go's MCP tool
+	// names. ax-go v0.4.0 changed this from " " to "-"; keeping it named means
+	// a future change is one edit rather than a hunt through switch cases.
+	mcpToolNameSeparator = "-"
 )
 
 type mcpPositionalArg struct {
@@ -50,6 +55,11 @@ func newSchemaCmd(root *cobra.Command) *cobra.Command {
 	}
 	c.Flags().StringVar(&as, "as", "ax", "schema format: ax or mcp")
 	return c
+}
+
+// mcpToolName builds the MCP tool name ax-go emits for a subcommand path.
+func mcpToolName(path ...string) string {
+	return strings.Join(append([]string{rootCommandName}, path...), mcpToolNameSeparator)
 }
 
 func toolVersion() string {
@@ -90,29 +100,29 @@ func addMCPPositionalArgs(tool *schema.MCPTool) {
 func mcpPositionalArgs(toolName string) []mcpPositionalArg {
 	const repoDescription = "Repository slug in owner/name form."
 	switch toolName {
-	case rootCommandName + " add":
+	case mcpToolName("add"):
 		return []mcpPositionalArg{{
 			name:        diagnosticFieldRepo,
 			description: repoDescription,
 			required:    true,
 		}}
-	case rootCommandName + " deploy", rootCommandName + " sync":
+	case mcpToolName("deploy"), mcpToolName("sync"):
 		return []mcpPositionalArg{{
 			name:        diagnosticFieldRepo,
 			description: repoDescription,
 			required:    true,
 		}}
-	case rootCommandName + " status":
+	case mcpToolName("status"):
 		return []mcpPositionalArg{{
 			name:        diagnosticFieldRepo,
 			description: repoDescription + " When omitted, status covers the whole fleet.",
 		}}
-	case rootCommandName + " upgrade":
+	case mcpToolName("upgrade"):
 		return []mcpPositionalArg{{
 			name:        diagnosticFieldRepo,
 			description: repoDescription + " Required unless --all is true.",
 		}}
-	case rootCommandName + " " + commandConsumption:
+	case mcpToolName(commandConsumption):
 		return []mcpPositionalArg{{
 			name:        "repos",
 			description: "Repository slugs in owner/name form. When omitted, consumption covers the whole fleet.",
