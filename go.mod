@@ -1,6 +1,6 @@
 module github.com/rshade/gh-aw-fleet
 
-go 1.26.5
+go 1.27.1
 
 require (
 	github.com/rs/zerolog v1.35.1
