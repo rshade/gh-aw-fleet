@@ -77,10 +77,16 @@ When the gate blocks:
 - the clone is preserved for inspection, including dry-run temp clones;
 - commit, push, and PR creation do not run.
 
-Compiled `*.lock.yml` files can themselves trip HIGH `actionlint` findings — most
-commonly the generated `concurrency: queue` key, which standard `actionlint`
-rejects — and block the gate on output you cannot edit. Suppress them per repo
-with a `.github/actionlint.yaml` ignore file.
+Compiled `*.lock.yml` files are gh-aw output (`DO NOT EDIT`). The fleet
+`actionlint` scanner reports every finding on those files at MEDIUM, including
+the generated `concurrency: queue` key that standard `actionlint` rejects.
+Those findings stay on stderr and in JSON `warnings[]` and do not block
+`--strict`. HIGH is reserved for operator-authored surfaces: gitleaks secrets
+and structural rules on workflow markdown.
+
+`gh aw compile --strict` is a separate check and can still fail on that
+generated key. Suppress the one error per repo with a `.github/actionlint.yaml`
+ignore file when compile-strict must pass.
 
 Lower-severity findings and `promptinj:` findings remain advisory. For
 `upgrade --all --strict --output json`, NDJSON records are emitted through the

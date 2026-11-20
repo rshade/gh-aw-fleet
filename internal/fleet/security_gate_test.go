@@ -143,6 +143,34 @@ func TestEvaluateStrictSecurityGateReportsBreadcrumbWriteFailure(t *testing.T) {
 	}
 }
 
+func TestStrictGateKeepsActionlintAdvisoryAndBlocksGitleaks(t *testing.T) {
+	actionlint := testSecurityFinding("actionlint:syntax-check", security.SeverityMedium)
+	err := EvaluateStrictSecurityGate(
+		"acme/widgets",
+		t.TempDir(),
+		SecurityOpts{Strict: true},
+		[]security.Finding{actionlint},
+	)
+	if err != nil {
+		t.Fatalf("actionlint MEDIUM blocked --strict: %v", err)
+	}
+
+	gitleaks := testSecurityFinding("gitleaks:generic-api-key", security.SeverityHigh)
+	err = EvaluateStrictSecurityGate(
+		"acme/widgets",
+		t.TempDir(),
+		SecurityOpts{Strict: true},
+		[]security.Finding{actionlint, gitleaks},
+	)
+	var strictErr *StrictSecurityError
+	if !errors.As(err, &strictErr) {
+		t.Fatalf("error = %T %[1]v; want *StrictSecurityError", err)
+	}
+	if strictErr.BlockingCount != 1 {
+		t.Fatalf("BlockingCount = %d; want 1 (gitleaks only)", strictErr.BlockingCount)
+	}
+}
+
 func TestBlockingSecurityFindingsPromptInjectionCarveOut(t *testing.T) {
 	prompt := testSecurityFinding("promptinj:indirect", security.SeverityHigh)
 	layer1 := testSecurityFinding("fleet.permissions.write-on-schedule", security.SeverityHigh)
