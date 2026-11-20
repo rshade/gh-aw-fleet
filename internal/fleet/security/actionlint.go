@@ -3,15 +3,16 @@
 // on PATH the adapter emits exactly one INFO finding
 // ("actionlint:not-installed") and the run continues — graceful
 // degradation per FR-007 / SC-005. JSON-format expectation per
-// research.md R2; severity mapping: actionlint exit code 1 (errors)
-// → HIGH; exit code 2 (warnings) → MEDIUM; other → MEDIUM by default.
+// research.md R2. The scanner only walks compiler-generated *.lock.yml,
+// which operators never author, so every diagnostic is MEDIUM. INFO is
+// reserved for a missing binary or unparseable JSON. HIGH stays with
+// operator-authored surfaces (gitleaks, structural rules).
 
 package security
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -70,9 +71,8 @@ func (s *actionlintScanner) Scan(ctx context.Context, cloneDir string) []Finding
 }
 
 // scanLockFile invokes actionlint on one file and parses the JSON output.
-// Both diagnostic-bearing exit codes (1 = errors, 2 = warnings) are
-// expected; no diagnostics → exit 0. Exit code drives the severity
-// mapping (errors → HIGH, warnings → MEDIUM).
+// Exit 1 (errors) and exit 2 (warnings) both carry diagnostics; exit 0
+// means none. Severity is always MEDIUM: the file is generated lock YAML.
 func (s *actionlintScanner) scanLockFile(ctx context.Context, cloneDir, lockPath string) []Finding {
 	// #nosec G204 -- s.binPath comes from exec.LookPath and lockPath is a
 	// fixed-suffix file we walked from the gh-aw-managed clone directory.
@@ -80,15 +80,9 @@ func (s *actionlintScanner) scanLockFile(ctx context.Context, cloneDir, lockPath
 	// the actionlint adapter.
 	cmd := exec.CommandContext(ctx, s.binPath, "-format", "{{json .}}", lockPath)
 	cmd.Dir = cloneDir
-	stdout, runErr := cmd.Output()
+	stdout, _ := cmd.Output()
 
 	severity := SeverityMedium
-	var ee *exec.ExitError
-	if errors.As(runErr, &ee) {
-		if ee.ExitCode() == 1 {
-			severity = SeverityHigh
-		}
-	}
 
 	if len(strings.TrimSpace(string(stdout))) == 0 {
 		return nil

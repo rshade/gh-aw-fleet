@@ -289,8 +289,10 @@ func TestActionlintScanner_ErrorMapsToHigh(t *testing.T) {
 	if f == nil {
 		t.Fatalf("expected at least one actionlint finding; got %v", out)
 	}
-	if f.Severity != SeverityHigh {
-		t.Errorf("Severity = %v; want HIGH (errors); got %+v", f.Severity, out)
+	// Compiled *.lock.yml findings are never operator-actionable, so exit 1
+	// stays MEDIUM and does not promote to HIGH.
+	if f.Severity != SeverityMedium {
+		t.Errorf("Severity = %v; want MEDIUM (compiled lock file); got %+v", f.Severity, out)
 	}
 	assertRepoRelativeActionlintFile(t, dir, f.File)
 }
