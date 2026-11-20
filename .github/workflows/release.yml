@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.RELEASE_REF }}
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@v5
 
       - uses: goreleaser/goreleaser-action@v7
         with:

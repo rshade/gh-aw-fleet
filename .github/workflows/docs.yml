@@ -31,7 +31,7 @@ jobs:
           # token: ${{ secrets.THEME_REPO_TOKEN }}
 
       - name: Setup Node
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
 
       - name: Cache npm
         uses: actions/cache@v6
