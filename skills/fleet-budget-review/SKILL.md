@@ -91,14 +91,17 @@ The command prints a stderr breadcrumb (`(loaded fleet.json + fleet.local.json)`
 
 ### Step 5 — read the diagnostics
 
-The rollup may emit per-repo warnings on stderr. Two patterns to expect under the default `--source logs`:
+The rollup may emit per-repo warnings on stderr. Under the default `--source logs` the messages come from `collectRepoRuns` / `logSourceToReports` / `nilAICDiag`:
 
-- **`No consumption reports discovered for <repo>`** — the repo has no agentic workflows deployed, or no workflows have run yet. Check `gh-aw-fleet list <repo>` to see which workflows are resolved for this repo. If none are present, add a profile that includes agentic workflows. If workflows are present, wait 24h for the first run to complete and report.
-- **`Included in-progress report from <repo> (<date>). Totals for this repo may be partial.`** — only appears under `--trailing` / `--since`. An in-progress workflow run (still executing) contributed a partial data snapshot. Re-run after the run completes for finalized totals, or narrow the time window to exclude today.
+- **`No agentic workflows (.lock.yml) found on <repo> — nothing to roll up.`** — the Actions API listed no compiled agentic workflows. Check `gh-aw-fleet list <repo>`.
+- **`Workflow discovery failed for <repo>`** — the workflows API call failed. Other repos still roll up.
+- **`` `gh aw logs` failed for <repo> / "<name>" ``** — one workflow's log fetch failed. Sibling workflows in that repo still contribute.
+- **`No in-window agentic runs with AI-credit data on <repo>`** — runs failed (failures carry no `aic`), fell outside the window, or their artifacts expired.
+- **`No AI-credit data found.`** — fleet-wide: every group's AIC is nil for the same reasons. Widen the window with `--trailing` or `--since`, or confirm recent successful runs.
 
-Warnings are non-fatal. The command always exits 0 when discovery + fetch succeed for at least one repo — "no data found" is not a failure (FR-010).
+Warnings are non-fatal. The command exits 0 when discovery and fetch succeed for at least one repo. "No data found" is not a failure (FR-010).
 
-**Legacy `--source artifacts` notes:** If using the deprecated artifacts path, expect an additional warning: **`Run artifact for <repo> (run #N on <date>) is past the ~90-day run-log retention window.`** This occurs when the underlying workflow-run artifacts were garbage-collected by the platform. Long-trend questions beyond ~90 days are out of scope (FR-024); shorten the window or switch to `--source logs`.
+The logs path does not emit the artifacts-path strings `No consumption reports discovered` or `Included in-progress report`. Those, and **`Run artifact for <repo> (run #N on <date>) is past the ~90-day run-log retention window.`**, belong to `--source artifacts` only (FR-024).
 
 ### Step 6 — frame the answer
 
@@ -136,12 +139,12 @@ Never apply changes from this skill. Recommendations are read-only — operator 
 A concise budget-frame paragraph + the relevant table, organized like:
 
 ```text
-Fleet consumption (trailing-7d, by cost-center):
+Fleet consumption (trailing-7d, by cost-center, --source logs):
 
   COST_CENTER     API_CALLS  SAFE_WRITES  AIC      COST    REPORTS
-  platform-eng    33,789     147          523.41   $5.23   14
-  data-platform   8,402      31           98.67    $0.99   7
-  <unset>         2,108      9            -        -       7
+  platform-eng    33789      147          523.41   $5.23   14
+  data-platform   8402       31           98.67    $0.99   7
+  <unset>         2108       9            -        -       7
 
 Frame:
   - Platform-eng is 5.3× the AI credits of data-platform — expected given the
@@ -166,9 +169,9 @@ You:
   - Run `gh-aw-fleet consumption` (default --latest, --by repo).
   - Read the table. Note the top 3 repos by API_CALLS, the top 2-3
     burner workflows from the footer, any warnings.
-  - Frame: "Latest snapshot — N repos with reports, top spender is X
-    at $Y. Top burner is workflow-Z. Two repos have no reports yet
-    (observability-plus not deployed)."
+  - Frame: "Latest snapshot — N repos with AIC, top spender is X
+    at $Y (AIC × $0.01). Top burner is workflow-Z. Two repos have no
+    in-window agentic runs yet."
 ```
 
 ### Example 2 — quarterly cost-center review
