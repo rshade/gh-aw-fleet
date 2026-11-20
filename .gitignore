@@ -5,6 +5,7 @@
 build/
 node_modules/
 docs/.astro/
+docs/.vale/styles/
 vendor/
 *.log
 *.test

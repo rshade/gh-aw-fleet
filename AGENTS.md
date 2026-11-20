@@ -31,8 +31,12 @@ make ci          # runs: fmt-check vet lint test  (this is the CI gate)
 
 **Do not claim a task complete until `make ci` passes locally.** `go build` passing means nothing — prior commits have landed lint/fmt failures that CI rejected because only build+vet were run. When in doubt, run `make ci`.
 
-**Toolchain note:** Go, golangci-lint, and Node versions are pinned in
-`mise.toml` and nowhere else — read them there rather than from this file. Run
+**Toolchain note:** Tool versions are pinned in `mise.toml` and nowhere else —
+read them there rather than from this file. `make ci` uses Go, golangci-lint,
+and Node. The same file also pins the dev tools this repo already uses
+(actionlint, shellcheck, jq, markdownlint-cli, markdownlint-cli2,
+govulncheck, specify-cli, gopls, vale, trufflehog). Those are installed by `make ensure` and
+CI's mise-action; they are not extra `make ci` gates. Run
 `make ensure` (which runs `mise install`) after cloning or after a `mise.toml`
 change. CI installs the same pins via `jdx/mise-action`, and
 `scripts/check-toolchain-drift.sh`
