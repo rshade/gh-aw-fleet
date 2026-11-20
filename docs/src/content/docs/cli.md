@@ -168,6 +168,11 @@ repo in the run, including a single-repo check. A missing ref is a per-repo
 error and does not stop the other repos. JSON adds `queried_ref` when the flag
 is set. The default branch is unchanged when `--ref` is omitted.
 
+`--resolve-refs` is off by default. When set, a desired tag and an installed
+SHA that name the same commit are aligned. The command resolves only
+string mismatches, at most two commits-API calls per drifted workflow. A ref
+GitHub cannot resolve errors that repo and leaves the others running.
+
 ### `template fetch`
 
 ```bash
