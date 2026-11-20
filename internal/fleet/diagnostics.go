@@ -108,10 +108,26 @@ const (
 	DiagSecurityRenovate              = fleetdiag.DiagSecurityRenovate
 	DiagSecurityDependabot            = fleetdiag.DiagSecurityDependabot
 
-	DiagCompileStrictFailed = fleetdiag.DiagCompileStrictFailed
-	DiagGhAwTooOld          = fleetdiag.DiagGhAwTooOld
-	DiagGhAwMissing         = fleetdiag.DiagGhAwMissing
+	DiagCompileStrictFailed   = fleetdiag.DiagCompileStrictFailed
+	DiagGhAwTooOld            = fleetdiag.DiagGhAwTooOld
+	DiagGhAwMissing           = fleetdiag.DiagGhAwMissing
+	DiagAwPackageManifest     = fleetdiag.DiagAwPackageManifest
+	DiagWorkflowAlreadyExists = fleetdiag.DiagWorkflowAlreadyExists
 )
+
+// awPackageManifestHint explains a bare `gh aw add owner/repo` failure.
+// The gh-aw install docs suggest `gh aw add githubnext/agentics`, which
+// loads a repository-root aw.yml. Agentics has no such manifest, and the
+// fleet never emits that two-part form: ResolvedWorkflow.Spec installs
+// each workflow by name.
+const awPackageManifestHint = "agentics has no root `aw.yml`; the fleet installs individual workflows by name. " +
+	"Declare workflows under `profiles.<name>.workflows[]`, not a bare repo spec. " +
+	"The install.md form `gh aw add githubnext/agentics` is unsupported by design."
+
+// workflowAlreadyExistsHint explains `gh aw add` refusing a workflow that
+// is already on disk. The fleet skips that case unless --force is set.
+const workflowAlreadyExistsHint = "Workflow already exists in .github/workflows/. " +
+	"Re-run the fleet command with `--force` to overwrite it; without `--force` the fleet skips workflows that are already present."
 
 // Hint is a remediation suggestion keyed by a substring match against
 // gh-aw CLI output.
@@ -214,6 +230,15 @@ var hints = []Hint{
 	// JSON-envelope consumers that only see the wrapped error text.
 	{Pattern: "gh aw is too old:", Message: ghAwTooOldHint, Code: DiagGhAwTooOld},
 	{Pattern: "executable file not found", Message: ghAwMissingHint, Code: DiagGhAwMissing},
+	// Bare `gh aw add owner/repo` looks for a root aw.yml. The fleet does
+	// not use that form; see awPackageManifestHint.
+	{Pattern: "no aw.yml manifest found", Message: awPackageManifestHint, Code: DiagAwPackageManifest},
+	{Pattern: "repository package manifest not found", Message: awPackageManifestHint, Code: DiagAwPackageManifest},
+	{
+		Pattern: "already exists in .github/workflows/",
+		Message: workflowAlreadyExistsHint,
+		Code:    DiagWorkflowAlreadyExists,
+	},
 }
 
 // CollectHintDiagnostics scans output text for known error patterns and

@@ -68,6 +68,16 @@ go run . deploy <owner>/<repo> --apply --yes
 PR-body `## Security Findings` section, or the `--strict` gate. Use it only
 after the user has reviewed the dry-run findings in Turn 1.
 
+## Bare-repo `gh aw add` is unsupported
+
+`gh aw` install docs suggest `gh aw add githubnext/agentics`. That two-part
+form loads a repository-root `aw.yml` package manifest. Agentics has no such
+file, and the fleet never emits that spec. `ResolvedWorkflow.Spec()` installs
+each workflow by name (`githubnext/agentics/<name>@ref` or the four-part
+`github/gh-aw` form). Declare workflows under `profiles.<name>.workflows[]`.
+If `gh aw add` says the workflow already exists, re-run with fleet `--force`;
+without it the deploy skips workflows that are already present.
+
 ## The flow
 
 Three turns. Don't collapse them — the confirmation gates are deliberate.

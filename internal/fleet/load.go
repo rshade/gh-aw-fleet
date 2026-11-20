@@ -433,6 +433,9 @@ type ResolvedWorkflow struct {
 // produces the 4-part form: "owner/repo/.github/workflows/name.md@ref".
 // For sources with a simple workflows/ layout (agentics), produces the
 // 3-part form: "owner/repo/name@ref".
+// The two-part install.md form (`gh aw add githubnext/agentics`) is
+// unsupported by design: it requires a repository-root aw.yml, which
+// agentics does not ship and the fleet does not model.
 // Local workflows pass through unchanged.
 func (r ResolvedWorkflow) Spec() string {
 	if r.Source == SourceLocal {
