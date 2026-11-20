@@ -18,6 +18,10 @@ import (
 // errOverviewDrift is wrapped by overview RunE when any queried repo is not aligned.
 var errOverviewDrift = errors.New("overview: drift detected")
 
+// errOverviewRunFailures is wrapped when --fail-on-runs is set and any
+// in-scope repo has a failed run. It is an expected CI-gate result.
+var errOverviewRunFailures = errors.New("overview: run failures")
+
 const (
 	overviewDefaultTrailingDays = 7
 	percentScale                = 100
@@ -31,9 +35,10 @@ const (
 const overviewModelUnknownModel = "unknown"
 
 type overviewFlags struct {
-	latest   bool
-	trailing string
-	since    string
+	latest     bool
+	trailing   string
+	since      string
+	failOnRuns bool
 }
 
 // runOverview is a package-level seam so command tests can exercise rendering
@@ -56,6 +61,12 @@ func newOverviewCmd(flagDir *string) *cobra.Command {
 	cmd.Flags().BoolVar(&flags.latest, flagLatest, false, "Most-recent run per workflow (NOOP best-effort)")
 	cmd.Flags().StringVar(&flags.trailing, flagTrailing, "", "Trailing window like 7d (default: 7d)")
 	cmd.Flags().StringVar(&flags.since, flagSince, "", "Since date in YYYY-MM-DD")
+	cmd.Flags().BoolVar(
+		&flags.failOnRuns,
+		"fail-on-runs",
+		false,
+		"Also exit non-zero when any in-scope repo has a failed run",
+	)
 	cmd.MarkFlagsMutuallyExclusive(flagLatest, flagTrailing, flagSince)
 	return cmd
 }
@@ -100,14 +111,14 @@ func runOverviewCmd(cmd *cobra.Command, flagDir *string, flags *overviewFlags, r
 		if writeErr := writeEnvelope(cmd, commandOverview, "", false, res, warnings, hints); writeErr != nil {
 			return writeErr
 		}
-		return overviewExitCode(res)
+		return overviewExitCode(res, flags.failOnRuns)
 	}
 
 	emitOverviewDiagnostics(warnings, hints)
 	if renderErr := renderOverviewText(cmd, res); renderErr != nil {
 		return renderErr
 	}
-	return overviewExitCode(res)
+	return overviewExitCode(res, flags.failOnRuns)
 }
 
 func overviewFailure(cmd *cobra.Command, jsonMode bool, err error) error {
@@ -319,12 +330,15 @@ func printOverviewRunsDetail(cmd *cobra.Command, row fleet.RepoOverview) {
 	}
 }
 
-func overviewExitCode(res *fleet.OverviewResult) error {
+func overviewExitCode(res *fleet.OverviewResult, failOnRuns bool) error {
 	if res == nil {
 		return nil
 	}
 	if res.Total.Drifted+res.Total.Errored > 0 {
 		return newCommandExitError(errOverviewDrift, 1, true)
+	}
+	if failOnRuns && res.Total.Failures > 0 {
+		return newCommandExitError(errOverviewRunFailures, 1, true)
 	}
 	return nil
 }

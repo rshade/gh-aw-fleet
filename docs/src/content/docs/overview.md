@@ -67,6 +67,10 @@ Unknown repos fail before any GitHub or `gh aw logs` fetch.
 Run failures are advisory. A fully aligned fleet with failing agentic runs still
 exits `0`.
 
+`--fail-on-runs` also exits `1` when any in-scope repo has at least one failed
+run in the selected window. Drift still fails the command on its own. A clean
+fleet (no drift, no failures) still exits `0`. The JSON payload is unchanged.
+
 ## Model-Support Advisory
 
 `overview` flags repos whose recent agentic runs failed because the effective

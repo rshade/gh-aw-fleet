@@ -8,6 +8,7 @@ type commandExitError struct {
 	silent bool
 }
 
+//nolint:unparam // every gate uses exit 1 today; the parameter stays for a later gate
 func newCommandExitError(err error, code int, silent bool) error {
 	if err == nil {
 		return nil
