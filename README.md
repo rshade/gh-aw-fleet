@@ -40,7 +40,9 @@ Pass one or more repos by name (`gh-aw-fleet consumption rshade/finfocus --by
 workflow`) to scope the rollup and drill into a single repo's per-workflow
 spend; omit them for the whole fleet. It
 needs no deployed reporting workflow ([#57](https://github.com/rshade/gh-aw-fleet/issues/57),
-[#103](https://github.com/rshade/gh-aw-fleet/issues/103)); see
+[#103](https://github.com/rshade/gh-aw-fleet/issues/103)). The two-layer model
+(this rollup versus an optional per-run tracker) is
+[docs/finops.md](docs/finops.md). See
 [ROADMAP.md](ROADMAP.md) for the broader billing-readiness arc.
 
 ## Who is this for?
