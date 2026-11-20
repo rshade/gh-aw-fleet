@@ -372,7 +372,14 @@ surprises.
 **Security strict is opt-in.** Add `--strict` to `deploy`, `sync`, or `upgrade`
 when HIGH Layer 1 security findings should hard-stop the run before mutation.
 The failure preserves the clone and writes `findings.json` for post-mortem
-inspection.
+inspection. `security.suppress` in `fleet.json` (appended to by
+`fleet.local.json`) waives matching HIGH findings from that block only; they
+still print on stderr and in JSON `warnings[]`. Match `rule` and `file` with
+Go `path/filepath.Match` patterns (`actionlint:*`,
+`.github/workflows/*.lock.yml`). An empty `rule` or `file` matches every
+value on that dimension. `--strict` and `--yes` are not stored in
+`fleet.json`. Compiled lock-file `actionlint` findings are MEDIUM, so they
+do not block `--strict` on their own.
 
 **Conventional Commits.** All generated commits follow the format
 `ci(workflows): <description>`, making them easy to filter from

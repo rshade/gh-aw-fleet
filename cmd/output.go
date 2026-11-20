@@ -146,10 +146,15 @@ func foldCompileStrictError(
 // securityOptsFor builds the invocation's SecurityOpts. It forces Yes in JSON
 // mode: a prompt written to stdout would corrupt the JSON envelope and a
 // machine cannot answer it, so --output json is treated as non-interactive
-// (FR-018). Centralizing this keeps the deploy/sync/upgrade RunE closures
+// (FR-018). sec supplies fleet.json waivers; nil leaves the blocking set
+// unchanged. Centralizing this keeps the deploy/sync/upgrade RunE closures
 // simple and the JSON-suppression rule in one place.
-func securityOptsFor(strict, yes, jsonMode bool) fleet.SecurityOpts {
-	return fleet.SecurityOpts{Strict: strict, Yes: yes || jsonMode}
+func securityOptsFor(strict, yes, jsonMode bool, sec *fleet.SecurityConfig) fleet.SecurityOpts {
+	opts := fleet.SecurityOpts{Strict: strict, Yes: yes || jsonMode}
+	if sec != nil {
+		opts.Suppressions = sec.Suppress
+	}
+	return opts
 }
 
 // mapOperatorDecline converts a fleet *OperatorDeclinedError into a clean,

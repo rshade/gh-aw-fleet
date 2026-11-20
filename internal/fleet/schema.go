@@ -60,6 +60,12 @@ type RepoSpec = pkgfleet.RepoSpec
 // ExtraWorkflow is a per-repo workflow not sourced from any profile.
 type ExtraWorkflow = pkgfleet.ExtraWorkflow
 
+// SecurityConfig is the optional security block in fleet.json.
+type SecurityConfig = pkgfleet.SecurityConfig
+
+// SuppressionRule waives findings from the --strict blocking set.
+type SuppressionRule = pkgfleet.SuppressionRule
+
 // EffectiveCompileStrict resolves whether `gh aw compile --strict` should run
 // for repo. Returns (effective, source, reason) where source is one of
 // CompileStrictSourceExplicit (operator set RepoSpec.CompileStrict),

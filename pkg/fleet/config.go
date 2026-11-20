@@ -19,8 +19,26 @@ type Config struct {
 	Profiles map[string]Profile `json:"profiles,omitempty"`
 	// Repos maps owner/repo names to desired repo state.
 	Repos map[string]RepoSpec `json:"repos"`
+	// Security is an optional fleet-wide waiver list for the --strict gate.
+	Security *SecurityConfig `json:"security,omitempty"`
 	// LoadedFrom names the on-disk source that produced this Config.
 	LoadedFrom string `json:"-"`
+}
+
+// SecurityConfig is the optional security block in fleet.json.
+type SecurityConfig struct {
+	// Suppress lists HIGH findings that stay advisory under --strict.
+	Suppress []SuppressionRule `json:"suppress,omitempty"`
+}
+
+// SuppressionRule waives findings from the --strict blocking set.
+type SuppressionRule struct {
+	// Rule matches Finding.RuleID with filepath.Match. Empty matches every rule.
+	Rule string `json:"rule,omitempty"`
+	// File matches Finding.File in slash form with filepath.Match. Empty matches every file.
+	File string `json:"file,omitempty"`
+	// Reason records why the waiver exists and is not copied into command output.
+	Reason string `json:"reason,omitempty"`
 }
 
 // EffectiveEngine returns the engine for repo, preferring the per-repo override
