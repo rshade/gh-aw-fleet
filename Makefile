@@ -53,7 +53,7 @@ ensure:
 	@command -v mise >/dev/null 2>&1 || \
 		(echo "mise not found. Install: https://mise.jdx.dev/installing-mise.html"; exit 1)
 	mise install
-	@echo "Toolchain ready: go, golangci-lint $(GOLANGCI_LINT_VERSION), node"
+	@echo "Toolchain ready from mise.toml (go, golangci-lint $(GOLANGCI_LINT_VERSION), node, and the dev tools pinned there)."
 
 help:
 	@echo "Targets:"

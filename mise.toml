@@ -1,4 +1,42 @@
+# Single source of truth for tool versions. Local dev and CI install the
+# same pins via `make ensure` / `jdx/mise-action`. `make ci` still runs only
+# drift, fmt-check, vet, lint, and test. The extra pins are tools this repo
+# already shells out to or documents; they are not a new CI gate.
+#
+# Taken from finfocus where the tool fits. Left out on purpose:
+# opentofu (no Terraform), vale (no Vale config), go-licenses (no license
+# allowlist target), trufflehog (gitleaks is the in-tree secret scanner).
+
 [tools]
+# Keep in sync with the `go` directive in go.mod. scripts/check-toolchain-drift.sh
+# fails CI when the two disagree. The Makefile reads GOLANGCI_LINT_VERSION
+# from the golangci-lint line.
 go = "1.27.4"
 golangci-lint = "2.15.0"
+
+# Docs site (docs/) and the npm backends below.
 node = "26"
+
+# Docs, skills, and README. markdownlint-cli2 is what `docs/` lint expects;
+# markdownlint-cli is the one-shot CLI agents already invoke.
+"npm:markdownlint-cli" = "0.50.0"
+"npm:markdownlint-cli2" = "0.24.1"
+
+# The actionlint security scanner and its tests shell out to this binary.
+# A missing binary skips those tests and emits one INFO finding.
+actionlint = "1.7.12"
+
+# scripts/check-toolchain-drift.sh and install.sh.
+shellcheck = "0.11.0"
+
+# Operator and skill recipes pipe `--output json` through jq.
+jq = "1.8.2"
+
+# Advisory Go vulnerability check. Not part of `make ci`.
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.10.0"
+
+# Spec Kit CLI for the .specify/ workflow.
+"pipx:specify-cli" = "1.4.2"
+
+# Editor and agent language server. No make target invokes it.
+"go:golang.org/x/tools/gopls" = "0.24.0"
