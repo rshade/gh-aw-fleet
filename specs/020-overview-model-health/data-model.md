@@ -69,6 +69,7 @@ Mirrors the existing `overviewHealth` reduce struct; produced by the model colle
 type overviewModelHealth struct {
     status         string // "", ModelSupportAffected, or ModelSupportUndetermined
     offendingModel string // "" ⇒ unknown
+    controllingVar string // variable that sets offendingModel; "" ⇒ unknown
 }
 ```
 
@@ -77,7 +78,7 @@ type overviewModelHealth struct {
 
 ## Upstream signal types (new, unexported)
 
-Decoded from the two new `gh` seams in `internal/fleet/model_signal.go`.
+Decoded from the three new `gh` seams in `internal/fleet/model_signal.go`.
 
 ```go
 // failureIssue is one open agentic-workflows failure issue for a repo.
@@ -91,9 +92,13 @@ type failureIssue struct {
 // Package-level seam so tests run offline.
 var ghFailureIssuesAPI = func(ctx context.Context, repo string) ([]failureIssue, error) { /* gh issue list */ }
 
-// ghRepoVariablesAPI returns a repo's Actions variables as name→value.
+// ghRepoVariablesAPI returns a repo's own Actions variables as name→value.
 // Package-level seam; called only for flagged repos.
 var ghRepoVariablesAPI = func(ctx context.Context, repo string) (map[string]string, error) { /* gh variable list */ }
+
+// ghOrgVariablesAPI returns the organization variables shared with a repo;
+// HTTP 422 (user-owned repo) is an empty set. Called only for flagged repos.
+var ghOrgVariablesAPI = func(ctx context.Context, repo string) (map[string]string, error) { /* gh api .../organization-variables */ }
 ```
 
 ## Constants (new)
@@ -133,9 +138,12 @@ read open failure issues (ghFailureIssuesAPI)
            │
            └─ ≥1 issue matches
                    │
-                   ▼  resolve effective model (ghRepoVariablesAPI, flagged repos only)
-                   ├─ error ──► status = affected, model = ""   (unknown)
-                   └─ ok ─────► status = affected, model = effective
+                   ▼  resolve effective model (repo vars merged over org vars, flagged repos only)
+                   ├─ either read errors ──► status = affected, model = ""   (unknown)
+                   └─ ok ──────────────────► status = affected, model = effective,
+                                             controllingVar = the variable to set
+
+ctx cancelled at any point ──► collector returns ctx.Err(); Overview fails (no partial rows)
 ```
 
 ## Fixture matrix (SC-006)
@@ -150,3 +158,6 @@ Offline fixtures exercised via the seams:
 | healthy | no failure issues | (not called) | absent (nil) — output unchanged (SC-003) |
 | undetermined | ghFailureIssuesAPI returns error | (not called) | `{status: undetermined}` |
 | var-resolve failure | model_not_supported issue | ghRepoVariablesAPI errors | `{status: affected}` (models omitted ⇒ unknown) |
+| org agent var | model_not_supported issue | `{}`; org `{GH_AW_MODEL_AGENT_COPILOT: org-agent}` | `{status: affected, offending_models: [org-agent]}`; hint names `GH_AW_MODEL_AGENT_COPILOT` |
+| repo over org | model_not_supported issue | `{GH_AW_MODEL_AGENT_COPILOT: repo-agent}`; org sets `org-agent` | `{status: affected, offending_models: [repo-agent]}` |
+| org-read failure | model_not_supported issue | `{}`; ghOrgVariablesAPI errors | `{status: affected}` (models omitted ⇒ unknown) |

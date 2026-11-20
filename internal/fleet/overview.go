@@ -119,6 +119,7 @@ type overviewHealth struct {
 type overviewModelHealth struct {
 	status         string // "", ModelSupportAffected, or ModelSupportUndetermined
 	offendingModel string // "" ⇒ unknown
+	controllingVar string // variable that sets offendingModel; "" ⇒ unknown
 }
 
 const (
@@ -174,6 +175,7 @@ func Overview(ctx context.Context, cfg *Config, opts OverviewOpts) (*OverviewRes
 		healthErr   error
 		modelRows   map[string]overviewModelHealth
 		modelDiags  []Diagnostic
+		modelErr    error
 	)
 
 	wg.Go(func() {
@@ -183,7 +185,7 @@ func Overview(ctx context.Context, cfg *Config, opts OverviewOpts) (*OverviewRes
 		healthRows, healthDiags, healthErr = collectOverviewHealth(ctx, repos, opts.Mode)
 	})
 	wg.Go(func() {
-		modelRows, modelDiags = collectOverviewModelHealth(ctx, repos)
+		modelRows, modelDiags, modelErr = collectOverviewModelHealth(ctx, repos)
 	})
 	wg.Wait()
 
@@ -194,6 +196,8 @@ func Overview(ctx context.Context, cfg *Config, opts OverviewOpts) (*OverviewRes
 		return result, diags, driftErr
 	case healthErr != nil:
 		return result, diags, healthErr
+	case modelErr != nil:
+		return result, diags, modelErr
 	}
 
 	for _, repo := range repos {
@@ -311,19 +315,24 @@ func withDiagnosticSignal(d Diagnostic, repo, signal string) Diagnostic {
 
 // collectOverviewModelHealth reads each repo's open agentic-workflows failure
 // issues and flags those whose recent runs failed on an unsupported/deprecated
-// Copilot model, naming the effective model for flagged repos. It never returns
-// an error: a failed failure-issue read degrades that repo to undetermined with
-// a signal-tagged diagnostic, mirroring the runs-unavailable degradation.
+// Copilot model, naming the effective model for flagged repos. A failed
+// failure-issue read degrades that repo to undetermined with a signal-tagged
+// diagnostic, mirroring the runs-unavailable degradation. The only error is
+// context cancellation, returned like collectOverviewHealth does, because a
+// repo left unread would otherwise render as clean.
 func collectOverviewModelHealth(
 	ctx context.Context, repos []string,
-) (map[string]overviewModelHealth, []Diagnostic) {
+) (map[string]overviewModelHealth, []Diagnostic, error) {
 	rows := make(map[string]overviewModelHealth, len(repos))
 	var diags []Diagnostic
 	for _, repo := range repos {
-		if ctx.Err() != nil {
-			return rows, diags
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return rows, diags, ctxErr
 		}
 		issues, err := ghFailureIssuesAPI(ctx, repo)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return rows, diags, ctxErr
+		}
 		if err != nil {
 			rows[repo] = overviewModelHealth{status: ModelSupportUndetermined}
 			msg := fmt.Sprintf("model-support signal unavailable for %s: %v", repo, err)
@@ -333,10 +342,14 @@ func collectOverviewModelHealth(
 		if !anyModelFailure(issues) {
 			continue
 		}
-		rows[repo] = resolveOverviewModel(ctx, repo)
-		diags = append(diags, *newSoftDiagnostic(repo, modelSupportRemediationHint))
+		row := resolveOverviewModel(ctx, repo)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return rows, diags, ctxErr
+		}
+		rows[repo] = row
+		diags = append(diags, *newSoftDiagnostic(repo, modelSupportRemediationHint(row.controllingVar)))
 	}
-	return rows, diags
+	return rows, diags, nil
 }
 
 // anyModelFailure reports whether any open failure issue flags a
@@ -351,15 +364,21 @@ func anyModelFailure(issues []failureIssue) bool {
 }
 
 // resolveOverviewModel builds the affected reduce result for a flagged repo,
-// naming its effective Copilot model. A variable-read error leaves the model
-// empty (unknown) but never drops the flag (FR-002).
+// naming its effective Copilot model from repository variables merged over the
+// organization variables shared with it. A failure reading either level leaves
+// the model empty (unknown) but never drops the flag (FR-002): with one level
+// missing, the resolved name could be wrong.
 func resolveOverviewModel(ctx context.Context, repo string) overviewModelHealth {
 	health := overviewModelHealth{status: ModelSupportAffected}
-	vars, err := ghRepoVariablesAPI(ctx, repo)
+	repoVars, err := ghRepoVariablesAPI(ctx, repo)
 	if err != nil {
 		return health
 	}
-	health.offendingModel = resolveEffectiveModel(vars)
+	orgVars, err := ghOrgVariablesAPI(ctx, repo)
+	if err != nil {
+		return health
+	}
+	health.offendingModel, health.controllingVar = resolveEffectiveModel(mergeActionsVariables(orgVars, repoVars))
 	return health
 }
 

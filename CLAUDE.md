@@ -27,10 +27,10 @@ days, gates exit code on drift only, and clamps aggregate `safeoutputs/noop`
 usage to successful runs. A third concurrent collector
 (`collectOverviewModelHealth`) reads each repo's open `agentic-workflows`
 failure issues, flags a `model_not_supported` marker, and names the offending
-model via the effective-model resolution seam (`ghRepoVariablesAPI` →
-`resolveEffectiveModel`); its `ghAwBakedDefaultCopilotModel` fallback constant is
-version-coupled to the `github/gh-aw` source pin and must be re-verified on every
-pin bump.
+model via the effective-model resolution seam (`ghRepoVariablesAPI` merged
+over `ghOrgVariablesAPI` → `resolveEffectiveModel`); its
+`ghAwBakedDefaultCopilotModel` fallback constant is version-coupled to the
+`github/gh-aw` source pin and must be re-verified on every pin bump.
 
 Per-slice dependency and storage deltas:
 

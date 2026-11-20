@@ -1,8 +1,10 @@
 package fleet
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -68,9 +70,10 @@ func TestParseModelFailure(t *testing.T) {
 
 func TestResolveEffectiveModel(t *testing.T) {
 	cases := []struct {
-		name string
-		vars map[string]string
-		want string
+		name        string
+		vars        map[string]string
+		wantModel   string
+		wantControl string
 	}{
 		{
 			name: "agent override wins",
@@ -78,17 +81,20 @@ func TestResolveEffectiveModel(t *testing.T) {
 				varAgentModelCopilot:   "gpt-5.3-codex",
 				varDefaultModelCopilot: "gpt-5-mini",
 			},
-			want: "gpt-5.3-codex",
+			wantModel:   "gpt-5.3-codex",
+			wantControl: varAgentModelCopilot,
 		},
 		{
-			name: "default var when agent unset",
-			vars: map[string]string{varDefaultModelCopilot: "gpt-5-mini"},
-			want: "gpt-5-mini",
+			name:        "default var when agent unset",
+			vars:        map[string]string{varDefaultModelCopilot: "gpt-5-mini"},
+			wantModel:   "gpt-5-mini",
+			wantControl: varDefaultModelCopilot,
 		},
 		{
-			name: "baked default when both unset",
-			vars: map[string]string{},
-			want: ghAwBakedDefaultCopilotModel,
+			name:        "baked default when both unset is fixed via the default var",
+			vars:        map[string]string{},
+			wantModel:   ghAwBakedDefaultCopilotModel,
+			wantControl: varDefaultModelCopilot,
 		},
 		{
 			name: "empty-string values are skipped",
@@ -96,7 +102,8 @@ func TestResolveEffectiveModel(t *testing.T) {
 				varAgentModelCopilot:   "",
 				varDefaultModelCopilot: "",
 			},
-			want: ghAwBakedDefaultCopilotModel,
+			wantModel:   ghAwBakedDefaultCopilotModel,
+			wantControl: varDefaultModelCopilot,
 		},
 		{
 			name: "empty agent falls through to default var",
@@ -104,14 +111,79 @@ func TestResolveEffectiveModel(t *testing.T) {
 				varAgentModelCopilot:   "",
 				varDefaultModelCopilot: "claude-opus-4",
 			},
-			want: "claude-opus-4",
+			wantModel:   "claude-opus-4",
+			wantControl: varDefaultModelCopilot,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := resolveEffectiveModel(tc.vars); got != tc.want {
-				t.Fatalf("resolveEffectiveModel(%v) = %q; want %q", tc.vars, got, tc.want)
+			model, control := resolveEffectiveModel(tc.vars)
+			if model != tc.wantModel || control != tc.wantControl {
+				t.Fatalf("resolveEffectiveModel(%v) = (%q, %q); want (%q, %q)",
+					tc.vars, model, control, tc.wantModel, tc.wantControl)
 			}
 		})
+	}
+}
+
+func TestMergeActionsVariables(t *testing.T) {
+	org := map[string]string{
+		varAgentModelCopilot:   "org-agent",
+		varDefaultModelCopilot: "org-default",
+	}
+	repo := map[string]string{varDefaultModelCopilot: "repo-default"}
+
+	got := mergeActionsVariables(org, repo)
+
+	if got[varDefaultModelCopilot] != "repo-default" {
+		t.Fatalf("repo variable must override org: got %q", got[varDefaultModelCopilot])
+	}
+	if got[varAgentModelCopilot] != "org-agent" {
+		t.Fatalf("org-only variable must be inherited: got %q", got[varAgentModelCopilot])
+	}
+	if org[varDefaultModelCopilot] != "org-default" {
+		t.Fatal("merge mutated the org input map")
+	}
+}
+
+func TestModelSupportRemediationHint(t *testing.T) {
+	cases := []struct {
+		name           string
+		controllingVar string
+		wantSetVar     string
+		wantPrecedence bool
+	}{
+		{name: "default var controls", controllingVar: varDefaultModelCopilot, wantSetVar: varDefaultModelCopilot},
+		{
+			name:           "agent var controls",
+			controllingVar: varAgentModelCopilot,
+			wantSetVar:     varAgentModelCopilot,
+			wantPrecedence: true,
+		},
+		{name: "variables unreadable", controllingVar: "", wantSetVar: varDefaultModelCopilot, wantPrecedence: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hint := modelSupportRemediationHint(tc.controllingVar)
+			if !strings.Contains(hint, "Set the "+tc.wantSetVar+" Actions variable") {
+				t.Fatalf("hint does not tell the operator to set %s: %q", tc.wantSetVar, hint)
+			}
+			if !strings.Contains(hint, varDefaultModelCopilot) {
+				t.Fatalf("hint must reference %s (FR-004): %q", varDefaultModelCopilot, hint)
+			}
+			if got := strings.Contains(hint, "takes precedence"); got != tc.wantPrecedence {
+				t.Fatalf("hint precedence note present = %v; want %v: %q", got, tc.wantPrecedence, hint)
+			}
+		})
+	}
+}
+
+func TestIsGitHubValidationFailed(t *testing.T) {
+	userOwned := errors.New("gh api: gh: Validation Failed (HTTP 422)")
+	if !isGitHubValidationFailed(userOwned) {
+		t.Fatalf("HTTP 422 must classify as validation-failed")
+	}
+	if isGitHubValidationFailed(errors.New("gh api: HTTP 403")) || isGitHubValidationFailed(nil) {
+		t.Fatalf("non-422 errors must not classify as validation-failed")
 	}
 }

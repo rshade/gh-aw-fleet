@@ -35,9 +35,19 @@ Routed through the existing hints channel (`splitOverviewDiags` → `emitOvervie
        Copilot subscription supports (no recompile required).
 ```
 
+The hint names the variable that controls the failing model, since `GH_AW_MODEL_AGENT_COPILOT` outranks `GH_AW_DEFAULT_MODEL_COPILOT`:
+
+| Controlling variable | Hint tells the operator to |
+|----------------------|----------------------------|
+| `GH_AW_DEFAULT_MODEL_COPILOT` (also when only the baked default applies) | set `GH_AW_DEFAULT_MODEL_COPILOT` (text above) |
+| `GH_AW_MODEL_AGENT_COPILOT` | set `GH_AW_MODEL_AGENT_COPILOT`, noting it takes precedence over `GH_AW_DEFAULT_MODEL_COPILOT` |
+| unknown (variables unreadable) | set `GH_AW_DEFAULT_MODEL_COPILOT`, or change `GH_AW_MODEL_AGENT_COPILOT` instead if it is set on the repo or its organization |
+
+A repo-level variable always overrides an organization one, so "on the repo" is correct whichever level supplied the value.
+
 Rules:
 
-- Exactly one hint per **affected** repo (FR-004, SC-005). No hint for undetermined or clean repos.
+- Exactly one hint per **affected** repo (FR-004, SC-005); every variant references `GH_AW_DEFAULT_MODEL_COPILOT`. No hint for undetermined or clean repos.
 - Absent entirely when no repo is flagged (FR-008) — a healthy fleet emits no model hint.
 
 ## 4. JSON envelope — additive field

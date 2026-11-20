@@ -75,7 +75,8 @@ Copilot model is unsupported or deprecated. It reads each repo's open
 `model_not_supported` marker — no per-run logs required. For a flagged repo it
 resolves the effective Copilot model (`GH_AW_MODEL_AGENT_COPILOT`, then
 `GH_AW_DEFAULT_MODEL_COPILOT`, then gh-aw's baked default) and names it as the
-offending model.
+offending model. Both repository variables and organization variables shared
+with the repo count; a repository value overrides an organization one.
 
 The advisory surfaces in three places, all additive:
 
@@ -103,6 +104,10 @@ The advisory surfaces in three places, all additive:
          the repo to a model your Copilot subscription supports (no recompile
          required).
   ```
+
+  When `GH_AW_MODEL_AGENT_COPILOT` supplies the failing model, the hint names
+  that variable instead, because it takes precedence over
+  `GH_AW_DEFAULT_MODEL_COPILOT` and setting the default alone changes nothing.
 
 - **JSON (`--output json`):** an additive `model_support` field (see below).
 

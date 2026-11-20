@@ -343,10 +343,11 @@ func TestOverviewRunFanoutFailuresPreserveTypedDiagnostics(t *testing.T) {
 	}
 }
 
-// withModelStubs owns the ghFailureIssuesAPI / ghRepoVariablesAPI seams for
-// the duration of a test. Nil handlers default to offline no-ops (no issues,
-// no variables) so Overview tests that only exercise other signals can stub
-// the model collector out with withModelStubs(t, nil, nil).
+// withModelStubs owns the ghFailureIssuesAPI / ghRepoVariablesAPI /
+// ghOrgVariablesAPI seams for the duration of a test. Nil handlers default to
+// offline no-ops (no issues, no variables) so Overview tests that only exercise
+// other signals can stub the model collector out with withModelStubs(t, nil, nil).
+// Organization variables default to none; use withOrgVariablesStub to set them.
 func withModelStubs(
 	t *testing.T,
 	issues func(repo string) ([]failureIssue, error),
@@ -359,10 +360,20 @@ func withModelStubs(
 	if vars == nil {
 		vars = func(string) (map[string]string, error) { return map[string]string{}, nil }
 	}
-	prevI, prevV := ghFailureIssuesAPI, ghRepoVariablesAPI
-	t.Cleanup(func() { ghFailureIssuesAPI, ghRepoVariablesAPI = prevI, prevV })
+	prevI, prevV, prevO := ghFailureIssuesAPI, ghRepoVariablesAPI, ghOrgVariablesAPI
+	t.Cleanup(func() { ghFailureIssuesAPI, ghRepoVariablesAPI, ghOrgVariablesAPI = prevI, prevV, prevO })
 	ghFailureIssuesAPI = func(_ context.Context, repo string) ([]failureIssue, error) { return issues(repo) }
 	ghRepoVariablesAPI = func(_ context.Context, repo string) (map[string]string, error) { return vars(repo) }
+	ghOrgVariablesAPI = func(context.Context, string) (map[string]string, error) { return map[string]string{}, nil }
+}
+
+// withOrgVariablesStub replaces the organization-variables seam installed by
+// withModelStubs; call it after withModelStubs.
+func withOrgVariablesStub(t *testing.T, org func(repo string) (map[string]string, error)) {
+	t.Helper()
+	prev := ghOrgVariablesAPI
+	t.Cleanup(func() { ghOrgVariablesAPI = prev })
+	ghOrgVariablesAPI = func(_ context.Context, repo string) (map[string]string, error) { return org(repo) }
 }
 
 func modelFailureIssues(body string) []failureIssue {
@@ -382,7 +393,10 @@ func TestCollectOverviewModelHealth(t *testing.T) {
 	modelBody := mustReadFailureFixture(t, "model_not_supported.txt")
 	unrelatedBody := mustReadFailureFixture(t, "unrelated.txt")
 
-	repos := []string{"e/read-error", "h/healthy", "m/override", "m/unset", "u/unrelated", "v/var-error"}
+	repos := []string{
+		"e/read-error", "h/healthy", "m/override", "m/unset",
+		"o/org-agent", "o/org-error", "o/repo-over-org", "u/unrelated", "v/var-error",
+	}
 	withModelStubs(t,
 		func(repo string) ([]failureIssue, error) {
 			switch repo {
@@ -392,7 +406,7 @@ func TestCollectOverviewModelHealth(t *testing.T) {
 				return nil, nil
 			case "u/unrelated":
 				return modelFailureIssues(unrelatedBody), nil
-			default: // m/override, m/unset, v/var-error
+			default: // m/*, o/*, v/var-error
 				return modelFailureIssues(modelBody), nil
 			}
 		},
@@ -400,17 +414,35 @@ func TestCollectOverviewModelHealth(t *testing.T) {
 			switch repo {
 			case "m/override":
 				return map[string]string{varDefaultModelCopilot: "gpt-5-mini"}, nil
+			case "o/repo-over-org":
+				return map[string]string{varAgentModelCopilot: "repo-agent"}, nil
 			case "v/var-error":
 				return nil, errors.New("gh api: HTTP 403 while listing variables")
-			default: // m/unset
+			default: // m/unset, o/org-agent, o/org-error
 				return map[string]string{}, nil
 			}
 		})
+	withOrgVariablesStub(t, func(repo string) (map[string]string, error) {
+		switch repo {
+		case "o/org-agent", "o/repo-over-org":
+			return map[string]string{varAgentModelCopilot: "org-agent"}, nil
+		case "o/org-error":
+			return nil, errors.New("gh api: HTTP 403 while listing organization variables")
+		default:
+			return map[string]string{}, nil
+		}
+	})
 
-	rows, diags := collectOverviewModelHealth(context.Background(), repos)
+	rows, diags, err := collectOverviewModelHealth(context.Background(), repos)
+	if err != nil {
+		t.Fatalf("collectOverviewModelHealth: %v", err)
+	}
 
 	assertModelRow(t, rows, "m/unset", ModelSupportAffected, ghAwBakedDefaultCopilotModel)
 	assertModelRow(t, rows, "m/override", ModelSupportAffected, "gpt-5-mini")
+	assertModelRow(t, rows, "o/org-agent", ModelSupportAffected, "org-agent")
+	assertModelRow(t, rows, "o/repo-over-org", ModelSupportAffected, "repo-agent")
+	assertModelRow(t, rows, "o/org-error", ModelSupportAffected, "")
 	assertModelRow(t, rows, "v/var-error", ModelSupportAffected, "")
 	assertModelRow(t, rows, "e/read-error", ModelSupportUndetermined, "")
 	assertModelRow(t, rows, "u/unrelated", "", "")
@@ -447,7 +479,10 @@ func TestCollectOverviewModelHealthRemediationHints(t *testing.T) {
 		},
 		func(_ string) (map[string]string, error) { return map[string]string{}, nil })
 
-	_, diags := collectOverviewModelHealth(context.Background(), repos)
+	_, diags, err := collectOverviewModelHealth(context.Background(), repos)
+	if err != nil {
+		t.Fatalf("collectOverviewModelHealth: %v", err)
+	}
 
 	hintRepos := map[string]int{}
 	for _, d := range diags {
@@ -468,6 +503,61 @@ func TestCollectOverviewModelHealthRemediationHints(t *testing.T) {
 	}
 	if hintRepos["c/clean"] != 0 || hintRepos["u/undetermined"] != 0 {
 		t.Fatalf("non-affected repos produced hints: %v", hintRepos)
+	}
+}
+
+func TestCollectOverviewModelHealthHintNamesControllingVariable(t *testing.T) {
+	modelBody := mustReadFailureFixture(t, "model_not_supported.txt")
+	repos := []string{"a/agent-var", "d/default-var"}
+	withModelStubs(t,
+		func(string) ([]failureIssue, error) { return modelFailureIssues(modelBody), nil },
+		func(repo string) (map[string]string, error) {
+			if repo == "a/agent-var" {
+				return map[string]string{varAgentModelCopilot: "gpt-5-mini"}, nil
+			}
+			return map[string]string{varDefaultModelCopilot: "gpt-5-mini"}, nil
+		})
+
+	_, diags, err := collectOverviewModelHealth(context.Background(), repos)
+	if err != nil {
+		t.Fatalf("collectOverviewModelHealth: %v", err)
+	}
+
+	hints := map[string]string{}
+	for _, d := range diags {
+		if d.Code == DiagHint {
+			repo, _ := d.Fields[fieldRepo].(string)
+			hints[repo] = d.Message
+		}
+	}
+	if want := modelSupportRemediationHint(varAgentModelCopilot); hints["a/agent-var"] != want {
+		t.Fatalf("agent-var hint = %q; want %q", hints["a/agent-var"], want)
+	}
+	if want := modelSupportRemediationHint(varDefaultModelCopilot); hints["d/default-var"] != want {
+		t.Fatalf("default-var hint = %q; want %q", hints["d/default-var"], want)
+	}
+}
+
+func TestCollectOverviewModelHealthCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	withModelStubs(t,
+		func(repo string) ([]failureIssue, error) {
+			if repo == "a/first" {
+				cancel()
+				return nil, context.Canceled
+			}
+			t.Fatalf("collector kept reading %s after cancellation", repo)
+			return nil, nil
+		},
+		nil)
+
+	rows, diags, err := collectOverviewModelHealth(ctx, []string{"a/first", "b/second"})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v; want context.Canceled so Overview fails instead of reporting unread repos as clean", err)
+	}
+	if len(rows) != 0 || len(diags) != 0 {
+		t.Fatalf("cancelled read was misreported: rows=%v diags=%#v", rows, diags)
 	}
 }
 

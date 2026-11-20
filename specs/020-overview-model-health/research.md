@@ -37,13 +37,13 @@ effective = vars.GH_AW_MODEL_AGENT_COPILOT
           || ghAwBakedDefaultCopilotModel   // gh-aw's compiled-in default
 ```
 
-read via `gh variable list --repo <repo> --json name,value` (seam `ghRepoVariablesAPI`).
+read via `gh variable list --repo <repo> --json name,value` (seam `ghRepoVariablesAPI`) merged over the organization variables shared with the repo (seam `ghOrgVariablesAPI`, `repos/<repo>/actions/organization-variables`; `HTTP 422` for a user-owned repo means none). Repository values win, matching GitHub's `vars` precedence. Reading the repo level alone would report the baked default for a repo whose model comes from an organization variable. The resolver also returns which variable controls the model, so the remediation hint names `GH_AW_MODEL_AGENT_COPILOT` when that variable is the one in effect.
 
 **Rationale**: The failure-issue marker does **not** name the offending model, and the body's `400 The requested model is not supported.` has none; the `model: gpt-5-mini` in the body's "How to fix" block is a *suggested fix*, not the offending model — scraping it would mis-attribute. For a `model_not_supported` failure the *effective* `COPILOT_MODEL` is by definition the offending one, and gh-aw resolves it exactly as the fallback chain above (issue #201 Technical Notes: `COPILOT_MODEL: ${{ vars.GH_AW_MODEL_AGENT_COPILOT || vars.GH_AW_DEFAULT_MODEL_COPILOT || 'claude-sonnet-4.6' }}`). This actually names the model on the dashboard (SC-001) instead of always reporting "unknown".
 
 **Cost / trade-off accepted**: one extra `gh variable list` call per *flagged* (already-broken) repo — negligible fan-out — plus a `ghAwBakedDefaultCopilotModel` constant that MUST track the fleet's `github/gh-aw` source pin. gh-aw changes this default across releases (it dropped `gpt-5-mini` in v0.81.5), so the constant's godoc records the pin it was verified against and flags it as a maintenance touch-point on gh-aw pin bumps.
 
-**Fallback to unknown (FR-002 compliance)**: If `ghRepoVariablesAPI` errors for a flagged repo, the repo stays flagged (`status: affected`) with an **empty** offending-model set, rendered as `unknown`. Detection never fails the command because model *naming* failed.
+**Fallback to unknown (FR-002 compliance)**: If `ghRepoVariablesAPI` or `ghOrgVariablesAPI` errors for a flagged repo, the repo stays flagged (`status: affected`) with an **empty** offending-model set, rendered as `unknown`. Detection never fails the command because model *naming* failed.
 
 **Known v1 limitation (documented, not a bug)**: repo-level variables + baked default resolve to one effective model per repo; a per-workflow frontmatter `model:` override (in the clone, not read here) is not consulted. The spec's "multiple offending models" edge case is still satisfied structurally (the field is a deduplicated, sorted set), and per-workflow resolution is a noted follow-on.
 
