@@ -176,7 +176,7 @@ and `gh`.
   `gh extension install github/gh-aw --pin v0.79.2` — a bare
   `gh extension upgrade aw` stops at the latest *stable* (v0.77.5). Avoid
   `main`: it often contains unreleased features that break this tool.
-- Go 1.27.1+ **only if** installing via `go install` or building from
+- Go 1.27.4+ **only if** installing via `go install` or building from
   source
 
 ### Install
