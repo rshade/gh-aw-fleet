@@ -67,6 +67,54 @@ Unknown repos fail before any GitHub or `gh aw logs` fetch.
 Run failures are advisory. A fully aligned fleet with failing agentic runs still
 exits `0`.
 
+## Model-Support Advisory
+
+`overview` flags repos whose recent agentic runs failed because the effective
+Copilot model is unsupported or deprecated. It reads each repo's open
+`agentic-workflows` failure issues and matches gh-aw's machine-readable
+`model_not_supported` marker — no per-run logs required. For a flagged repo it
+resolves the effective Copilot model (`GH_AW_MODEL_AGENT_COPILOT`, then
+`GH_AW_DEFAULT_MODEL_COPILOT`, then gh-aw's baked default) and names it as the
+offending model. Both repository variables and organization variables shared
+with the repo count; a repository value overrides an organization one.
+
+The advisory surfaces in three places, all additive:
+
+- **Detail block (stdout):** an affected repo's block gains a line, printed
+  after the runs line:
+
+  ```text
+  rshade/finfocus (unhealthy):
+    runs: 4 (4 failed, 0 no-op) · health 0% · cost -
+    model-support: FAILING — offending model(s): claude-sonnet-4.6
+  ```
+
+  When the model cannot be named (its variables could not be read) the line
+  reads `offending model(s): unknown`. A repo whose failure-issue read itself
+  failed shows `model-support: undetermined — model-failure signal unavailable`,
+  but only when a detail block is already open for another reason — an
+  otherwise-clean repo never gains a block.
+
+- **Remediation hint (stderr):** each flagged repo emits exactly one hint naming
+  the fix, which takes effect without recompiling the deployed workflows:
+
+  ```text
+  [hint] rshade/finfocus: agentic runs are failing on an unsupported/deprecated
+         Copilot model. Set the GH_AW_DEFAULT_MODEL_COPILOT Actions variable on
+         the repo to a model your Copilot subscription supports (no recompile
+         required).
+  ```
+
+  When `GH_AW_MODEL_AGENT_COPILOT` supplies the failing model, the hint names
+  that variable instead, because it takes precedence over
+  `GH_AW_DEFAULT_MODEL_COPILOT` and setting the default alone changes nothing.
+
+- **JSON (`--output json`):** an additive `model_support` field (see below).
+
+The advisory never changes the exit code — a model failure on an otherwise
+drift-aligned fleet still exits `0`. A fully healthy fleet prints no model line,
+no hint, and no JSON field.
+
 ## JSON Output
 
 Use the standard envelope for automation:
@@ -78,6 +126,23 @@ gh-aw-fleet overview --output json
 The payload contains `result.repos[]`, `result.total`, and diagnostics routed
 through envelope `warnings[]` and `hints[]`. The envelope schema version remains
 `1`; `overview` is an additive payload.
+
+Each affected or undetermined repo row carries an additive `model_support`
+object; clean rows omit it entirely, so existing consumers are byte-unaffected:
+
+```json
+{
+  "repo": "rshade/finfocus",
+  "drift_state": "aligned",
+  "model_support": {
+    "status": "affected",
+    "offending_models": ["claude-sonnet-4.6"]
+  }
+}
+```
+
+`status` is `affected` or `undetermined`; `offending_models` is a sorted,
+deduplicated set that is omitted when the model could not be named.
 
 ## Performance
 

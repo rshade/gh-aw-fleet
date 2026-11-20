@@ -24,7 +24,13 @@ directive; `scripts/check-toolchain-drift.sh` enforces that the two agree.
 `overview` joins drift from `Status()` with run health, no-op counts, AIC, and
 cost from the shared `collectRepoRuns` logs fan-out. It defaults to trailing 7
 days, gates exit code on drift only, and clamps aggregate `safeoutputs/noop`
-usage to successful runs.
+usage to successful runs. A third concurrent collector
+(`collectOverviewModelHealth`) reads each repo's open `agentic-workflows`
+failure issues, flags a `model_not_supported` marker, and names the offending
+model via the effective-model resolution seam (`ghRepoVariablesAPI` merged
+over `ghOrgVariablesAPI` → `resolveEffectiveModel`); its
+`ghAwBakedDefaultCopilotModel` fallback constant is version-coupled to the
+`github/gh-aw` source pin and must be re-verified on every pin bump.
 
 Per-slice dependency and storage deltas:
 
@@ -56,5 +62,5 @@ Per-slice dependency and storage deltas:
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-[specs/019-security-finding-prompt/plan.md](./specs/019-security-finding-prompt/plan.md)
+[specs/020-overview-model-health/plan.md](./specs/020-overview-model-health/plan.md)
 <!-- SPECKIT END -->

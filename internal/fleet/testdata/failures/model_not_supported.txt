@@ -1,0 +1,21 @@
+## [aw] Code Simplifier failed
+
+The agentic run for `code-simplifier` failed.
+
+**Failure class:** `model_not_supported`
+
+```
+400 The requested model is not supported.
+```
+
+### How to fix
+
+Set a model your Copilot subscription supports, for example:
+
+```yaml
+engine:
+  id: copilot
+  model: gpt-5-mini
+```
+
+<!-- gh-aw-failure-issue: true, workflow_id: code-simplifier, branch: main, failure_categories: agent_failure|model_not_supported_error -->

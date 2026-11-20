@@ -4,6 +4,11 @@ const addToken = "add"
 
 const logsToken = "logs"
 
+const (
+	flagJSON = "--json"
+	flagRepo = "--repo"
+)
+
 const githubContentTypeFile = "file"
 
 const (

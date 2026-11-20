@@ -70,6 +70,123 @@ func TestOverviewCmdTextEmptyFleetOmitsTotal(t *testing.T) {
 	}
 }
 
+func renderOverviewRowDetail(t *testing.T, row fleet.RepoOverview) string {
+	t.Helper()
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	printOverviewDetail(cmd, row)
+	return out.String()
+}
+
+func renderOverviewRows(t *testing.T, rows ...fleet.RepoOverview) string {
+	t.Helper()
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	res := &fleet.OverviewResult{LoadedFrom: "fleet.json", Window: "trailing-7d", Repos: rows}
+	if err := renderOverviewText(cmd, res); err != nil {
+		t.Fatalf("renderOverviewText: %v", err)
+	}
+	return out.String()
+}
+
+func TestOverviewCmdModelSupportText(t *testing.T) {
+	affected := fleet.RepoOverview{
+		Repo:          "rshade/finfocus",
+		DriftState:    fleet.DriftStateAligned,
+		Runs:          4,
+		Failures:      4,
+		HealthRate:    f64ptr(0),
+		RunsAvailable: true,
+		ModelSupport:  &fleet.ModelSupport{Status: "affected", OffendingModels: []string{"claude-sonnet-4.6"}},
+	}
+	if got := renderOverviewRowDetail(t, affected); !strings.Contains(got,
+		"model-support: FAILING — offending model(s): claude-sonnet-4.6") {
+		t.Fatalf("affected detail missing model line:\n%s", got)
+	}
+
+	unknown := affected
+	unknown.ModelSupport = &fleet.ModelSupport{Status: "affected"}
+	if got := renderOverviewRowDetail(t, unknown); !strings.Contains(got,
+		"model-support: FAILING — offending model(s): unknown") {
+		t.Fatalf("affected-unknown detail missing unknown line:\n%s", got)
+	}
+
+	// Renderer-only defensive path: the v1 collector names at most one model,
+	// but the wire field is a list, so multiple values comma-join.
+	multi := affected
+	multi.ModelSupport = &fleet.ModelSupport{
+		Status:          "affected",
+		OffendingModels: []string{"claude-sonnet-4.6", "gpt-5-mini"},
+	}
+	if got := renderOverviewRowDetail(t, multi); !strings.Contains(got,
+		"model-support: FAILING — offending model(s): claude-sonnet-4.6, gpt-5-mini") {
+		t.Fatalf("multi-model detail missing comma-joined models:\n%s", got)
+	}
+
+	// FR-003: an affected status always forces a detail block, even on an
+	// otherwise drift-aligned, healthy repo — the open failure issue can
+	// outlive the failing run window, so health gating alone could drop the
+	// model-support annotation.
+	recovered := fleet.RepoOverview{
+		Repo:          "acme/recovered",
+		DriftState:    fleet.DriftStateAligned,
+		Runs:          5,
+		Failures:      0,
+		HealthRate:    f64ptr(1),
+		RunsAvailable: true,
+		ModelSupport:  &fleet.ModelSupport{Status: "affected", OffendingModels: []string{"gpt-5-mini"}},
+	}
+	recoveredOut := renderOverviewRows(t, recovered)
+	if !strings.Contains(recoveredOut, "acme/recovered (") ||
+		!strings.Contains(recoveredOut, "model-support: FAILING — offending model(s): gpt-5-mini") {
+		t.Fatalf("affected-but-healthy repo lost its detail block:\n%s", recoveredOut)
+	}
+
+	undetermined := fleet.RepoOverview{
+		Repo:          "acme/widgets",
+		DriftState:    fleet.DriftStateDrifted,
+		DriftDetail:   &fleet.RepoStatus{Repo: "acme/widgets", DriftState: fleet.DriftStateDrifted},
+		RunsAvailable: true,
+		ModelSupport:  &fleet.ModelSupport{Status: "undetermined"},
+	}
+	if got := renderOverviewRowDetail(t, undetermined); !strings.Contains(got,
+		"model-support: undetermined — model-failure signal unavailable") {
+		t.Fatalf("undetermined detail missing undetermined line:\n%s", got)
+	}
+
+	// FR-011: an undetermined status never forces a detail block on an otherwise
+	// clean, drift-aligned, healthy repo.
+	quiet := fleet.RepoOverview{
+		Repo:          "acme/quiet",
+		DriftState:    fleet.DriftStateAligned,
+		Runs:          5,
+		Failures:      0,
+		HealthRate:    f64ptr(1),
+		RunsAvailable: true,
+		ModelSupport:  &fleet.ModelSupport{Status: "undetermined"},
+	}
+	got := renderOverviewRows(t, quiet)
+	if strings.Contains(got, "model-support:") || strings.Contains(got, "acme/quiet (") {
+		t.Fatalf("undetermined status forced a detail block on a clean repo:\n%s", got)
+	}
+
+	// SC-003: a clean repo with no ModelSupport renders no detail block at all.
+	clean := fleet.RepoOverview{
+		Repo:          "acme/api",
+		DriftState:    fleet.DriftStateAligned,
+		Runs:          9,
+		Failures:      0,
+		HealthRate:    f64ptr(1),
+		RunsAvailable: true,
+	}
+	cleanOut := renderOverviewRows(t, clean)
+	if strings.Contains(cleanOut, "model-support:") || strings.Contains(cleanOut, "acme/api (") {
+		t.Fatalf("clean repo rendered a detail block:\n%s", cleanOut)
+	}
+}
+
 func TestOverviewCmdFlags(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -261,6 +378,101 @@ func TestOverviewCmdJSON(t *testing.T) {
 	}
 }
 
+func TestOverviewCmdJSONModelSupport(t *testing.T) {
+	dir := writeOverviewFleetConfig(t, []string{"a/affected", "b/unknown", "c/undetermined", "d/clean"})
+	withOverviewStub(t, func(
+		_ context.Context,
+		cfg *fleet.Config,
+		_ fleet.OverviewOpts,
+	) (*fleet.OverviewResult, []fleet.Diagnostic, error) {
+		return &fleet.OverviewResult{
+			LoadedFrom: cfg.LoadedFrom,
+			Window:     "trailing-7d",
+			Repos: []fleet.RepoOverview{
+				{
+					Repo: "a/affected", DriftState: fleet.DriftStateAligned, RunsAvailable: true,
+					ModelSupport: &fleet.ModelSupport{
+						Status:          "affected",
+						OffendingModels: []string{"claude-sonnet-4.6"},
+					},
+				},
+				{
+					Repo: "b/unknown", DriftState: fleet.DriftStateAligned, RunsAvailable: true,
+					ModelSupport: &fleet.ModelSupport{Status: "affected"},
+				},
+				{
+					Repo: "c/undetermined", DriftState: fleet.DriftStateAligned, RunsAvailable: true,
+					ModelSupport: &fleet.ModelSupport{Status: "undetermined"},
+				},
+				{
+					Repo:          "d/clean",
+					DriftState:    fleet.DriftStateAligned,
+					Runs:          5,
+					HealthRate:    f64ptr(1),
+					RunsAvailable: true,
+				},
+			},
+			Total: fleet.OverviewTotal{Aligned: 4, Runs: 5, HealthRate: f64ptr(1)},
+		}, nil, nil
+	})
+
+	stdout, stderr, err := executeOverviewRoot("--output", "json", "--dir", dir, "overview")
+	if err != nil {
+		t.Fatalf("Execute: %v\nstderr=%s", err, stderr)
+	}
+
+	var env Envelope
+	if decErr := json.Unmarshal([]byte(stdout), &env); decErr != nil {
+		t.Fatalf("decode envelope: %v\nstdout=%s", decErr, stdout)
+	}
+	if env.SchemaVersion != SchemaVersion || SchemaVersion != 1 {
+		t.Fatalf("schema_version = %d (const %d); want 1 (unchanged, FR-006)", env.SchemaVersion, SchemaVersion)
+	}
+
+	raw := map[string]any{}
+	if decErr := json.Unmarshal([]byte(stdout), &raw); decErr != nil {
+		t.Fatalf("decode raw: %v", decErr)
+	}
+	result := raw["result"].(map[string]any)
+	byRepo := map[string]map[string]any{}
+	for _, r := range result["repos"].([]any) {
+		m := r.(map[string]any)
+		byRepo[m["repo"].(string)] = m
+	}
+
+	affected := byRepo["a/affected"]["model_support"].(map[string]any)
+	if affected["status"] != "affected" {
+		t.Fatalf("a/affected status = %v; want affected", affected["status"])
+	}
+	models := affected["offending_models"].([]any)
+	if len(models) != 1 || models[0] != "claude-sonnet-4.6" {
+		t.Fatalf("a/affected offending_models = %v; want [claude-sonnet-4.6]", affected["offending_models"])
+	}
+
+	unknown := byRepo["b/unknown"]["model_support"].(map[string]any)
+	if unknown["status"] != "affected" {
+		t.Fatalf("b/unknown status = %v; want affected", unknown["status"])
+	}
+	if _, ok := unknown["offending_models"]; ok {
+		t.Fatalf("b/unknown offending_models present; want omitted: %#v", unknown)
+	}
+
+	undetermined := byRepo["c/undetermined"]["model_support"].(map[string]any)
+	if undetermined["status"] != "undetermined" {
+		t.Fatalf("c/undetermined status = %v; want undetermined", undetermined["status"])
+	}
+	if _, ok := undetermined["offending_models"]; ok {
+		t.Fatalf("c/undetermined offending_models present; want omitted: %#v", undetermined)
+	}
+
+	if _, ok := byRepo["d/clean"]["model_support"]; ok {
+		t.Fatalf("d/clean carries model_support; want omitted entirely (SC-003): %#v", byRepo["d/clean"])
+	}
+	if _, ok := result["total"].(map[string]any)["model_support"]; ok {
+		t.Fatalf("total carries model_support; want no pooled model counter (FR-007)")
+	}
+}
+
 func TestOverviewCmdJSONSetupFailurePreservesTypedDiagnostic(t *testing.T) {
 	cases := []struct {
 		name string
@@ -342,6 +554,45 @@ func TestSplitOverviewDiagsRoutesBillingRunFailuresToHints(t *testing.T) {
 	}
 	if len(warnings) != 1 || warnings[0].Code != fleet.DiagDriftDetected {
 		t.Fatalf("warnings = %#v; want drift_detected left as a warning", warnings)
+	}
+}
+
+func TestSplitOverviewDiagsRoutesModelRemediationToHints(t *testing.T) {
+	msg := "agentic runs are failing on an unsupported/deprecated Copilot model. " +
+		"Set the GH_AW_DEFAULT_MODEL_COPILOT Actions variable on the repo."
+	diags := []fleet.Diagnostic{
+		{
+			Code:    fleet.DiagHint,
+			Message: msg,
+			Fields:  map[string]any{"repo": "rshade/finfocus", diagnosticFieldHint: msg},
+		},
+		{
+			Code:    fleet.DiagRepoInaccessible,
+			Message: "model-support signal unavailable for acme/api",
+			Fields:  map[string]any{"repo": "acme/api", "signal": "model"},
+		},
+	}
+
+	warnings, hints := splitOverviewDiags(diags)
+	if len(hints) != 2 {
+		t.Fatalf("hints = %#v; want the remediation and the undetermined read-error both routed to hints", hints)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v; want none", warnings)
+	}
+	if hints[0].Fields["repo"] != "acme/api" || hints[1].Fields["repo"] != "rshade/finfocus" {
+		t.Fatalf("hints not sorted by repo: %#v", hints)
+	}
+	if !strings.Contains(hints[1].Message, "GH_AW_DEFAULT_MODEL_COPILOT") {
+		t.Fatalf("remediation hint does not name the fix variable: %q", hints[1].Message)
+	}
+}
+
+func TestSplitOverviewDiagsHealthyFleetEmitsNoModelHint(t *testing.T) {
+	// A healthy fleet's overview produces no model diagnostics at all (FR-008).
+	warnings, hints := splitOverviewDiags(nil)
+	if len(warnings) != 0 || len(hints) != 0 {
+		t.Fatalf("healthy fleet split = warnings %d hints %d; want 0/0", len(warnings), len(hints))
 	}
 }
 
