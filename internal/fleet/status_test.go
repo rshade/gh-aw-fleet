@@ -577,6 +577,112 @@ func TestStatus_RateLimitedDiagnosticCode(t *testing.T) {
 	}
 }
 
+func TestStatus_ResolveRefsSameCommitIsAligned(t *testing.T) {
+	cfg := statusResolveConfig()
+	fetcher := statusResolveFetcher("abc123")
+	var calls int
+	resolve := func(_ context.Context, source, ref string) (string, error) {
+		calls++
+		if source != "githubnext/agentics" {
+			t.Errorf("source = %q", source)
+		}
+		if ref != "v1.0" && ref != "abc123" {
+			t.Errorf("ref = %q", ref)
+		}
+		return "abc123", nil
+	}
+
+	off, _, err := Status(context.Background(), cfg, StatusOpts{fetcher: fetcher})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if off.Repos[0].DriftState != DriftStateDrifted {
+		t.Fatalf("without flag state = %s; want drifted", off.Repos[0].DriftState)
+	}
+
+	on, _, err := Status(context.Background(), cfg, StatusOpts{
+		fetcher:     fetcher,
+		ResolveRefs: true,
+		refSHA:      resolve,
+	})
+	if err != nil {
+		t.Fatalf("Status resolve: %v", err)
+	}
+	if on.Repos[0].DriftState != DriftStateAligned {
+		t.Fatalf("with flag state = %s; want aligned (%#v)", on.Repos[0].DriftState, on.Repos[0].Drifted)
+	}
+	if calls != 2 {
+		t.Fatalf("resolver calls = %d; want 2", calls)
+	}
+}
+
+func TestStatus_ResolveRefsDifferentSHAStaysDrifted(t *testing.T) {
+	cfg := statusResolveConfig()
+	fetcher := statusResolveFetcher("abc123")
+	resolve := func(_ context.Context, _, ref string) (string, error) {
+		if ref == "v1.0" {
+			return "tagsha", nil
+		}
+		return "abc123", nil
+	}
+	res, _, err := Status(context.Background(), cfg, StatusOpts{
+		fetcher:     fetcher,
+		ResolveRefs: true,
+		refSHA:      resolve,
+	})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if res.Repos[0].DriftState != DriftStateDrifted {
+		t.Fatalf("state = %s; want drifted", res.Repos[0].DriftState)
+	}
+}
+
+func TestStatus_ResolveRefsErrorIsPerRepo(t *testing.T) {
+	cfg := statusResolveConfig()
+	fetcher := statusResolveFetcher("abc123")
+	resolve := func(context.Context, string, string) (string, error) {
+		return "", errors.New("HTTP 404")
+	}
+	res, _, err := Status(context.Background(), cfg, StatusOpts{
+		fetcher:     fetcher,
+		ResolveRefs: true,
+		refSHA:      resolve,
+	})
+	if err != nil {
+		t.Fatalf("Status setup err = %v; want nil", err)
+	}
+	if res.Repos[0].DriftState != DriftStateErrored {
+		t.Fatalf("state = %s; want errored", res.Repos[0].DriftState)
+	}
+}
+
+func statusResolveConfig() *Config {
+	return &Config{
+		Version: SchemaVersion,
+		Profiles: map[string]Profile{
+			"default": {
+				Sources:   map[string]SourcePin{"githubnext/agentics": {Ref: "v1.0"}},
+				Workflows: []ProfileWorkflow{{Name: "audit", Source: "githubnext/agentics"}},
+			},
+		},
+		Repos: map[string]RepoSpec{
+			"acme/widgets": {Profiles: []string{"default"}},
+		},
+	}
+}
+
+func statusResolveFetcher(actual string) *recordingFetcher {
+	fetcher := newRecordingFetcher()
+	fetcher.listings = map[string][]string{"acme/widgets": {"audit.md"}}
+	fetcher.bodies = map[string]map[string]string{
+		"acme/widgets": {
+			"audit.md": frontmatterDoc("source: githubnext/agentics/audit@" + actual),
+		},
+	}
+	return fetcher
+}
+
 func TestGHStatusFetcher_MissingWorkflowDirectoryIsEmpty(t *testing.T) {
 	old := ghAPIJSON
 	t.Cleanup(func() { ghAPIJSON = old })

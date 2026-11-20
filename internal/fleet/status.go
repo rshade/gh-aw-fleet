@@ -37,10 +37,17 @@ type StatusOpts struct {
 	Repo string
 	// Ref is an optional branch, tag, or SHA. Empty reads each repo's default branch.
 	Ref string
+	// ResolveRefs compares a string-mismatched desired ref and installed ref
+	// as commit SHAs. Off by default, so a tag and a SHA of the same commit
+	// still count as drift.
+	ResolveRefs bool
 
 	// fetcher is an in-package test seam. Nil means use the production gh api
 	// fetcher; keeping it per-call avoids package-global races in parallel tests.
 	fetcher statusFetcher
+	// refSHA resolves sourceRepo@ref to a commit SHA when ResolveRefs is set.
+	// Nil uses the GitHub commits API. Tests inject this so no network is used.
+	refSHA func(ctx context.Context, sourceRepo, ref string) (string, error)
 }
 
 // StatusResult is the result payload embedded in the JSON envelope's
@@ -104,6 +111,8 @@ type statusJob struct {
 	// expectedVersion is the fleet's current github/gh-aw source pin for this repo,
 	// resolved from the fleet config. Empty when no gh-aw-sourced workflows exist.
 	expectedVersion string
+	resolveRefs     bool
+	refSHA          func(ctx context.Context, sourceRepo, ref string) (string, error)
 }
 
 // statusFetcher is the seam between Status() and the gh api primitives,
@@ -252,7 +261,7 @@ func Status(ctx context.Context, cfg *Config, opts StatusOpts) (*StatusResult, [
 		return nil, nil, err
 	}
 
-	jobs := buildStatusJobs(cfg, repos)
+	jobs := buildStatusJobs(cfg, repos, opts)
 	fetcher := opts.fetcher
 	if fetcher == nil {
 		fetcher = ghStatusFetcher{ref: opts.Ref}
@@ -306,7 +315,11 @@ func selectRepos(cfg *Config, opts StatusOpts) ([]string, error) {
 // buildStatusJobs pre-resolves declared workflows for each target repo so
 // the workers don't need cfg access. A ResolveRepoWorkflows error is
 // captured on the job and surfaced as an errored RepoStatus by the worker.
-func buildStatusJobs(cfg *Config, repos []string) []statusJob {
+func buildStatusJobs(cfg *Config, repos []string, opts StatusOpts) []statusJob {
+	resolve := opts.refSHA
+	if opts.ResolveRefs && resolve == nil {
+		resolve = resolveGitSHA
+	}
 	jobs := make([]statusJob, 0, len(repos))
 	for _, repo := range repos {
 		declared, err := ResolveRepoWorkflows(cfg, repo)
@@ -315,9 +328,29 @@ func buildStatusJobs(cfg *Config, repos []string) []statusJob {
 			declared:        declared,
 			resolveErr:      err,
 			expectedVersion: resolvedGhAwPin(cfg, repo),
+			resolveRefs:     opts.ResolveRefs,
+			refSHA:          resolve,
 		})
 	}
 	return jobs
+}
+
+// resolveGitSHA returns the commit SHA for ref on sourceRepo.
+func resolveGitSHA(ctx context.Context, sourceRepo, ref string) (string, error) {
+	path := fmt.Sprintf("/repos/%s/commits/%s", sourceRepo, url.PathEscape(ref))
+	raw, err := ghAPIJSON(ctx, path)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s@%s: %w", sourceRepo, ref, err)
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("resolve %s@%s: unexpected commits response", sourceRepo, ref)
+	}
+	sha, _ := obj["sha"].(string)
+	if sha == "" {
+		return "", fmt.Errorf("resolve %s@%s: response has no sha", sourceRepo, ref)
+	}
+	return sha, nil
 }
 
 // runStatusWorkers fans out per-repo work across statusWorkerPoolSize
@@ -372,16 +405,16 @@ func processJob(ctx context.Context, fetcher statusFetcher, job statusJob) RepoS
 	if job.resolveErr != nil {
 		return computeDrift(job.repo, nil, nil, nil, job.resolveErr)
 	}
-	return processRepo(ctx, fetcher, job.repo, job.declared, job.expectedVersion)
+	return processRepo(ctx, fetcher, job)
 }
 
 // processRepo fetches the repo's workflow listing and the bodies needed to
 // compute drift, then calls computeDrift. Per FR-018, workflow fetches
 // within one repo are serial. Per FR-009, a single fetch failure surfaces
 // as an errored RepoStatus rather than partial drift.
-func processRepo(
-	ctx context.Context, fetcher statusFetcher, repo string, declared []ResolvedWorkflow, expectedVersion string,
-) RepoStatus {
+func processRepo(ctx context.Context, fetcher statusFetcher, job statusJob) RepoStatus {
+	repo := job.repo
+	declared := job.declared
 	listing, err := fetcher.listWorkflowsDir(ctx, repo)
 	if err != nil {
 		return computeDrift(repo, declared, nil, nil, err)
@@ -423,10 +456,66 @@ func processRepo(
 	}
 
 	rs := computeDrift(repo, declared, listing, bodies, nil)
+	if job.resolveRefs && len(rs.Drifted) > 0 {
+		next, resolveErr := collapseEquivalentRefs(ctx, rs, declared, job.refSHA)
+		if resolveErr != nil {
+			return computeDrift(repo, declared, nil, nil, resolveErr)
+		}
+		rs = next
+	}
 	manifestBody, _ := fetcher.fetchManifestBody(ctx, repo)
 	manifest, _ := parseManifestJSON(manifestBody)
-	rs.VersionDrift = computeVersionDrift(manifest, expectedVersion)
+	rs.VersionDrift = computeVersionDrift(manifest, job.expectedVersion)
 	return rs
+}
+
+// collapseEquivalentRefs drops string-mismatched refs that point at the same
+// commit. It asks the resolver only for drifted workflows, at most twice each.
+func collapseEquivalentRefs(
+	ctx context.Context,
+	rs RepoStatus,
+	declared []ResolvedWorkflow,
+	resolve func(ctx context.Context, sourceRepo, ref string) (string, error),
+) (RepoStatus, error) {
+	byName := make(map[string]string, len(declared))
+	for _, d := range declared {
+		byName[d.Name] = d.Source
+	}
+	cache := map[string]string{}
+	lookup := func(source, ref string) (string, error) {
+		key := source + "\x00" + ref
+		if sha, ok := cache[key]; ok {
+			return sha, nil
+		}
+		sha, err := resolve(ctx, source, ref)
+		if err != nil {
+			return "", err
+		}
+		cache[key] = sha
+		return sha, nil
+	}
+	kept := make([]WorkflowDrift, 0, len(rs.Drifted))
+	for _, drift := range rs.Drifted {
+		source := byName[drift.Name]
+		wantSHA, err := lookup(source, drift.DesiredRef)
+		if err != nil {
+			return rs, err
+		}
+		gotSHA, err := lookup(source, drift.ActualRef)
+		if err != nil {
+			return rs, err
+		}
+		if wantSHA != gotSHA {
+			kept = append(kept, drift)
+		}
+	}
+	rs.Drifted = kept
+	if len(rs.Missing)+len(rs.Extra)+len(rs.Drifted)+len(rs.Unpinned) == 0 {
+		rs.DriftState = DriftStateAligned
+	} else {
+		rs.DriftState = DriftStateDrifted
+	}
+	return rs, nil
 }
 
 // computeDrift is the pure, table-testable diff function. Given the

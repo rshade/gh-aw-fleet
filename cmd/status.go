@@ -25,6 +25,7 @@ const statusTabPadding = 2
 
 func newStatusCmd(flagDir *string) *cobra.Command {
 	var ref string
+	var resolveRefs bool
 	cmd := &cobra.Command{
 		Use:   "status [repo]",
 		Short: "Diff desired (fleet.json) vs actual workflow refs across the fleet — read-only, no clones",
@@ -48,7 +49,11 @@ func newStatusCmd(flagDir *string) *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "status · ref: %s (experimental, best-effort)\n", ref)
 			}
 
-			res, diags, statusErr := fleet.Status(cmd.Context(), cfg, fleet.StatusOpts{Repo: repoArg, Ref: ref})
+			res, diags, statusErr := fleet.Status(cmd.Context(), cfg, fleet.StatusOpts{
+				Repo:        repoArg,
+				Ref:         ref,
+				ResolveRefs: resolveRefs,
+			})
 			if statusErr != nil {
 				if jsonMode {
 					return preResultFailureEnvelope(cmd, commandStatus, repoArg, false, statusErr)
@@ -69,6 +74,12 @@ func newStatusCmd(flagDir *string) *cobra.Command {
 		"ref",
 		"",
 		"Branch, tag, or SHA to read instead of the default branch (experimental, best-effort; one value for every repo)",
+	)
+	cmd.Flags().BoolVar(
+		&resolveRefs,
+		"resolve-refs",
+		false,
+		"Treat a tag and a SHA of the same commit as aligned (opt-in; extra API calls only for string mismatches)",
 	)
 	return cmd
 }
