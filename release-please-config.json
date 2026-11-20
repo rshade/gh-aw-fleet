@@ -6,6 +6,7 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "changelog-path": "CHANGELOG.md",
+      "pull-request-footer": "Related: https://rshade.github.io/posts/introducing-gh-aw-fleet/\n\nIf this version has its own blog post, link that post instead of the announcement.",
       "draft": false,
       "prerelease": false,
       "changelog-sections": [
