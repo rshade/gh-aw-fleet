@@ -537,3 +537,10 @@ If `which -a golangci-lint` shows another binary ahead of mise's shims, run
 for the invariants (no bypassing gpg signing, no direct git invocations,
 etc.) and `.claude/settings.json` for the shell-command allowlist that
 lets subagents run without prompting.
+
+## Background
+
+[Introducing gh-aw-fleet](https://rshade.github.io/posts/introducing-gh-aw-fleet/)
+is the origin story and the FinOps angle. Release PRs include that post under
+Related. When a version has its own write-up, link that post instead. The
+project tag index is <https://rshade.github.io/tags/projects/>.
