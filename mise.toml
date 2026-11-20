@@ -35,7 +35,7 @@ jq = "1.8.2"
 "go:golang.org/x/vuln/cmd/govulncheck" = "1.10.0"
 
 # Spec Kit CLI for the .specify/ workflow.
-"pipx:specify-cli" = "1.4.2"
+"pipx:specify-cli" = "1.4.3"
 
 # Editor and agent language server. No make target invokes it.
 "go:golang.org/x/tools/gopls" = "0.24.0"
