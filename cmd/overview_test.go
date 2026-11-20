@@ -314,27 +314,45 @@ func markOverviewCalled(called *bool) overviewStub {
 
 func TestOverviewCmdExitCode(t *testing.T) {
 	cases := []struct {
-		name    string
-		total   fleet.OverviewTotal
-		wantErr bool
+		name       string
+		total      fleet.OverviewTotal
+		failOnRuns bool
+		wantErr    error
 	}{
 		{name: "aligned with failing runs", total: fleet.OverviewTotal{Aligned: 1, Runs: 3, Failures: 2}},
-		{name: "drifted", total: fleet.OverviewTotal{Drifted: 1}, wantErr: true},
-		{name: "errored", total: fleet.OverviewTotal{Errored: 1}, wantErr: true},
+		{name: "drifted", total: fleet.OverviewTotal{Drifted: 1}, wantErr: errOverviewDrift},
+		{name: "errored", total: fleet.OverviewTotal{Errored: 1}, wantErr: errOverviewDrift},
 		{name: "aligned all passing", total: fleet.OverviewTotal{Aligned: 1, Runs: 3}},
+		{
+			name:       "fail-on-runs with failures",
+			total:      fleet.OverviewTotal{Aligned: 1, Runs: 3, Failures: 1},
+			failOnRuns: true,
+			wantErr:    errOverviewRunFailures,
+		},
+		{
+			name:       "fail-on-runs clean",
+			total:      fleet.OverviewTotal{Aligned: 1, Runs: 3},
+			failOnRuns: true,
+		},
+		{
+			name:       "fail-on-runs still reports drift",
+			total:      fleet.OverviewTotal{Drifted: 1, Failures: 2},
+			failOnRuns: true,
+			wantErr:    errOverviewDrift,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := overviewExitCode(&fleet.OverviewResult{Total: tc.total})
-			if tc.wantErr {
-				if err == nil {
-					t.Fatal("overviewExitCode returned nil; want drift error")
+			err := overviewExitCode(&fleet.OverviewResult{Total: tc.total}, tc.failOnRuns)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("overviewExitCode returned %v; want %v", err, tc.wantErr)
 				}
 				if code, ok := ExitCodeForError(err); !ok || code != 1 {
 					t.Fatalf("exit code = %d/%v; want 1/true", code, ok)
 				}
 				if !SuppressErrorLog(err) {
-					t.Fatalf("expected overview drift error to suppress fatal logging")
+					t.Fatalf("expected overview gate error to suppress fatal logging")
 				}
 				return
 			}

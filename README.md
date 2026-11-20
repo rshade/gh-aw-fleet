@@ -239,7 +239,7 @@ flag, and exit code.
 | `sync <repo>` | Reconcile to declared profile (add missing, flag drift); `--strict` blocks HIGH Layer 1 security findings |
 | `upgrade [repo\|--all]` | Bump profile pins + run `gh aw upgrade`; `--strict` blocks HIGH Layer 1 security findings |
 | `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD`, flag over-budget rows with `--budget <AIC>` |
-| `overview [repo...]` | Joined drift, run-health, no-op, AIC, and cost dashboard; flags repos failing on unsupported/deprecated Copilot models; defaults to `--trailing 7d`; exits non-zero only on drift/errored repos |
+| `overview [repo...]` | Joined drift, run-health, no-op, AIC, and cost dashboard; flags repos failing on unsupported/deprecated Copilot models; defaults to `--trailing 7d`; exits non-zero only on drift/errored repos unless `--fail-on-runs` is set |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
 | `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones) |
 
