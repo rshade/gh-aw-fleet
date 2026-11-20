@@ -1058,14 +1058,28 @@ var runGhAwCompile = func(ctx context.Context, dir string) (string, error) {
 	return buf.String(), err
 }
 
-// runGhAwCompileStrict invokes `gh aw compile --strict` in dir, tee-ing
-// combined stdout+stderr to the operator's stderr (so compile progress is
-// visible) while also returning the buffered output for hint extraction. The
-// returned error is non-nil only when the subprocess exits non-zero.
+// compileStrictArgs is the argv for `gh aw compile --strict`, plus
+// `--engine` when the fleet resolved a non-empty engine. `--engine` is
+// per invocation: a later compile that omits it reverts to the workflow
+// markdown's native engine.
+func compileStrictArgs(engine string) []string {
+	args := []string{"aw", "compile", "--strict"}
+	if engine != "" {
+		args = append(args, "--engine", engine)
+	}
+	return args
+}
+
+// runGhAwCompileStrict invokes `gh aw compile --strict` in dir, forwarding
+// engine the same way recompileAddedWorkflows does. It tees combined
+// stdout+stderr to the operator's stderr (so compile progress is visible)
+// while also returning the buffered output for hint extraction. The returned
+// error is non-nil only when the subprocess exits non-zero.
 //
 //nolint:gochecknoglobals // test-injection seam mirroring ghAPIExists/ghAPIJSON
-var runGhAwCompileStrict = func(ctx context.Context, dir string) (string, error) {
-	cmd := exec.CommandContext(ctx, "gh", "aw", "compile", "--strict")
+var runGhAwCompileStrict = func(ctx context.Context, dir, engine string) (string, error) {
+	args := compileStrictArgs(engine)
+	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = dir
 	var buf strings.Builder
 	cmd.Stdout = io.MultiWriter(os.Stderr, &buf)
@@ -1190,7 +1204,8 @@ func runCompileStrictIfNeeded(ctx context.Context, res compileStrictResult, cfg 
 	}
 
 	cloneDir := res.WorkCloneDir()
-	compileOut, compileErr := runGhAwCompileStrict(ctx, cloneDir)
+	engine := cfg.EffectiveEngine(repo)
+	compileOut, compileErr := runGhAwCompileStrict(ctx, cloneDir, engine)
 	if compileErr != nil {
 		trimmedOut := strings.TrimSpace(compileOut)
 		message := fmt.Sprintf("`gh aw compile --strict` failed for %s. %s", repo, compileStrictFailedHint)

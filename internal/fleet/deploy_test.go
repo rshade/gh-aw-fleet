@@ -1157,6 +1157,8 @@ type compileStrictSeams struct {
 	compileOut      string
 	compileErr      error
 	compileCalls    int
+	compileEngine   string
+	compileArgv     []string
 }
 
 // installCompileStrictSeams replaces the four package-level seams with
@@ -1185,8 +1187,10 @@ func installCompileStrictSeams(t *testing.T, s *compileStrictSeams) {
 		s.versionCalls++
 		return s.versionOut, s.versionErr
 	}
-	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+	runGhAwCompileStrict = func(_ context.Context, _, engine string) (string, error) {
 		s.compileCalls++
+		s.compileEngine = engine
+		s.compileArgv = append([]string{"gh"}, compileStrictArgs(engine)...)
 		return s.compileOut, s.compileErr
 	}
 }
@@ -1255,6 +1259,49 @@ func TestDeploy_AutoPublicPath_InvokesStrictCompile(t *testing.T) {
 	}
 	if evt["source"] != "auto-public" || evt["effective"] != true {
 		t.Errorf("event fields = %+v; want source=auto-public effective=true", evt)
+	}
+}
+
+func TestCompileStrictArgsForwardsEngine(t *testing.T) {
+	tests := []struct {
+		engine string
+		want   []string
+	}{
+		{engine: "copilot", want: []string{"aw", "compile", "--strict", "--engine", "copilot"}},
+		{engine: "", want: []string{"aw", "compile", "--strict"}},
+	}
+	for _, tt := range tests {
+		got := compileStrictArgs(tt.engine)
+		if !slices.Equal(got, tt.want) {
+			t.Errorf("compileStrictArgs(%q) = %q; want %q", tt.engine, got, tt.want)
+		}
+	}
+}
+
+func TestRunCompileStrictForwardsEffectiveEngine(t *testing.T) {
+	res := &DeployResult{Repo: "rshade/test", CloneDir: t.TempDir()}
+	seams := &compileStrictSeams{
+		visibility: "public",
+		helpOut:    "  --strict  enable strict validation\n",
+		compileOut: "ok",
+	}
+	installCompileStrictSeams(t, seams)
+
+	cfg := &Config{
+		Defaults: Defaults{Engine: "claude"},
+		Repos: map[string]RepoSpec{
+			"rshade/test": {Engine: "copilot"},
+		},
+	}
+	if err := runCompileStrictIfNeeded(context.Background(), res, cfg, "rshade/test"); err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if seams.compileEngine != "copilot" {
+		t.Errorf("seam engine = %q; want copilot", seams.compileEngine)
+	}
+	wantArgv := []string{"gh", "aw", "compile", "--strict", "--engine", "copilot"}
+	if !slices.Equal(seams.compileArgv, wantArgv) {
+		t.Errorf("seam argv = %q; want %q", seams.compileArgv, wantArgv)
 	}
 }
 
@@ -1537,7 +1584,7 @@ func TestDeployPushGateResume_PopulatesCompileStrictFields(t *testing.T) {
 		t.Fatalf("ghAwCompileHelp invoked on dry-run push-gate resume")
 		return "", nil
 	}
-	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+	runGhAwCompileStrict = func(_ context.Context, _, _ string) (string, error) {
 		t.Fatalf("runGhAwCompileStrict invoked on dry-run push-gate resume")
 		return "", nil
 	}
@@ -1710,7 +1757,7 @@ func TestDeployStrictResumeBlocksBeforeMutation(t *testing.T) {
 		runGhAwCompileStrict = origStrict
 		runGhAwCompile = origPlain
 	})
-	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+	runGhAwCompileStrict = func(_ context.Context, _, _ string) (string, error) {
 		t.Fatal("runGhAwCompileStrict invoked; strict gate must abort the resume first")
 		return "", nil
 	}
@@ -1767,7 +1814,7 @@ func TestDeployPushGateResumeApply_RefreshesCompileStrictBeforePush(t *testing.T
 		helpOut: "  --strict  enable strict validation\n",
 	}
 	installCompileStrictSeams(t, seams)
-	runGhAwCompileStrict = func(_ context.Context, dir string) (string, error) {
+	runGhAwCompileStrict = func(_ context.Context, dir, _ string) (string, error) {
 		seams.compileCalls++
 		lockfile := filepath.Join(dir, ".github", "workflows", "ci.lock.yml")
 		if err := os.WriteFile(lockfile, []byte("compiled\n"), 0o644); err != nil {
@@ -1868,7 +1915,7 @@ func TestDeployPushGateResumeApply_RefreshesPlainCompileAfterOptOut(t *testing.T
 		t.Fatalf("ghAwCompileHelp invoked despite explicit compile_strict=false")
 		return "", nil
 	}
-	runGhAwCompileStrict = func(_ context.Context, _ string) (string, error) {
+	runGhAwCompileStrict = func(_ context.Context, _, _ string) (string, error) {
 		t.Fatalf("runGhAwCompileStrict invoked despite explicit compile_strict=false")
 		return "", nil
 	}
