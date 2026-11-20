@@ -241,7 +241,7 @@ flag, and exit code.
 | `consumption` | Fleet-wide AI-credit (AIC) rollup from `gh aw logs --json` (`--source logs`, default); group `--by repo\|profile\|cost-center\|workflow`, window `--latest\|--trailing Nd\|--since YYYY-MM-DD`, flag over-budget rows with `--budget <AIC>` |
 | `overview [repo...]` | Joined drift, run-health, no-op, AIC, and cost dashboard; flags repos failing on unsupported/deprecated Copilot models; defaults to `--trailing 7d`; exits non-zero only on drift/errored repos unless `--fail-on-runs` is set |
 | `template fetch` | Refresh `templates.json` from gh-aw and agentics |
-| `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones) |
+| `status [repo]` | Diff desired vs actual workflow refs (read-only, no clones). `--ref` reads one branch, tag, or SHA on every repo (experimental) |
 
 See the [CLI reference](https://rshade.github.io/gh-aw-fleet/cli/) for every
 flag, argument, and exit code.

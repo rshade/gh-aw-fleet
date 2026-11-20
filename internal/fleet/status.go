@@ -10,6 +10,7 @@ package fleet
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -34,6 +35,8 @@ type StatusOpts struct {
 	// only this repo (which MUST be declared in cfg.Repos). When empty,
 	// Status queries every repo in the loaded fleet config.
 	Repo string
+	// Ref is an optional branch, tag, or SHA. Empty reads each repo's default branch.
+	Ref string
 
 	// fetcher is an in-package test seam. Nil means use the production gh api
 	// fetcher; keeping it per-call avoids package-global races in parallel tests.
@@ -46,6 +49,9 @@ type StatusOpts struct {
 type StatusResult struct {
 	// Repos is the per-repo drift report set, sorted alphabetically by Repo.
 	Repos []RepoStatus `json:"repos"`
+	// QueriedRef is the Ref passed in StatusOpts. Empty means the default branch
+	// and is omitted from JSON.
+	QueriedRef string `json:"queried_ref,omitempty"`
 }
 
 // RepoStatus is the drift report for a single repository. Exactly one
@@ -116,21 +122,21 @@ const statusWorkerPoolSize = 6
 // ghStatusFetcher is the production binding over `gh api`. Methods are
 // safe for concurrent use because each call shells out to a fresh
 // exec.Command, isolated by the Go runtime.
-type ghStatusFetcher struct{}
+type ghStatusFetcher struct {
+	ref string
+}
 
-// listWorkflowsDir returns the `.md` filenames under .github/workflows on
-// the repo's default branch (no ?ref=, per research R2).
-func (ghStatusFetcher) listWorkflowsDir(ctx context.Context, repo string) ([]string, error) {
-	listing, err := ghAPIJSON(ctx, fmt.Sprintf("/repos/%s/contents/.github/workflows", repo))
+// listWorkflowsDir returns the `.md` filenames under .github/workflows.
+// An empty ref reads the default branch. A set ref is sent as ?ref= and a
+// missing ref becomes a per-repo error instead of an empty listing.
+func (f ghStatusFetcher) listWorkflowsDir(ctx context.Context, repo string) ([]string, error) {
+	path := githubContentsPath(repo, ".github/workflows", f.ref)
+	listing, err := ghAPIJSON(ctx, path)
 	if err != nil {
-		if isGitHubNotFound(err) {
-			_, repoErr := ghAPIJSON(ctx, fmt.Sprintf("/repos/%s", repo))
-			if repoErr == nil {
-				return []string{}, nil
-			}
-			return nil, fmt.Errorf("list %s workflows: %w", repo, repoErr)
+		if !isGitHubNotFound(err) {
+			return nil, fmt.Errorf("list %s workflows: %w", repo, err)
 		}
-		return nil, fmt.Errorf("list %s workflows: %w", repo, err)
+		return f.workflowsDirNotFound(ctx, repo)
 	}
 	entries, ok := listing.([]any)
 	if !ok {
@@ -153,6 +159,22 @@ func (ghStatusFetcher) listWorkflowsDir(ctx context.Context, repo string) ([]str
 	return out, nil
 }
 
+// workflowsDirNotFound distinguishes a missing ref from a repo that simply
+// has no .github/workflows directory yet.
+func (f ghStatusFetcher) workflowsDirNotFound(ctx context.Context, repo string) ([]string, error) {
+	if f.ref != "" {
+		if refErr := f.missingRefError(ctx, repo); refErr != nil {
+			return nil, refErr
+		}
+		return []string{}, nil
+	}
+	_, repoErr := ghAPIJSON(ctx, fmt.Sprintf("/repos/%s", repo))
+	if repoErr == nil {
+		return []string{}, nil
+	}
+	return nil, fmt.Errorf("list %s workflows: %w", repo, repoErr)
+}
+
 func isGitHubNotFound(err error) bool {
 	// Tracks gh 2.x stderr formatting as wrapped by ghErr ("HTTP 404").
 	// Revisit if gh changes error text on a major version bump.
@@ -160,9 +182,10 @@ func isGitHubNotFound(err error) bool {
 }
 
 // fetchWorkflowBody returns the raw markdown body of a single workflow file
-// on the repo's default branch.
-func (ghStatusFetcher) fetchWorkflowBody(ctx context.Context, repo, file string) (string, error) {
-	body, err := ghAPIRaw(ctx, fmt.Sprintf("/repos/%s/contents/.github/workflows/%s", repo, file))
+// on the selected ref, or the default branch when ref is empty.
+func (f ghStatusFetcher) fetchWorkflowBody(ctx context.Context, repo, file string) (string, error) {
+	path := githubContentsPath(repo, ".github/workflows/"+file, f.ref)
+	body, err := ghAPIRaw(ctx, path)
 	if err != nil {
 		return "", fmt.Errorf("fetch %s/%s: %w", repo, file, err)
 	}
@@ -174,8 +197,8 @@ func (ghStatusFetcher) fetchWorkflowBody(ctx context.Context, repo, file string)
 // or when any other error occurs — both cases are treated as unmanaged by the
 // caller. Fail-open: a transient network error must not abort status for the
 // whole fleet.
-func (ghStatusFetcher) fetchManifestBody(ctx context.Context, repo string) (string, error) {
-	path := fmt.Sprintf("/repos/%s/contents/%s", repo, FleetManifestPath)
+func (f ghStatusFetcher) fetchManifestBody(ctx context.Context, repo string) (string, error) {
+	path := githubContentsPath(repo, FleetManifestPath, f.ref)
 	body, err := ghAPIRaw(ctx, path)
 	if err != nil {
 		if isGitHubNotFound(err) {
@@ -188,6 +211,31 @@ func (ghStatusFetcher) fetchManifestBody(ctx context.Context, repo string) (stri
 		return "", nil
 	}
 	return body, nil
+}
+
+// githubContentsPath is a GitHub contents API path. ref is omitted when empty
+// so default-branch requests stay on the historical path.
+func githubContentsPath(repo, file, ref string) string {
+	path := fmt.Sprintf("/repos/%s/contents/%s", repo, file)
+	if ref == "" {
+		return path
+	}
+	return path + "?ref=" + url.QueryEscape(ref)
+}
+
+// missingRefError reports a caller-supplied ref that GitHub cannot resolve.
+// A resolved ref with no workflows directory returns nil so the caller can
+// treat that as an empty listing.
+func (f ghStatusFetcher) missingRefError(ctx context.Context, repo string) error {
+	path := fmt.Sprintf("/repos/%s/commits/%s", repo, url.PathEscape(f.ref))
+	_, err := ghAPIJSON(ctx, path)
+	if err == nil {
+		return nil
+	}
+	if isGitHubNotFound(err) {
+		return fmt.Errorf("ref %q not found on %s", f.ref, repo)
+	}
+	return fmt.Errorf("resolve ref %q on %s: %w", f.ref, repo, err)
 }
 
 // Status diffs declared (cfg) versus actual (fetched .github/workflows) for
@@ -207,7 +255,7 @@ func Status(ctx context.Context, cfg *Config, opts StatusOpts) (*StatusResult, [
 	jobs := buildStatusJobs(cfg, repos)
 	fetcher := opts.fetcher
 	if fetcher == nil {
-		fetcher = ghStatusFetcher{}
+		fetcher = ghStatusFetcher{ref: opts.Ref}
 	}
 
 	var diags []Diagnostic
@@ -228,10 +276,11 @@ func Status(ctx context.Context, cfg *Config, opts StatusOpts) (*StatusResult, [
 		return ri < rj
 	})
 
+	result := &StatusResult{Repos: repoStatuses, QueriedRef: opts.Ref}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return &StatusResult{Repos: repoStatuses}, diags, ctxErr
+		return result, diags, ctxErr
 	}
-	return &StatusResult{Repos: repoStatuses}, diags, nil
+	return result, diags, nil
 }
 
 // selectRepos resolves opts.Repo to the queryable set: either a single repo

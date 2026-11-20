@@ -163,6 +163,11 @@ Diffs desired (`fleet.json`) versus actual workflow refs — read-only, no clone
 Accepts at most one repo; omit it to check the whole fleet. Exits `1` if any
 queried repo has drifted. Supports `-o json`.
 
+`--ref <branch>` is experimental and best-effort. One value is applied to every
+repo in the run, including a single-repo check. A missing ref is a per-repo
+error and does not stop the other repos. JSON adds `queried_ref` when the flag
+is set. The default branch is unchanged when `--ref` is omitted.
+
 ### `template fetch`
 
 ```bash

@@ -24,7 +24,8 @@ var errStatusDrift = errors.New("status: drift detected")
 const statusTabPadding = 2
 
 func newStatusCmd(flagDir *string) *cobra.Command {
-	return &cobra.Command{
+	var ref string
+	cmd := &cobra.Command{
 		Use:   "status [repo]",
 		Short: "Diff desired (fleet.json) vs actual workflow refs across the fleet — read-only, no clones",
 		Args:  cobra.MaximumNArgs(1),
@@ -43,8 +44,11 @@ func newStatusCmd(flagDir *string) *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "(loaded %s)\n", cfg.LoadedFrom)
+			if ref != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "status · ref: %s (experimental, best-effort)\n", ref)
+			}
 
-			res, diags, statusErr := fleet.Status(cmd.Context(), cfg, fleet.StatusOpts{Repo: repoArg})
+			res, diags, statusErr := fleet.Status(cmd.Context(), cfg, fleet.StatusOpts{Repo: repoArg, Ref: ref})
 			if statusErr != nil {
 				if jsonMode {
 					return preResultFailureEnvelope(cmd, commandStatus, repoArg, false, statusErr)
@@ -60,6 +64,13 @@ func newStatusCmd(flagDir *string) *cobra.Command {
 			return statusExitCode(res)
 		},
 	}
+	cmd.Flags().StringVar(
+		&ref,
+		"ref",
+		"",
+		"Branch, tag, or SHA to read instead of the default branch (experimental, best-effort; one value for every repo)",
+	)
+	return cmd
 }
 
 // statusExitCode returns nil iff every queried repo is aligned. Any

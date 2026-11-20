@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -610,6 +611,116 @@ func TestGHStatusFetcher_MissingWorkflowDirectoryIsEmpty(t *testing.T) {
 	if !reflect.DeepEqual(calls, wantCalls) {
 		t.Fatalf("ghAPIJSON calls = %v; want %v", calls, wantCalls)
 	}
+}
+
+func TestGitHubContentsPathIncludesRef(t *testing.T) {
+	got := githubContentsPath("acme/widgets", ".github/workflows", "")
+	want := "/repos/acme/widgets/contents/.github/workflows"
+	if got != want {
+		t.Fatalf("empty ref path = %q; want %q", got, want)
+	}
+	got = githubContentsPath("acme/widgets", ".github/workflows/audit.md", "feature/foo")
+	want = "/repos/acme/widgets/contents/.github/workflows/audit.md?ref=feature%2Ffoo"
+	if got != want {
+		t.Fatalf("ref path = %q; want %q", got, want)
+	}
+}
+
+func TestGHStatusFetcher_UnknownRefIsError(t *testing.T) {
+	old := ghAPIJSON
+	t.Cleanup(func() { ghAPIJSON = old })
+	ghAPIJSON = func(_ context.Context, path string) (any, error) {
+		return nil, fmt.Errorf("gh api: Not Found (HTTP 404) for %s", path)
+	}
+	_, err := ghStatusFetcher{ref: "no-such"}.listWorkflowsDir(context.Background(), "acme/widgets")
+	if err == nil || !strings.Contains(err.Error(), `ref "no-such" not found on acme/widgets`) {
+		t.Fatalf("err = %v; want missing-ref error", err)
+	}
+}
+
+func TestGHStatusFetcher_RefExistsWithoutWorkflowsIsEmpty(t *testing.T) {
+	old := ghAPIJSON
+	t.Cleanup(func() { ghAPIJSON = old })
+	ghAPIJSON = func(_ context.Context, path string) (any, error) {
+		if strings.Contains(path, "/commits/") {
+			return map[string]any{"sha": "abc"}, nil
+		}
+		return nil, errors.New("gh api: Not Found (HTTP 404)")
+	}
+	got, err := ghStatusFetcher{ref: "develop"}.listWorkflowsDir(context.Background(), "acme/widgets")
+	if err != nil {
+		t.Fatalf("listWorkflowsDir: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("listing = %v; want empty", got)
+	}
+}
+
+func TestStatus_RefDoesNotChangeDriftCategories(t *testing.T) {
+	cfg := &Config{
+		Version: SchemaVersion,
+		Profiles: map[string]Profile{
+			"default": {
+				Sources:   map[string]SourcePin{"githubnext/agentics": {Ref: "v1.0"}},
+				Workflows: []ProfileWorkflow{{Name: "audit", Source: "githubnext/agentics"}},
+			},
+		},
+		Repos: map[string]RepoSpec{
+			"acme/aligned": {Profiles: []string{"default"}},
+			"acme/drifted": {Profiles: []string{"default"}},
+		},
+	}
+	fetcher := newRecordingFetcher()
+	fetcher.listings = map[string][]string{
+		"acme/aligned": {"audit.md"},
+		"acme/drifted": {"audit.md"},
+	}
+	fetcher.bodies = map[string]map[string]string{
+		"acme/aligned": {"audit.md": frontmatterDoc("source: githubnext/agentics/audit@v1.0")},
+		"acme/drifted": {"audit.md": frontmatterDoc("source: githubnext/agentics/audit@v0.9")},
+	}
+
+	without, _, err := Status(context.Background(), cfg, StatusOpts{fetcher: fetcher})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	with, _, err := Status(context.Background(), cfg, StatusOpts{Ref: "develop", fetcher: fetcher})
+	if err != nil {
+		t.Fatalf("Status ref: %v", err)
+	}
+	if without.QueriedRef != "" {
+		t.Errorf("QueriedRef = %q; want empty", without.QueriedRef)
+	}
+	if with.QueriedRef != "develop" {
+		t.Errorf("QueriedRef = %q; want develop", with.QueriedRef)
+	}
+	if len(without.Repos) != len(with.Repos) {
+		t.Fatalf("repo count %d vs %d", len(without.Repos), len(with.Repos))
+	}
+	for i := range without.Repos {
+		if without.Repos[i].DriftState != with.Repos[i].DriftState {
+			t.Errorf("%s state %s vs %s", without.Repos[i].Repo, without.Repos[i].DriftState, with.Repos[i].DriftState)
+		}
+	}
+	encoded, err := jsonMarshalStatus(with)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(encoded, `"queried_ref":"develop"`) {
+		t.Fatalf("json = %s; want queried_ref", encoded)
+	}
+	empty, err := jsonMarshalStatus(without)
+	if err != nil {
+		t.Fatalf("marshal empty: %v", err)
+	}
+	if strings.Contains(empty, "queried_ref") {
+		t.Fatalf("default json includes queried_ref: %s", empty)
+	}
+}
+
+func jsonMarshalStatus(res *StatusResult) (string, error) {
+	b, err := json.Marshal(res)
+	return string(b), err
 }
 
 func TestGHStatusFetcher_Repo404RemainsError(t *testing.T) {
