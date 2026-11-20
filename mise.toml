@@ -19,7 +19,7 @@ node = "26"
 # Docs, skills, and README. markdownlint-cli2 is what `docs/` lint expects;
 # markdownlint-cli is the one-shot CLI agents already invoke.
 "npm:markdownlint-cli" = "0.50.0"
-"npm:markdownlint-cli2" = "0.24.1"
+"npm:markdownlint-cli2" = "0.24.2"
 
 # The actionlint security scanner and its tests shell out to this binary.
 # A missing binary skips those tests and emits one INFO finding.
