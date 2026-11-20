@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/rs/zerolog/log"
@@ -24,6 +25,10 @@ const (
 	flagSince                   = "since"
 	flagTrailing                = "trailing"
 )
+
+// overviewModelUnknownModel is the placeholder rendered when an affected
+// repo's offending model could not be named.
+const overviewModelUnknownModel = "unknown"
 
 type overviewFlags struct {
 	latest   bool
@@ -119,7 +124,7 @@ func buildOverviewFetchMode(flags *overviewFlags) (fleet.FetchMode, error) {
 
 func latestNoopDiagnostic() fleet.Diagnostic {
 	msg := "NOOP is best-effort in --latest mode because gh aw logs exposes mcp_tool_usage as an aggregate over the fetched runs, not per run."
-	return fleet.Diagnostic{Code: fleet.DiagHint, Message: msg, Fields: map[string]any{"hint": msg}}
+	return fleet.Diagnostic{Code: fleet.DiagHint, Message: msg, Fields: map[string]any{diagnosticFieldHint: msg}}
 }
 
 func splitOverviewDiags(diags []fleet.Diagnostic) ([]fleet.Diagnostic, []fleet.Diagnostic) {
@@ -210,6 +215,12 @@ func formatHealthRate(rate *float64) string {
 }
 
 func needsOverviewDetail(row fleet.RepoOverview) bool {
+	// An affected repo always gets a detail block (FR-003): the open failure
+	// issue can outlive the failing run window, so health gating alone could
+	// silently drop the model-support annotation.
+	if ms := row.ModelSupport; ms != nil && ms.Status == fleet.ModelSupportAffected {
+		return true
+	}
 	if row.DriftState != fleet.DriftStateAligned || !row.RunsAvailable {
 		return true
 	}
@@ -221,6 +232,29 @@ func printOverviewDetail(cmd *cobra.Command, row fleet.RepoOverview) {
 	fmt.Fprintf(w, "\n%s (%s):\n", row.Repo, overviewDetailState(row))
 	printOverviewDriftDetail(cmd, row)
 	printOverviewRunsDetail(cmd, row)
+	printOverviewModelSupport(cmd, row)
+}
+
+// printOverviewModelSupport prints the model-support advisory line inside an
+// already-open detail block: FAILING with the offending model(s) when affected,
+// or the undetermined notice when the failure-issue signal was unavailable.
+// Clean repos carry a nil ModelSupport and print nothing.
+func printOverviewModelSupport(cmd *cobra.Command, row fleet.RepoOverview) {
+	ms := row.ModelSupport
+	if ms == nil {
+		return
+	}
+	w := cmd.OutOrStdout()
+	switch ms.Status {
+	case fleet.ModelSupportAffected:
+		models := overviewModelUnknownModel
+		if len(ms.OffendingModels) > 0 {
+			models = strings.Join(ms.OffendingModels, ", ")
+		}
+		fmt.Fprintf(w, "  model-support: FAILING — offending model(s): %s\n", models)
+	default:
+		fmt.Fprintln(w, "  model-support: undetermined — model-failure signal unavailable")
+	}
 }
 
 func overviewDetailState(row fleet.RepoOverview) string {
@@ -229,6 +263,8 @@ func overviewDetailState(row fleet.RepoOverview) string {
 		return row.DriftState
 	case !row.RunsAvailable:
 		return "runs unavailable"
+	case row.ModelSupport != nil && row.ModelSupport.Status == fleet.ModelSupportAffected:
+		return "model unsupported"
 	default:
 		return "unhealthy"
 	}

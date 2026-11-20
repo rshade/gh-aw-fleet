@@ -45,6 +45,7 @@ const yesFlagUsage = "Skip the interactive security-findings confirmation prompt
 
 const (
 	diagnosticFieldDrift  = "drift"
+	diagnosticFieldHint   = "hint"
 	diagnosticFieldRepo   = "repo"
 	diagnosticFieldSecret = "secret"
 	diagnosticFieldURL    = "url"

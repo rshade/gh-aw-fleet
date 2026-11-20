@@ -280,7 +280,7 @@ func UpgradeAll(ctx context.Context, cfg *Config, opts UpgradeOpts) ([]*UpgradeR
 }
 
 func runAudit(ctx context.Context, res *UpgradeResult) (*UpgradeResult, error) {
-	cmd := exec.CommandContext(ctx, "gh", "aw", "upgrade", "--audit", "--json")
+	cmd := exec.CommandContext(ctx, "gh", "aw", "upgrade", "--audit", flagJSON)
 	cmd.Dir = res.CloneDir
 	out, err := cmd.Output()
 	if err != nil {

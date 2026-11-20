@@ -10,6 +10,6 @@ func emitHints(repo string, hints []string) {
 		if repo != "" {
 			ev = ev.Str("repo", repo)
 		}
-		ev.Str("hint", h).Msg("diagnostic hint")
+		ev.Str(diagnosticFieldHint, h).Msg("diagnostic hint")
 	}
 }

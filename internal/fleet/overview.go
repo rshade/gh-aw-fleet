@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -52,7 +53,33 @@ type RepoOverview struct {
 	RunsAvailable bool `json:"runs_available"`
 	// RunsError describes the run-log fan-out failure when RunsAvailable is false.
 	RunsError string `json:"runs_error,omitempty"`
+	// ModelSupport carries the model-support advisory when the repo is affected
+	// or undetermined; nil (and omitted) when the repo has no model-support
+	// problem, keeping clean rows byte-identical to prior output.
+	ModelSupport *ModelSupport `json:"model_support,omitempty"`
 }
+
+// ModelSupport is the per-repo advisory reporting whether a repo's recent
+// agentic runs failed because the effective Copilot model is unsupported or
+// deprecated. It is additive to the RepoOverview row and mirrors the
+// pointer-with-omitempty convention of DriftDetail.
+type ModelSupport struct {
+	// Status is ModelSupportAffected when a model_not_supported failure issue
+	// is open, or ModelSupportUndetermined when the failure-issue signal could
+	// not be read.
+	Status string `json:"status"`
+	// OffendingModels names the repo's effective Copilot model(s); the v1
+	// collector resolves at most one per repo. Empty means the model could not
+	// be named (report as unknown).
+	OffendingModels []string `json:"offending_models,omitempty"`
+}
+
+const (
+	// ModelSupportAffected marks a repo with an open model_not_supported issue.
+	ModelSupportAffected = "affected"
+	// ModelSupportUndetermined marks a repo whose failure-issue read failed.
+	ModelSupportUndetermined = "undetermined"
+)
 
 // OverviewTotal represents the pooled fleet aggregate.
 type OverviewTotal struct {
@@ -87,6 +114,13 @@ type overviewHealth struct {
 	errMessage string
 }
 
+// overviewModelHealth is the model collector's per-repo reduce result. A zero
+// status means clean, so joinOverviewRow leaves RepoOverview.ModelSupport nil.
+type overviewModelHealth struct {
+	status         string // "", ModelSupportAffected, or ModelSupportUndetermined
+	offendingModel string // "" ⇒ unknown
+}
+
 const (
 	conclusionSuccess        = "success"
 	conclusionFailure        = "failure"
@@ -99,6 +133,7 @@ const (
 const (
 	overviewSignalDrift        = "drift"
 	overviewSignalRuns         = "runs"
+	overviewSignalModel        = "model"
 	diagnosticSignalFieldCount = 2
 )
 
@@ -137,6 +172,8 @@ func Overview(ctx context.Context, cfg *Config, opts OverviewOpts) (*OverviewRes
 		healthRows  map[string]overviewHealth
 		healthDiags []Diagnostic
 		healthErr   error
+		modelRows   map[string]overviewModelHealth
+		modelDiags  []Diagnostic
 	)
 
 	wg.Go(func() {
@@ -145,9 +182,13 @@ func Overview(ctx context.Context, cfg *Config, opts OverviewOpts) (*OverviewRes
 	wg.Go(func() {
 		healthRows, healthDiags, healthErr = collectOverviewHealth(ctx, repos, opts.Mode)
 	})
+	wg.Go(func() {
+		modelRows, modelDiags = collectOverviewModelHealth(ctx, repos)
+	})
 	wg.Wait()
 
 	diags := append(signalDiags(driftDiags, overviewSignalDrift), healthDiags...)
+	diags = append(diags, modelDiags...)
 	switch {
 	case driftErr != nil:
 		return result, diags, driftErr
@@ -156,7 +197,7 @@ func Overview(ctx context.Context, cfg *Config, opts OverviewOpts) (*OverviewRes
 	}
 
 	for _, repo := range repos {
-		row := joinOverviewRow(repo, driftRows[repo], healthRows[repo])
+		row := joinOverviewRow(repo, driftRows[repo], healthRows[repo], modelRows[repo])
 		result.Repos = append(result.Repos, row)
 		addOverviewTotal(&result.Total, row)
 	}
@@ -268,6 +309,60 @@ func withDiagnosticSignal(d Diagnostic, repo, signal string) Diagnostic {
 	return d
 }
 
+// collectOverviewModelHealth reads each repo's open agentic-workflows failure
+// issues and flags those whose recent runs failed on an unsupported/deprecated
+// Copilot model, naming the effective model for flagged repos. It never returns
+// an error: a failed failure-issue read degrades that repo to undetermined with
+// a signal-tagged diagnostic, mirroring the runs-unavailable degradation.
+func collectOverviewModelHealth(
+	ctx context.Context, repos []string,
+) (map[string]overviewModelHealth, []Diagnostic) {
+	rows := make(map[string]overviewModelHealth, len(repos))
+	var diags []Diagnostic
+	for _, repo := range repos {
+		if ctx.Err() != nil {
+			return rows, diags
+		}
+		issues, err := ghFailureIssuesAPI(ctx, repo)
+		if err != nil {
+			rows[repo] = overviewModelHealth{status: ModelSupportUndetermined}
+			msg := fmt.Sprintf("model-support signal unavailable for %s: %v", repo, err)
+			diags = append(diags, withDiagnosticSignal(buildRepoErrorDiag(repo, msg), repo, overviewSignalModel))
+			continue
+		}
+		if !anyModelFailure(issues) {
+			continue
+		}
+		rows[repo] = resolveOverviewModel(ctx, repo)
+		diags = append(diags, *newSoftDiagnostic(repo, modelSupportRemediationHint))
+	}
+	return rows, diags
+}
+
+// anyModelFailure reports whether any open failure issue flags a
+// model-not-supported failure.
+func anyModelFailure(issues []failureIssue) bool {
+	for _, issue := range issues {
+		if parseModelFailure(issue.Body) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveOverviewModel builds the affected reduce result for a flagged repo,
+// naming its effective Copilot model. A variable-read error leaves the model
+// empty (unknown) but never drops the flag (FR-002).
+func resolveOverviewModel(ctx context.Context, repo string) overviewModelHealth {
+	health := overviewModelHealth{status: ModelSupportAffected}
+	vars, err := ghRepoVariablesAPI(ctx, repo)
+	if err != nil {
+		return health
+	}
+	health.offendingModel = resolveEffectiveModel(vars)
+	return health
+}
+
 // classifyConclusion maps a gh aw logs conclusion to the overview health taxonomy.
 func classifyConclusion(c string) runOutcome {
 	switch c {
@@ -337,7 +432,7 @@ func clampNoOps(raw, successes int) int {
 	return raw
 }
 
-func joinOverviewRow(repo string, drift RepoStatus, health overviewHealth) RepoOverview {
+func joinOverviewRow(repo string, drift RepoStatus, health overviewHealth, model overviewModelHealth) RepoOverview {
 	row := RepoOverview{
 		Repo:          repo,
 		DriftState:    drift.DriftState,
@@ -353,6 +448,13 @@ func joinOverviewRow(repo string, drift RepoStatus, health overviewHealth) RepoO
 	if drift.DriftState != DriftStateAligned {
 		d := drift
 		row.DriftDetail = &d
+	}
+	if model.status != "" {
+		ms := &ModelSupport{Status: model.status}
+		if model.offendingModel != "" {
+			ms.OffendingModels = []string{model.offendingModel}
+		}
+		row.ModelSupport = ms
 	}
 	return row
 }

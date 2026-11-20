@@ -1,0 +1,11 @@
+## [aw] Daily Perf Improver failed
+
+The agentic run for `daily-perf-improver` failed.
+
+**Failure class:** `agent_failure`
+
+```
+The agent exited with a non-zero status before producing a safe output.
+```
+
+<!-- gh-aw-failure-issue: true, workflow_id: daily-perf-improver, branch: main, failure_categories: agent_failure -->

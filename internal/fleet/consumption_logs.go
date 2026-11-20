@@ -290,7 +290,7 @@ var ghLogsAPI = func(ctx context.Context, repo, workflow string, mode FetchMode)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	args := []string{"aw", logsToken, "--json", "--repo", repo}
+	args := []string{"aw", logsToken, flagJSON, flagRepo, repo}
 	args = append(args, logsWindowArgs(mode)...)
 	args = append(args, workflow)
 	cmd := exec.CommandContext(ctx, "gh", args...)
