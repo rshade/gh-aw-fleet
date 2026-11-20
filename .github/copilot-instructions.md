@@ -14,7 +14,8 @@ the upstream tools over re-implementing their logic.
 
 ## Toolchain — read before flagging a compile error
 
-This module targets **Go 1.27.1** (`go.mod` directive and the CI gate). The
+This module targets **Go 1.27** (the exact patch is the `go.mod` directive,
+kept equal to the `mise.toml` pin by the CI drift gate). The
 full modern standard library is available and correct. Do **not** report newer
 stdlib APIs as nonexistent or as "won't compile." In particular, these are
 valid:

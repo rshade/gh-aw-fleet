@@ -31,10 +31,11 @@ make ci          # runs: fmt-check vet lint test  (this is the CI gate)
 
 **Do not claim a task complete until `make ci` passes locally.** `go build` passing means nothing — prior commits have landed lint/fmt failures that CI rejected because only build+vet were run. When in doubt, run `make ci`.
 
-**Toolchain note:** tool versions are pinned in `mise.toml` — Go 1.27.1,
-golangci-lint 2.13.2, Node 24 — and nowhere else. Run `make ensure` (which runs
-`mise install`) after cloning or after a `mise.toml` change. CI installs the
-same pins via `jdx/mise-action@v4`, and `scripts/check-toolchain-drift.sh`
+**Toolchain note:** Go, golangci-lint, and Node versions are pinned in
+`mise.toml` and nowhere else — read them there rather than from this file. Run
+`make ensure` (which runs `mise install`) after cloning or after a `mise.toml`
+change. CI installs the same pins via `jdx/mise-action`, and
+`scripts/check-toolchain-drift.sh`
 fails CI when `go.mod` and `mise.toml` disagree on the Go version. Bump a
 version by editing `mise.toml` alone: the Makefile reads `GOLANGCI_LINT_VERSION`
 back out of it, and Renovate's `mise` manager opens bumps against it.

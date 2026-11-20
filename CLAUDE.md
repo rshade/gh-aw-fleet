@@ -14,7 +14,7 @@ go run . overview  # Read-only drift, run-health, no-op, and AIC/cost dashboard.
 - Go 1.26.4 local toolchain + existing `github.com/spf13/cobra` and `github.com/rs/zerolog`; stdlib `encoding/json`, `errors`, `fmt`, `math`, `sort`, `sync`, `time`. No new direct dependencies. (018-overview-subcommand)
 - N/A — pure read dashboard; no persisted state or cache. Output is transient to stdout/stderr or the standard JSON envelope. (018-overview-subcommand)
 
-**Language**: Go 1.27.1, pinned in `mise.toml` and matched by the `go.mod`
+**Language**: Go, pinned in `mise.toml` and matched by the `go.mod`
 directive; `scripts/check-toolchain-drift.sh` enforces that the two agree.
 
 ## Architecture big-picture

@@ -77,10 +77,16 @@ func TestSchemaCommandEmitsMCPSchema(t *testing.T) {
 	if len(got.Tools) == 0 {
 		t.Fatal("MCP tools list is empty")
 	}
-	if !slices.ContainsFunc(got.Tools, func(tool axschema.MCPTool) bool {
-		return tool.Name == rootCommandName
-	}) {
-		t.Fatalf("MCP tools list missing root tool; tools=%v", got.Tools)
+	// ax-go skips non-runnable group commands, so the root (which has no Run)
+	// must not surface as a tool while its runnable subcommands do.
+	hasTool := func(name string) bool {
+		return slices.ContainsFunc(got.Tools, func(tool axschema.MCPTool) bool { return tool.Name == name })
+	}
+	if hasTool(rootCommandName) {
+		t.Fatalf("MCP tools list includes non-runnable root %q; tools=%v", rootCommandName, got.Tools)
+	}
+	if !hasTool(mcpToolName("list")) {
+		t.Fatalf("MCP tools list missing %q; tools=%v", mcpToolName("list"), got.Tools)
 	}
 }
 
