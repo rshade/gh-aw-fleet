@@ -20,7 +20,9 @@ extended.
 
 When you manage 3+ repositories that deploy agentic workflows—markdown-authored
 workflows that compile to GitHub Actions and run AI agents—keeping them
-consistent becomes tedious. Each repo independently pins a version of `gh-aw`,
+consistent becomes tedious. The default profile does concrete work: code review
+(`ci-doctor`), daily doc updates (`daily-doc-updater`), malicious-code scans
+(`daily-malicious-code-scan`), and PR fixes (`pr-fix`). Each repo independently pins a version of `gh-aw`,
 drifts on its own, and requires manual sync cycles. `gh-aw-fleet` centralizes
 that: a single `fleet.json` declares the desired state (which repos get which
 workflows), and `deploy`, `sync`, and `upgrade` commands bring each repo in
@@ -365,9 +367,10 @@ own. This asymmetry concerns the per-workflow `source:` refs only:
 fleet's `github/gh-aw` pin and record a fleet manifest, so an `upgrade`
 never leaves a stale dispatcher/init layout behind.
 
-**Dry-run by default.** `deploy`, `sync`, and `upgrade` default to
-dry-run mode. Pass `--apply` to commit, push, and open PRs. This prevents
-surprises.
+**Dry-run by default.** `deploy`, `sync`, and `upgrade` print exactly what
+they would do and change nothing until you pass `--apply`. When a command
+touches many repos, showing the plan first is the difference between a tool
+you can run and one you have to babysit.
 
 **Security strict is opt-in.** Add `--strict` to `deploy`, `sync`, or `upgrade`
 when HIGH Layer 1 security findings should hard-stop the run before mutation.
