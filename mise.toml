@@ -4,8 +4,7 @@
 # already shells out to or documents; they are not a new CI gate.
 #
 # Taken from finfocus where the tool fits. Left out on purpose:
-# opentofu (no Terraform), vale (no Vale config), go-licenses (no license
-# allowlist target), trufflehog (gitleaks is the in-tree secret scanner).
+# opentofu (no Terraform) and go-licenses (no license-allowlist target).
 
 [tools]
 # Keep in sync with the `go` directive in go.mod. scripts/check-toolchain-drift.sh
@@ -40,3 +39,11 @@ jq = "1.8.2"
 
 # Editor and agent language server. No make target invokes it.
 "go:golang.org/x/tools/gopls" = "0.24.0"
+
+# Prose lint for docs/. `make docs-vale` syncs styles and runs it.
+# Not part of `make ci`.
+vale = "3.27.0"
+
+# Local secret scan. Gitleaks stays the in-tree scanner for target repos;
+# this is the checkout scan (`make secrets`). Not part of `make ci`.
+trufflehog = "3.99.9"

@@ -1,0 +1,8 @@
+# Fixture and generated trees. Real secrets do not belong here, and the
+# security tests intentionally contain fake credentials.
+internal/fleet/security/testdata
+internal/fleet/testdata
+docs/node_modules
+docs/.astro
+docs/dist
+node_modules

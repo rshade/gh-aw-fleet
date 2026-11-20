@@ -9,7 +9,10 @@
 # its own. See the Toolchain note in AGENTS.md.
 GOLANGCI_LINT_VERSION := $(shell awk -F'"' '/^golangci-lint =/{print $$2}' mise.toml)
 
-.PHONY: build test vet fmt fmt-check lint ci drift tidy clean help ensure
+.PHONY: build test vet fmt fmt-check lint ci drift tidy clean help ensure docs-vale secrets
+
+VALE := $(shell mise which vale 2>/dev/null)
+TRUFFLEHOG := $(shell mise which trufflehog 2>/dev/null)
 
 build:
 	go build -o gh-aw-fleet .
@@ -68,3 +71,15 @@ help:
 	@echo "  tidy       — run go mod tidy"
 	@echo "  clean      — remove built binaries"
 	@echo "  ensure     — install pinned tools from mise.toml"
+	@echo "  docs-vale  — lint docs prose with Vale (not part of ci)"
+	@echo "  secrets    — scan the checkout with trufflehog (not part of ci)"
+
+docs-vale:
+	@test -n "$(VALE)" || (echo "vale not found. Run: make ensure" >&2; exit 1)
+	"$(VALE)" --config docs/.vale.ini sync
+	"$(VALE)" --config docs/.vale.ini docs/src/content/docs
+
+secrets:
+	@test -n "$(TRUFFLEHOG)" || (echo "trufflehog not found. Run: make ensure" >&2; exit 1)
+	"$(TRUFFLEHOG)" filesystem . --no-update --no-verification \
+		--exclude-paths .trufflehog-exclude --fail
