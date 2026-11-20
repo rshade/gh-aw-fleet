@@ -57,7 +57,7 @@ func newSyncCmd(flagDir *string) *cobra.Command {
 				Prune:    flagPrune,
 				Force:    flagForce,
 				WorkDir:  flagWorkDir,
-				Security: securityOptsFor(flagStrict, flagYes, jsonMode),
+				Security: securityOptsFor(flagStrict, flagYes, jsonMode, cfg.Security),
 			}
 			res, syncErr := runFleetSync(cmd.Context(), cfg, repo, opts)
 			if jsonMode {

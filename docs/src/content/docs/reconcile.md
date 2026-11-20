@@ -88,6 +88,29 @@ and structural rules on workflow markdown.
 generated key. Suppress the one error per repo with a `.github/actionlint.yaml`
 ignore file when compile-strict must pass.
 
+`security.suppress` in `fleet.json` (overlaid by appending rules from
+`fleet.local.json`) waives HIGH findings from that blocking set. Each entry
+matches `rule` and `file` with `path/filepath.Match` patterns; an empty field
+matches every value. A trailing `*` covers one path segment, so
+`actionlint:*` plus `.github/workflows/*.lock.yml` waives lock-file lint
+without hiding the finding. Waived findings still print on stderr and in JSON
+`warnings[]`. `--strict` and `--yes` stay per invocation and are not written
+back to `fleet.json`.
+
+```jsonc
+{
+  "security": {
+    "suppress": [
+      {
+        "rule": "actionlint:*",
+        "file": ".github/workflows/*.lock.yml",
+        "reason": "compiler-generated lock file"
+      }
+    ]
+  }
+}
+```
+
 Lower-severity findings and `promptinj:` findings remain advisory. For
 `upgrade --all --strict --output json`, NDJSON records are emitted through the
 blocked repo and then processing stops.

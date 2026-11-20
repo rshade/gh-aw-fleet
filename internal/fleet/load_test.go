@@ -66,6 +66,56 @@ func TestLoadConfig_HuJsonSyntax(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_SecuritySuppressOverlay(t *testing.T) {
+	base := `{
+  "version": 1,
+  "repos": {},
+  "security": {
+    "suppress": [
+      {"rule": "actionlint:*", "file": ".github/workflows/*.lock.yml", "reason": "generated"}
+    ]
+  }
+}
+`
+	local := `{
+  "version": 1,
+  "repos": {},
+  "security": {
+    "suppress": [
+      {"rule": "gitleaks:generic-api-key", "reason": "fixture"}
+    ]
+  }
+}
+`
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(base), 0o600); err != nil {
+		t.Fatalf("seed base: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, LocalConfigFile), []byte(local), 0o600); err != nil {
+		t.Fatalf("seed local: %v", err)
+	}
+	cfg, err := LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Security == nil {
+		t.Fatal("Security = nil; want overlay")
+	}
+	got := cfg.Security.Suppress
+	if len(got) != 2 {
+		t.Fatalf("suppress = %#v; want base rule then local rule", got)
+	}
+	if got[0].Rule != "actionlint:*" || got[0].File != ".github/workflows/*.lock.yml" || got[0].Reason != "generated" {
+		t.Errorf("base rule = %#v", got[0])
+	}
+	if got[1].Rule != "gitleaks:generic-api-key" || got[1].Reason != "fixture" {
+		t.Errorf("local rule = %#v", got[1])
+	}
+	if cfg.Version != SchemaVersion {
+		t.Errorf("Version = %d; want %d (no schema bump)", cfg.Version, SchemaVersion)
+	}
+}
+
 // TestLoadConfig_HujsonExtensionWins confirms .hujson is preferred when only
 // it exists, and that LoadedFrom names the actual file.
 func TestLoadConfig_HujsonExtensionWins(t *testing.T) {

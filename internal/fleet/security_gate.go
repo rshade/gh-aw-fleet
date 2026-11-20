@@ -15,6 +15,10 @@ const promptInjectionRulePrefix = "promptinj:"
 type SecurityOpts struct {
 	Strict bool // block on HIGH non-promptinj security findings
 	Yes    bool // skip the interactive findings confirmation prompt; does NOT suppress stderr or PR-body findings
+	// Suppressions are waivers copied from Config.Security. Matching HIGH
+	// findings stay in stderr and JSON warnings and are omitted from the
+	// --strict blocking set only.
+	Suppressions []SuppressionRule
 }
 
 // StrictSecurityError is returned when the opt-in strict security gate blocks.
@@ -63,9 +67,11 @@ func (e *StrictSecurityError) Unwrap() error {
 //
 // HIGH findings whose rule ID starts with "promptinj:" are intentionally
 // excluded: prompt-injection findings are Layer 3 advisory results, not Layer 1
-// blockers. The returned slice preserves the input order and does not mutate
-// the original findings.
-func BlockingSecurityFindings(findings []security.Finding) []security.Finding {
+// blockers. rules waives additional HIGH findings when both the rule and file
+// patterns match. An empty pattern is a wildcard for that dimension. The
+// returned slice preserves the input order and does not mutate the original
+// findings. Waived findings stay in the caller's slice for advisory output.
+func BlockingSecurityFindings(findings []security.Finding, rules []SuppressionRule) []security.Finding {
 	var blockers []security.Finding
 	for _, finding := range findings {
 		if finding.Severity != security.SeverityHigh {
@@ -74,9 +80,33 @@ func BlockingSecurityFindings(findings []security.Finding) []security.Finding {
 		if strings.HasPrefix(finding.RuleID, promptInjectionRulePrefix) {
 			continue
 		}
+		if findingSuppressed(finding, rules) {
+			continue
+		}
 		blockers = append(blockers, finding)
 	}
 	return blockers
+}
+
+// findingSuppressed reports whether any rule matches finding on both dimensions.
+func findingSuppressed(finding security.Finding, rules []SuppressionRule) bool {
+	file := filepath.ToSlash(finding.File)
+	for _, rule := range rules {
+		if matchOrWildcard(rule.Rule, finding.RuleID) && matchOrWildcard(rule.File, file) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchOrWildcard reports whether pattern matches value. An empty pattern
+// matches every value. A malformed pattern matches nothing.
+func matchOrWildcard(pattern, value string) bool {
+	if pattern == "" {
+		return true
+	}
+	ok, err := filepath.Match(pattern, value)
+	return err == nil && ok
 }
 
 // EvaluateStrictSecurityGate writes a findings breadcrumb and returns an error when strict blocks.
@@ -84,7 +114,7 @@ func EvaluateStrictSecurityGate(repo, cloneDir string, opts SecurityOpts, findin
 	if !opts.Strict {
 		return nil
 	}
-	blockers := BlockingSecurityFindings(findings)
+	blockers := BlockingSecurityFindings(findings, opts.Suppressions)
 	if len(blockers) == 0 {
 		return nil
 	}

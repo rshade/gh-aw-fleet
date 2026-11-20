@@ -204,7 +204,31 @@ func mergeConfigs(base, local *Config) *Config {
 		merged.Repos[k] = v
 	}
 
+	// A local security block adds waivers; it does not drop base waivers.
+	if local.Security != nil {
+		merged.Security = mergeSecurity(base.Security, local.Security)
+	}
+
 	return &merged
+}
+
+// mergeSecurity appends local suppress rules after base rules. A nil side
+// contributes nothing. The result is a new value so neither input is aliased.
+func mergeSecurity(base, local *SecurityConfig) *SecurityConfig {
+	if local == nil {
+		return base
+	}
+	if base == nil {
+		copied := *local
+		copied.Suppress = append([]SuppressionRule(nil), local.Suppress...)
+		return &copied
+	}
+	out := &SecurityConfig{
+		Suppress: make([]SuppressionRule, 0, len(base.Suppress)+len(local.Suppress)),
+	}
+	out.Suppress = append(out.Suppress, base.Suppress...)
+	out.Suppress = append(out.Suppress, local.Suppress...)
+	return out
 }
 
 // SaveLocalConfig writes fleet.local.json (or fleet.local.hujson when that

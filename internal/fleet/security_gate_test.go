@@ -175,15 +175,118 @@ func TestBlockingSecurityFindingsPromptInjectionCarveOut(t *testing.T) {
 	prompt := testSecurityFinding("promptinj:indirect", security.SeverityHigh)
 	layer1 := testSecurityFinding("fleet.permissions.write-on-schedule", security.SeverityHigh)
 
-	if got := BlockingSecurityFindings([]security.Finding{prompt}); len(got) != 0 {
+	if got := BlockingSecurityFindings([]security.Finding{prompt}, nil); len(got) != 0 {
 		t.Fatalf("promptinj-only blockers = %#v; want empty", got)
 	}
-	got := BlockingSecurityFindings([]security.Finding{prompt, layer1})
+	got := BlockingSecurityFindings([]security.Finding{prompt, layer1}, nil)
 	if len(got) != 1 {
 		t.Fatalf("mixed blockers = %#v; want one Layer 1 blocker", got)
 	}
 	if got[0].RuleID != layer1.RuleID {
 		t.Fatalf("blocker RuleID = %q; want %q", got[0].RuleID, layer1.RuleID)
+	}
+}
+
+func TestStrictGateSuppressions(t *testing.T) {
+	lock := ".github/workflows/ci-doctor.lock.yml"
+	actionlint := security.Finding{
+		RuleID:   "actionlint:syntax-check",
+		Severity: security.SeverityHigh,
+		File:     lock,
+		Line:     12,
+		Message:  "unexpected key queue",
+		Remedy:   "Leave the generated lock file alone.",
+	}
+	gitleaks := testSecurityFinding("gitleaks:generic-api-key", security.SeverityHigh)
+	rules := []SuppressionRule{{
+		Rule:   "actionlint:*",
+		File:   ".github/workflows/*.lock.yml",
+		Reason: "compiler output",
+	}}
+
+	tests := []struct {
+		name       string
+		findings   []security.Finding
+		rules      []SuppressionRule
+		wantBlock  int
+		wantRuleID string
+	}{
+		{
+			name:      "matching rule and file stay advisory",
+			findings:  []security.Finding{actionlint},
+			rules:     rules,
+			wantBlock: 0,
+		},
+		{
+			name:       "unmatched rule still blocks",
+			findings:   []security.Finding{actionlint, gitleaks},
+			rules:      rules,
+			wantBlock:  1,
+			wantRuleID: gitleaks.RuleID,
+		},
+		{
+			name: "file mismatch still blocks",
+			findings: []security.Finding{{
+				RuleID:   "actionlint:syntax-check",
+				Severity: security.SeverityHigh,
+				File:     ".github/workflows/ci.md",
+				Message:  "authored file",
+				Remedy:   "Fix the markdown.",
+			}},
+			rules:      rules,
+			wantBlock:  1,
+			wantRuleID: "actionlint:syntax-check",
+		},
+		{
+			name:     "empty rule is a wildcard",
+			findings: []security.Finding{gitleaks},
+			rules: []SuppressionRule{{
+				File: ".github/workflows/test.md",
+			}},
+			wantBlock: 0,
+		},
+		{
+			name:      "empty file is a wildcard",
+			findings:  []security.Finding{gitleaks},
+			rules:     []SuppressionRule{{Rule: "gitleaks:*"}},
+			wantBlock: 0,
+		},
+		{
+			name:      "no rules block the high finding",
+			findings:  []security.Finding{actionlint},
+			wantBlock: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := append([]security.Finding(nil), tt.findings...)
+			err := EvaluateStrictSecurityGate(
+				"acme/widgets",
+				t.TempDir(),
+				SecurityOpts{Strict: true, Suppressions: tt.rules},
+				tt.findings,
+			)
+			if !reflect.DeepEqual(tt.findings, before) {
+				t.Fatalf("findings mutated:\ngot  %#v\nwant %#v", tt.findings, before)
+			}
+			if tt.wantBlock == 0 {
+				if err != nil {
+					t.Fatalf("gate error = %v; want nil", err)
+				}
+				return
+			}
+			var strictErr *StrictSecurityError
+			if !errors.As(err, &strictErr) {
+				t.Fatalf("error = %T %[1]v; want *StrictSecurityError", err)
+			}
+			if strictErr.BlockingCount != tt.wantBlock {
+				t.Fatalf("BlockingCount = %d; want %d", strictErr.BlockingCount, tt.wantBlock)
+			}
+			if tt.wantRuleID != "" && strictErr.BlockingFindings[0].RuleID != tt.wantRuleID {
+				t.Fatalf("blocker = %q; want %q", strictErr.BlockingFindings[0].RuleID, tt.wantRuleID)
+			}
+		})
 	}
 }
 

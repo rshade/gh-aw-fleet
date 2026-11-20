@@ -50,7 +50,7 @@ func newDeployCmd(flagDir *string) *cobra.Command {
 				Branch:   flagBranch,
 				PRTitle:  flagPRTitle,
 				WorkDir:  flagWorkDir,
-				Security: securityOptsFor(flagStrict, flagYes, jsonMode),
+				Security: securityOptsFor(flagStrict, flagYes, jsonMode, cfg.Security),
 			}
 			res, deployErr := runFleetDeploy(cmd.Context(), cfg, repo, opts)
 			if jsonMode {

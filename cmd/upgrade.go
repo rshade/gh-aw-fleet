@@ -58,7 +58,7 @@ func newUpgradeCmd(flagDir *string) *cobra.Command {
 				Major:    flagMajor,
 				Force:    flagForce,
 				WorkDir:  flagWorkDir,
-				Security: securityOptsFor(flagStrict, flagYes, jsonMode),
+				Security: securityOptsFor(flagStrict, flagYes, jsonMode, cfg.Security),
 			}
 			if flagAll {
 				return runUpgradeAll(cmd, cfg, opts, flagApply, flagAudit, jsonMode)
