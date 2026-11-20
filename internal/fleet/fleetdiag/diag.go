@@ -70,4 +70,11 @@ const (
 	// found, extension missing, or exec error). The hint names
 	// gh extension install github/gh-aw.
 	DiagGhAwMissing = "gh_aw_missing"
+	// DiagAwPackageManifest fires when `gh aw add` is given a bare owner/repo
+	// spec and that repo has no root aw.yml package manifest. The fleet
+	// installs workflows by name and does not use that form.
+	DiagAwPackageManifest = "aw_package_manifest"
+	// DiagWorkflowAlreadyExists fires when `gh aw add` reports the workflow
+	// file is already present under .github/workflows.
+	DiagWorkflowAlreadyExists = "workflow_already_exists"
 )

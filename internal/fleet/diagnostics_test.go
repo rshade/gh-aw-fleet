@@ -174,6 +174,54 @@ func TestCollectHints_CompileStrictPatterns(t *testing.T) {
 	}
 }
 
+func TestCollectHints_GhAwAddFailures(t *testing.T) {
+	cases := []struct {
+		name          string
+		input         string
+		wantCode      string
+		wantSubstring string
+	}{
+		{
+			name:          "no_aw_yml",
+			input:         `repository "githubnext/agentics" is not a valid Agentic Workflow package: no aw.yml manifest found at the repository root`,
+			wantCode:      DiagAwPackageManifest,
+			wantSubstring: "profiles.<name>.workflows[]",
+		},
+		{
+			name:          "package_manifest_not_found",
+			input:         `repository package manifest not found: repository "githubnext/agentics" is not a valid Agentic Workflow package`,
+			wantCode:      DiagAwPackageManifest,
+			wantSubstring: "unsupported by design",
+		},
+		{
+			name:          "both_manifest_phrases_dedupe",
+			input:         "repository package manifest not found: no aw.yml manifest found at the repository root",
+			wantCode:      DiagAwPackageManifest,
+			wantSubstring: "bare repo spec",
+		},
+		{
+			name:          "already_exists",
+			input:         "workflow 'ci-doctor' already exists in .github/workflows/. Use a different name with -n flag",
+			wantCode:      DiagWorkflowAlreadyExists,
+			wantSubstring: "--force",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CollectHintDiagnostics(tc.input)
+			if len(got) != 1 {
+				t.Fatalf("len(got) = %d; want 1; got=%+v", len(got), got)
+			}
+			if got[0].Code != tc.wantCode {
+				t.Errorf("Code = %q; want %q", got[0].Code, tc.wantCode)
+			}
+			if !strings.Contains(got[0].Message, tc.wantSubstring) {
+				t.Errorf("Message = %q; want substring %q", got[0].Message, tc.wantSubstring)
+			}
+		})
+	}
+}
+
 func TestCollectHints_CompileStrictPatterns_NoFalsePositives(t *testing.T) {
 	unrelated := []string{
 		"git push: rejected (non-fast-forward)",
