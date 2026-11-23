@@ -46,4 +46,4 @@ vale = "3.27.0"
 
 # Local secret scan. Gitleaks stays the in-tree scanner for target repos;
 # this is the checkout scan (`make secrets`). Not part of `make ci`.
-trufflehog = "3.99.9"
+trufflehog = "3.100.1"
