@@ -13,7 +13,27 @@ go run . list         # Fastest sanity check — exercises LoadConfig end-to-end
 go run . consumption  # Aggregate api-consumption-report output across the fleet (read-only).
 go run . overview     # Join drift, run health, no-op, and AIC/cost across the fleet (read-only).
 go run . template fetch   # ~3 min (serial); do not run in subagents with strict timeouts.
+make speckit-upgrade  # Upgrade Spec Kit files to the mise.toml pin.
 ```
+
+`make speckit-upgrade` upgrades the shared `.specify/` files, every integration
+registered in `.specify/integration.json` (codex, claude, copilot), and the
+bundled extensions (`git`, `agent-context`) to the `pipx:specify-cli` pin. Run
+it after Renovate bumps that pin. Integrations already at the pin, and bundled
+extensions already at the CLI's bundled version, are skipped, so a no-op run
+leaves the tree unchanged. Locally customized managed files
+(`plan-template.md` carries the Documentation Impact gate) are preserved unless
+`FORCE=1`. A leftover `.specify/.speckit-upgrade-pending` means an extension
+re-add failed mid-run; rerun the target to finish it. Each extension keeps its
+priority and enabled state, but re-adding a bundled extension resets its hook
+entries in `.specify/extensions.yml` to the manifest defaults (`enabled`,
+`optional`, `priority`, `condition`); reapply any per-hook edits after the
+run. Two Spec Kit 1.4.2
+behaviors to expect: extension commands
+(`speckit-git-*`, `speckit-agent-context-update`) register for the **default**
+integration (codex) only, and `specify integration status` always reports
+ERROR because copilot is not declared multi-install safe; the target prints it
+as a report and does not fail on it.
 
 For third-party API shape or documentation questions (e.g. zerolog field-writer signatures, cobra persistent-flag ordering), prefer `go doc <pkg>` / `go doc <pkg>.<Symbol>` over web search — it returns the exact API surface for the pinned version in `go.mod`. When editing, `gopls` (running via the IDE or `gopls definition`/`gopls symbols`) resolves identifiers against the current module state, which catches rename drift faster than grep.
 

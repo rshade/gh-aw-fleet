@@ -35,13 +35,13 @@ fleet-layer tool existing.
 **Identifying candidates**:
 
 - **Cost**: items labeled `cost` on GitHub — #102 (Immediate Focus),
-  #198 (Near-Term), #106 / #107 / #113 / #53 / #59 / #60 (Future);
+  #198 / #204 (Near-Term), #106 / #107 / #53 / #59 / #60 (Future);
   #57 / #103 / #108 / #104 / #129 / #153 shipped in the v0.2.x line.
 - **Security**: items labeled `security` on GitHub — the security epic
-  #36 with the `--strict`-gate remediation pair #180 / #179 (Immediate Focus)
-  and `--deep-scan` #39 (Future); the `--strict` HIGH-finding promotion #38,
-  the defense-in-depth UX child #40, the supply-chain conflict scanners
-  #101 / #100, and #49 (all shipped).
+  #36 with `--deep-scan` #39 (Future); the `--strict`-gate remediation pair
+  #180 / #179 and the renovate hardening #197 (shipped 2026-11-20, unreleased),
+  plus the `--strict` HIGH-finding promotion #38, the defense-in-depth UX child
+  #40, the supply-chain conflict scanners #101 / #100, and #49 (all shipped).
 
 **Status**: release-please cuts **patch** bumps for `0.x` (latest tag
 **v0.2.5**, 2026-06-30). v0.2.0 satisfied the rule (#54 / #55 / #56 cost
@@ -54,59 +54,31 @@ cost + security trio that had been on `main`: the over-budget highlight (#129,
 cost, PR #160) and the HIGH-finding `--strict` promotion (#38, security,
 PR #161) — both closed 2026-06-23 — plus the cross-repo `overview` wedge (#153,
 cost, closed 2026-06-29) and the defense-in-depth UX child (#40, security,
-closed 2026-06-30). The **post-v0.2.5 in-flight release** carries the
-`--strict`-gate remediation pair (#180 `fix`, #179 `feat`, both security) in
-Immediate Focus, now **balanced** by the promoted cost item #102 forecast `[L]`
-(picked over #198 `--compare` as the foundational FinOps core). Because #179 is
-a `feat`, #102 must land in the release that carries it; a #180-only
-`fix`-hotfix release would be composition-exempt.
+closed 2026-06-30). The **post-v0.2.5 in-flight release** (release-please
+PR #181, `0.2.6`, still open) has its **security half filled**: #180 `fix`, #179
+`feat`, and #197 all closed 2026-11-20. Its **cost half is not**: no
+`cost`-labeled item has closed since v0.2.5, and #102 forecast `[L]` remains in
+Immediate Focus. Because #179 is a `feat`, merging #181 before #102 lands would
+cut a feature-bearing release without a cost item.
 
 **Exception**: a release scoped as a single `fix:` hotfix (no feature
 changes) is exempt — the rule applies to feature-bearing releases.
 
 ## Immediate Focus (next release in progress)
 
-Latest tag is **v0.2.5** (2026-06-30), which shipped the #129 / #153 / #38 / #40
-cost + security set (see Completed Milestones). The **post-v0.2.5 in-flight
-release** holds the coupled `--strict`-gate remediation pair surfaced while
-testing v0.2.5 (PR #164): `--strict` blocks on ~21 HIGH `actionlint:*` findings
-on gh-aw **compiler-generated** `*.lock.yml` files that operators cannot fix, so
-the gate ships correct but **un-enableable** on a real agentics fleet. #180 is
-the immediate severity fix; #179 is the declarative waiver follow-on. Both are
-`security`. Paired with them is the cost item **#102 forecast**, promoted to
-balance the release's composition. The overview drill-down companion #154
-(`ship after overview lands` trigger now met) and CI gate #155 remain eligible
-for a later rotation.
+Latest tag is **v0.2.5** (2026-06-30). The **post-v0.2.5 in-flight release**
+(release-please PR #181, `0.2.6`) already carries its security half: the
+`--strict`-gate remediation pair #180 / #179 and the renovate hardening #197
+all closed 2026-11-20, alongside a batch of operator, docs, and status work (see
+Completed Milestones → 2026-Q4). The one remaining in-flight item is the cost
+half, **#102 forecast**, which must land before #181 merges for the release to
+satisfy the composition rule.
 
-> `/roadmap sync` (2026-07-07) kept BOTH #180 + #179 in Immediate Focus per
-> operator direction (they're one coupled gate fix), then promoted **#102
-> forecast** to fill the cost slot. Gate state: depth 2 security,
-> `target_focus_depth` 1 → +1 cost-composition bump → `effective_target` 2, but
-> the security pair already occupied both slots leaving **cost uncovered**.
-> Since #179 is a `feat`, the next feature-bearing release must pair a cost item;
-> #102 (+30 fills cost slot, foundational FinOps core) was picked over #198
-> `--compare` `[L]` (+30, derivative post-hoc lens). Result: depth 3 by operator
-> direction — 2 security + 1 cost, composition now balanced. If #180 ships alone
-> first as a `fix`-hotfix it stays composition-exempt; #102 must land in the
-> release that carries #179.
+> `/roadmap sync` (2026-11-20): silent pass. Depth 1 (#102) equals
+> `target_focus_depth` 1; security is covered by the closed #179 / #180 / #197,
+> and cost is covered by #102 in flight, so no composition bump applies. Hold
+> release-please PR #181 until #102 closes.
 
-- [ ] [#180](https://github.com/rshade/gh-aw-fleet/issues/180)
-  `fix(security)`: demote actionlint compiled-lock-file findings from HIGH to
-  MEDIUM `[S]` `security`
-  *`actionlint` only ever runs on `.github/workflows/*.lock.yml` (compiler
-  output marked `DO NOT EDIT`); a single `concurrency: queue: max` syntax-check
-  false-positive drags the whole file to HIGH, blocking `--strict` on ~21
-  unactionable findings. Cap `actionlint:*` at MEDIUM so they stay advisory but
-  never block. The immediate unblock for `--strict`.*
-- [ ] [#179](https://github.com/rshade/gh-aw-fleet/issues/179)
-  `feat(security)`: add fleet-side suppression/waiver for the `--strict` gate
-  `[M]` `security`
-  *Declarative `security.suppress` block in `fleet.json` (overlay-able via
-  `fleet.local.json`), matched by rule + file glob, applied at the blocking
-  computation only — suppressed findings still surface as advisory, preserving
-  the audit trail. The durable waiver that lets operators enable `--strict`
-  without being permanently blocked by findings in artifacts they don't author.
-  Follow-on to #180; child of the security epic #36.*
 - [ ] [#102](https://github.com/rshade/gh-aw-fleet/issues/102)
   `gh-aw-fleet forecast` — fleet-wide pre-spend cost projection `[L]` `cost`
   `finops`
@@ -120,23 +92,20 @@ for a later rotation.
 
 ## Near-Term Vision (v0.4 — FinOps build-out + operator QoL)
 
-With the FinOps build-out and the cost + security composition trio
-(#129, #153, #38, #40) now **shipped in v0.2.5**, Immediate Focus holds the
-`--strict`-gate remediation pair (#180 / #179, security) paired with the cost
-item forecast (#102). Near-Term holds the overview drill-down companion (#154,
-trigger now met), the model-support advisory (#201), the remaining FinOps work —
-consumption scale-hardening (#119) and the period-over-period `--compare` lens
-(#198) — plus the deploy/consumption follow-ups (#112 / #115), a diagnostics
-expansion (#99), the docs-theme adoption (#147), and four docs items
-(#94 / #95 / #127 / #128).
+Immediate Focus holds the cost item forecast (#102), the last open piece of the
+post-v0.2.5 release. Near-Term holds the overview drill-down companion (#154),
+the remaining FinOps work — consumption scale-hardening (#119), the
+period-over-period `--compare` lens (#198), and the actor/trigger attribution
+axes (#204) — plus the agentics-maintenance strict-check follow-up (#115) and the
+docs-theme adoption (#147).
 
 ### Observability / cross-repo wedge
 
 The local cross-repo health + cost + drift view. The `overview` lead (#153)
-**shipped 2026-06-29** (see Completed Milestones); its drill-down companion
-(#154) remains here with its `ship after overview lands` trigger now met. A
-separate hosted control plane (#146) consumes the same engine for org-wide
-observability; this CLI view ships standalone and locally first.
+shipped 2026-06-29, and its model-support advisory (#201) and CI gate (#155)
+shipped 2026-11-20 (see Completed Milestones). The drill-down companion (#154)
+remains. A separate hosted control plane (#146) consumes the same engine for
+org-wide observability; this CLI view ships standalone and locally first.
 
 - [ ] [#154](https://github.com/rshade/gh-aw-fleet/issues/154)
   `gh-aw-fleet debug [repo]` — aggregate failed agentic-run logs `[M]`
@@ -144,16 +113,6 @@ observability; this CLI view ships standalone and locally first.
   *Wraps `gh aw logs` and groups failed runs by root cause (via `CollectHints`)
   so overview's FAIL counts don't dead-end in the GitHub UI. Drill-down
   companion to #153.*
-- [ ] [#201](https://github.com/rshade/gh-aw-fleet/issues/201)
-  `overview`: flag repos failing on unsupported/deprecated Copilot models `[M]`
-  *Extend the read-only `overview` run-health path with an advisory that names
-  which repos are 400-ing on `model_not_supported` (and which model), so
-  operators fix it (set `GH_AW_DEFAULT_MODEL_COPILOT`) before every scheduled
-  run silently fails. Fleet-wide and silent today: once each repo's compiler
-  skew clears, gh-aw's baked default (`claude-sonnet-4.6`) 400s on this
-  subscription; gh-aw also deprecates models over time (dropped `gpt-5-mini` in
-  v0.81.5). Triaged into Near-Term by `/roadmap sync` 2026-07-07 (was
-  untriaged).*
 
 ### FinOps / cost visibility
 
@@ -171,6 +130,18 @@ build on.
   quartet (rollup answers *what*, `--budget` a static threshold, forecast
   *future*; `--compare` answers *what moved*). A ranked cost candidate to pair
   with #179's feature-bearing release.*
+- [ ] [#204](https://github.com/rshade/gh-aw-fleet/issues/204)
+  `consumption --by actor|trigger` — attribute AIC to what caused each run `[M]`
+  `cost` `finops`
+  *The "what is spending?" lens: two new run-grained group-by axes — `--by actor`
+  (the run's `triggering_actor`, e.g. `dependabot[bot]`) and `--by trigger` (the
+  GitHub event: `schedule` / `push` / `workflow_dispatch` / …) — so a spend spike
+  can be named by its cause (dependabot churn vs. runaway cron vs. manual
+  dispatch), not just its repo/workflow. Sibling of #198: `--compare` is the
+  temporal derivative, this is the orthogonal dimensional axis; both from the same
+  fleet-observability announcement thread. Needs a new `ghRunsMetaAPI` seam (one
+  `actions/runs` list call per repo, joined by `run_id`) since the `gh aw logs`
+  AIC payload carries no event/actor field.*
 - [ ] [#119](https://github.com/rshade/gh-aw-fleet/issues/119) Paginate
   Actions workflow discovery for the logs consumption source `[M]`
   `finops`
@@ -181,36 +152,6 @@ build on.
 
 ### Documentation
 
-- [ ] [#127](https://github.com/rshade/gh-aw-fleet/issues/127) Document
-  the two-layer FinOps cost model (aggregate rollup vs. per-run
-  attribution) `[S]` `documentation` `finops`
-  *New `docs/finops.md` framing Layer 1 (the deployed
-  `api-consumption-report` plus the `consumption` rollup, AIC-native)
-  vs. Layer 2 (optional agentics `cost-tracker`), with the currency
-  caveat (Copilot AIC ≠ list-price USD) and the trigger-coupling caveat
-  stated plainly. Links the FinOps issue cluster as the roadmap.*
-- [ ] [#128](https://github.com/rshade/gh-aw-fleet/issues/128) Correct the
-  stale `--source` default in the `fleet-budget-review` skill
-  (artifacts → logs) `[S]` `documentation` `finops`
-  *`skills/fleet-budget-review/SKILL.md` still documents the legacy
-  `--source artifacts` path as the default; the real default is
-  `--source logs` (#103). Rewrite the data-source sections, the example
-  table (`AIC` / `COST` columns), and the Step-4 diagnostics to match.*
-- [ ] [#94](https://github.com/rshade/gh-aw-fleet/issues/94) Surface
-  dry-run as a design principle + add concrete workflow examples to the
-  README `[S]` `documentation`
-  *Two positioning gaps: the intro defines agentic workflows abstractly
-  without naming what they do (code review, doc updates, malicious-code
-  scans, PR fixes), and the dry-run gate reads as a feature in the
-  Commands table rather than a load-bearing operator-UX principle. Net
-  README growth < 20 lines; no code changes.*
-- [ ] [#95](https://github.com/rshade/gh-aw-fleet/issues/95) Add
-  backlinks to the announcement post (README footer + release notes +
-  repo description) `[S]` `documentation`
-  *Three low-maintenance placements pointing at the blog as the
-  source-of-truth for announcements: a bottom-of-README Resources line,
-  a release-notes "Related" link, and a repo-description link to the
-  blog tag index. No top-of-README marketing link by design.*
 - [ ] [#147](https://github.com/rshade/gh-aw-fleet/issues/147) Adopt shared
   `rshade-theme` (design tokens) for a consistent look `[S]` `enhancement`
   *Follow-up to the now-shipped docs-site scaffold (#138): adopt the shared
@@ -219,21 +160,6 @@ build on.
 
 ### Operator quality of life
 
-- [ ] [#99](https://github.com/rshade/gh-aw-fleet/issues/99) Add
-  `CollectHints` entries for `no aw.yml manifest` / `already exists`
-  `gh aw add` errors `[S]`
-  *Two `gh aw add` failure modes surface raw upstream output today: the
-  missing-package-manifest error (agentics has no root `aw.yml`; the
-  fleet installs workflows by name) and the `already exists in
-  .github/workflows/` collision (re-run with fleet `--force`). Concrete
-  instance of the broader catalog-expansion item below.*
-- [ ] [#112](https://github.com/rshade/gh-aw-fleet/issues/112) `gh aw
-  compile --strict` drops the `--engine` override, producing wrong-engine
-  lock files `[S]` `bug`
-  *Latent: a strict (public) deploy of an engine-overridden workflow
-  recompiles to the markdown's native engine, demanding the wrong secret
-  at runtime. The non-strict path was fixed this session; the strict path
-  (`runGhAwCompileStrict`) needs the same `--engine` forwarding.*
 - [ ] [#115](https://github.com/rshade/gh-aw-fleet/issues/115) Auto-suppress
   the `agentics-maintenance.yml` strict-check failure on public repos `[M]`
   *Every public repo the fleet deploys to inherits the generated
@@ -285,9 +211,9 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   compiled-YAML patterns, and fleet-structural violations before PRs merge.
   Layer 1 (#37) shipped 2026-05-07, the `--strict` promotion (#38) shipped
   2026-06-23, and the defense-in-depth UX child (#40) shipped 2026-06-30 (v0.2.5).
-  The `--strict`-gate remediation pair #180 / #179 (now in Immediate Focus)
-  makes `--strict` enableable on a real fleet; #39 remains eligible for
-  promotion under the epic's own rule.*
+  The `--strict`-gate remediation pair #180 / #179 shipped 2026-11-20 and makes
+  `--strict` enableable on a real fleet; #39 remains eligible for promotion
+  under the epic's own rule.*
   - [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
     scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
     (shipped 2026-05-07)
@@ -297,12 +223,12 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   - [x] [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
     Defense-in-depth UX: stderr + interactive prompt + PR body Security
     Findings section `[M]` (shipped 2026-06-30, v0.2.5)
-  - [ ] [#180](https://github.com/rshade/gh-aw-fleet/issues/180) `fix`: demote
-    actionlint compiled-lock-file findings from HIGH to MEDIUM `[S]` —
-    **now in Immediate Focus** (the `--strict`-gate unblock)
-  - [ ] [#179](https://github.com/rshade/gh-aw-fleet/issues/179) `feat`:
-    fleet-side `security.suppress` waiver for the `--strict` gate `[M]` —
-    **now in Immediate Focus** (durable waiver; follow-on to #180)
+  - [x] [#180](https://github.com/rshade/gh-aw-fleet/issues/180) `fix`: demote
+    actionlint compiled-lock-file findings from HIGH to MEDIUM `[S]`
+    (shipped 2026-11-20, PR #303)
+  - [x] [#179](https://github.com/rshade/gh-aw-fleet/issues/179) `feat`:
+    fleet-side `security.suppress` waiver for the `--strict` gate `[M]`
+    (shipped 2026-11-20, PR #306)
   - [ ] [#39](https://github.com/rshade/gh-aw-fleet/issues/39)
     `--deep-scan` flag: prompt-injection regex signatures + optional
     classifier `[L]`
@@ -322,16 +248,6 @@ layer to enforce fleet-wide policy that per-repo tools cannot.
   `author_association` filter). Zero-clone via `gh api`; shares plumbing with
   the proposed `status` subcommand (#10). Natural Layer 2 rule for #37's
   scanner framework once that lands.*
-- [ ] [#197](https://github.com/rshade/gh-aw-fleet/issues/197) Extend
-  `renovate.json` to protect the gh-aw-generated `agentics-maintenance.yml`
-  from action bumps `[S]` `security`
-  *`renovate.json`'s `*.lock.yml` file-scoped disable rule misses
-  `agentics-maintenance.yml` (gh-aw-generated but plain `.yml`), so its
-  standard-action pins (`actions/checkout`, `actions/cache`) stay re-bumpable —
-  Renovate already drifted them and the #193 recompile reset them. Extend the
-  rule to cover the generated non-lock file. Incident-driven follow-up to the
-  Renovate conflict scanner #100. Triaged by `/roadmap sync` 2026-07-07 (was
-  mislabeled `dependencies` — a noise label — and off the roadmap).*
 
 ### FinOps (deferred / upstream-blocked)
 
@@ -445,12 +361,6 @@ ideas close the loop without becoming a daemon.
   current `main` and report behavioral diffs (frontmatter changes, body
   diff hunks). Useful for `fleet-eval-templates` skill but a multi-day
   build.*
-- [ ] [#155](https://github.com/rshade/gh-aw-fleet/issues/155)
-  `overview --fail-on-runs` — opt-in non-zero exit on run failures `[S]`
-  `finops` `cross-repo`
-  *Opt-in CI gate for the overview wedge (#153): exit non-zero when any repo
-  has failed runs in the window; default stays drift-only / advisory.
-  `trigger`: ships after #153 lands.*
 
 ### Control-plane enablement (agentic-fleet.ai)
 
@@ -502,265 +412,123 @@ never depends on the control plane). See `agentic-fleet/control-plane/docs/`.
   so a human reviewer can navigate the rollout. Pure formatting; no schema
   change.*
 
-### Status command refinements
-
-Both follow-ups extend the v1 `status` command (#10, shipped 2026-Q2). They
-were deferred at v1 to keep the initial command surface small.
-
-- [ ] [#61](https://github.com/rshade/gh-aw-fleet/issues/61) Opt-in
-  `--ref <branch>` flag for `status` non-default-branch checks `[S]`
-  *Today `status` reads each repo's default branch. Some operators stage
-  workflow changes on a feature branch; an opt-in `--ref` flag would let
-  `status` diff against an arbitrary ref. Trigger: real demand from at
-  least one external operator.*
-- [ ] [#62](https://github.com/rshade/gh-aw-fleet/issues/62) Opt-in
-  SHA-resolution drift mode for `status` to reduce false positives `[S]`
-  *Today `status` does strict string comparison: a SHA pin pointing to the
-  same commit as a tag is reported as drifted. Optional flag would resolve
-  both refs to commit SHAs via `gh api` (2N extra calls per drifted
-  candidate). Trigger: operators report content-identical false positives.*
-
 ## Completed Milestones
+
+### 2026-Q4
+
+- [x] [#62](https://github.com/rshade/gh-aw-fleet/issues/62) `status`: opt-in
+  `--resolve-refs` SHA-resolution drift mode. Closed 2026-11-20. `[S]`
+- [x] [#61](https://github.com/rshade/gh-aw-fleet/issues/61) `status`: opt-in
+  `--ref <branch>` for non-default-branch checks. Closed 2026-11-20. `[S]`
+- [x] [#155](https://github.com/rshade/gh-aw-fleet/issues/155) `overview`:
+  `--fail-on-runs` opt-in non-zero exit on run failures. Closed 2026-11-20.
+  `[S]`
+- [x] [#197](https://github.com/rshade/gh-aw-fleet/issues/197) `renovate`:
+  protect generated `agentics-maintenance.yml` from bumps. Closed 2026-11-20.
+  `[S]`
+- [x] [#95](https://github.com/rshade/gh-aw-fleet/issues/95) `docs`: README
+  footer backlink to the announcement post. Closed 2026-11-20. `[S]`
+- [x] [#94](https://github.com/rshade/gh-aw-fleet/issues/94) `docs`: README
+  names workflow examples, dry-run as principle. Closed 2026-11-20. `[S]`
+- [x] [#127](https://github.com/rshade/gh-aw-fleet/issues/127) `docs`: two-layer
+  FinOps cost model in `docs/finops.md`. Closed 2026-11-20. `[S]`
+- [x] [#128](https://github.com/rshade/gh-aw-fleet/issues/128) `skills`:
+  `fleet-budget-review` documents the `logs` source default. Closed 2026-11-20.
+  `[S]`
+- [x] [#179](https://github.com/rshade/gh-aw-fleet/issues/179) `security`:
+  `security.suppress` waivers for the `--strict` gate. Closed 2026-11-20. `[M]`
+- [x] [#99](https://github.com/rshade/gh-aw-fleet/issues/99) `diagnostics`:
+  hints for missing `aw.yml` and already-exists `add` errors. Closed 2026-11-20.
+  `[S]`
+- [x] [#112](https://github.com/rshade/gh-aw-fleet/issues/112) `deploy`: forward
+  `--engine` to the strict compile. Closed 2026-11-20. `[S]`
+- [x] [#180](https://github.com/rshade/gh-aw-fleet/issues/180) `security`:
+  demote actionlint lock-file findings to MEDIUM. Closed 2026-11-20. `[S]`
+- [x] [#201](https://github.com/rshade/gh-aw-fleet/issues/201) `overview`: flag
+  repos failing on unsupported Copilot models. Closed 2026-11-20. `[M]`
 
 ### 2026-Q2
 
-- [x] [#40](https://github.com/rshade/gh-aw-fleet/issues/40)
-  Defense-in-depth UX: stderr + interactive prompt + PR body Security Findings
-  section `[M]` `security`
-  *Closed 2026-06-30 (shipped in v0.2.5). Child of the security epic #36,
-  promotion-eligible since Layer 1 (#37) shipped. Surfaces scanner findings
-  across three channels — structured stderr, an interactive confirm prompt, and
-  a PR-body "Security Findings" section — so advisory findings stop dead-ending
-  in logs. Advisory-only. Filled v0.2.5's security composition slot alongside
-  the #38 `--strict` promotion; its `--strict`-enableable follow-ups #180 / #179
-  are now in Immediate Focus.*
-- [x] [#153](https://github.com/rshade/gh-aw-fleet/issues/153)
-  `gh-aw-fleet overview` — unified cross-repo health + cost + drift view `[L]`
-  `cost` `finops` `cross-repo`
-  *Closed 2026-06-29 (shipped in v0.2.5). One read-only dashboard joining run
-  health (failures/success %), cost (AIC/USD), and drift per repo, reusing the
-  `Status()` + `gh aw logs` fan-outs. Shipped standalone and locally;
-  `unblocks: 146` (control-plane epic). Anchored v0.2.5's cost composition slot;
-  drill-down companion #154 and CI gate #155 now eligible.*
-- [x] [#129](https://github.com/rshade/gh-aw-fleet/issues/129) Read-only
-  over-budget highlighting in the rollup (`--budget`) `[M]` `cost` `finops`
-  `spec-first`
-  *Closed 2026-06-23 (PR #160, shipped in v0.2.5). Optional per-row AIC ceiling
-  that highlights hot rollup rows — the read-only "operate / anomaly" lens (no
-  cap, no alert, exit 0). Filled v0.2.5's cost composition slot.*
-- [x] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `--strict` flag:
-  promote HIGH Layer 1 findings from advisory to blocking `[S]` `security`
-  *Closed 2026-06-23 (PR #161, shipped in v0.2.5). Child of the security epic
-  #36, promotion-eligible since Layer 1 (#37) shipped 2026-05-07. Flips advisory
-  HIGH findings to blocking under opt-in `--strict` across deploy/sync/upgrade.
-  Filled v0.2.5's security composition slot (with #40). Surfaced the
-  un-enableable-gate problem the #180 / #179 remediation pair now fixes.*
-- [x] [#156](https://github.com/rshade/gh-aw-fleet/issues/156) Adopt `ax-go` as
-  the AX foundation — phase 1 (amend constitution + config primitives +
-  `__schema` discoverability) `[L]` `cross-repo` `spec-first`
-  *Closed 2026-06-22 (PR #159). Adopted `github.com/rshade/ax-go v0.2.0` the
-  constitutional way: `internal/fleet/load.go` now parses/patches via
-  import-isolated `config.ParseFile` / `config.Patch`, `cmd` exposes a hidden
-  additive `__schema` command, and `go.mod` declares `go 1.26.4`. Import
-  boundary is `config`/`schema`/`contract` only. Remaining ax-go phases stay
-  unscheduled (see Control-plane enablement).*
-- [x] [#148](https://github.com/rshade/gh-aw-fleet/issues/148) Export fleet
-  config contract into public `pkg/fleet` (types + SchemaVersion + JSON) —
-  minimal first slice of #141 `[S]` `cross-repo`
-  *Closed 2026-06-21. First slice of the control-plane epic (#146): the public
-  `pkg/fleet` package now owns the `fleet.json` wire contract while
-  `internal/fleet` aliases it.*
-- [x] [#138](https://github.com/rshade/gh-aw-fleet/issues/138) Scaffold an Astro
-  Starlight docs site consuming `rshade-theme` `[M]` `documentation`
-  *Closed 2026-06-20. Reference implementation / first consumer of the shared
-  theme. Follow-up theming tracked in #147.*
-- [x] [#104](https://github.com/rshade/gh-aw-fleet/issues/104) Cost-oriented
-  trigger-risk lint over the resolved fleet `[S]` `security` `cost` `finops`
-  *Closed 2026-06-18. Flags trigger shapes that invite runaway AIC spend
-  (unbounded schedules, fork-triggered LLM runs) across the resolved workflow
-  set. Filled the next release's cost composition slot.*
-- [x] [#101](https://github.com/rshade/gh-aw-fleet/issues/101) Detect
-  Dependabot configs that conflict with gh-aw-managed pins `[M]` `security`
-  *Closed 2026-06-17. Advisory `security_dependabot` scanner; security half of
-  the supply-chain conflict pair (with #100).*
-- [x] [#100](https://github.com/rshade/gh-aw-fleet/issues/100) Detect Renovate
-  configs that conflict with gh-aw-managed pins `[M]` `security`
-  *Closed 2026-06-16. Advisory `security_renovate` scanner; incident-driven
-  (`finfocus#1246`).*
-- [x] [#98](https://github.com/rshade/gh-aw-fleet/issues/98) Fix `ensureInit`
-  probing a stale marker filename — re-inits every run, no drift detection
-  `[M]` `bug`
-  *Closed 2026-06-14. Superseded the marker-filename probe with the
-  fleet-manifest version comparison (#114).*
-- [x] [#114](https://github.com/rshade/gh-aw-fleet/issues/114)
-  Fleet-managed marker/manifest per repo: deployed gh-aw version +
-  detect/refresh stale init artifacts `[L]`
-  *Shipped in v0.2.2 (PR #124, closed 2026-06-13). Deploy writes
-  `.github/aw/fleet-manifest.json` (managed flag, gh-aw version,
-  profiles); `ensureInit` now compares the manifest's `gh_aw_version`
-  against the fleet's `github/gh-aw` source pin instead of probing a
-  marker filename — a version mismatch triggers re-init. Supersedes the
-  drift-detection half of #98.*
-- [x] [#108](https://github.com/rshade/gh-aw-fleet/issues/108) gh-aw
-  v0.79.2 baseline + capture `--json` / compile-env spikes `[M]` `cost`
-  `finops`
-  *Shipped in v0.2.2 (closed 2026-06-12). Raised the gh-aw floor to
-  v0.79.2 across configs / docs / tests, recompiled the tracked locks,
-  and captured real `forecast` / `logs --json` fixtures — the enabling
-  spike for the FinOps build-out. Filled the v0.2.2 release-composition
-  cost slot.*
-- [x] [#103](https://github.com/rshade/gh-aw-fleet/issues/103) Source AIC
-  from `gh aw logs --json`, not `aw_info.json` cost `[M]` `cost` `finops`
-  *Shipped in v0.2.2 (PR #116, closed 2026-06-12). Pivoted the
-  `consumption` rollup to `gh aw logs --json` (AIC; USD = `aic * 0.01`)
-  behind a `--source logs|artifacts` flag, decoupled from any deployed
-  report workflow — `--source logs` is now the default and no longer
-  needs `api-consumption-report` deployed.*
-- [x] [#43](https://github.com/rshade/gh-aw-fleet/issues/43) Add
-  `install.sh` and `install.ps1` one-liner installers `[M]` `community`
-  *Shipped 2026-06-10 in PR #92. Checksum-verified curl/iwr one-liners
-  shipped as release assets (`.goreleaser.yml` `extra_files`) and on
-  `main` for a fallback URL; tamper test asserts non-zero exit on a
-  corrupted `checksums.txt`. The community-leverage half of the v0.3
-  Immediate Focus.*
-- [x] [#49](https://github.com/rshade/gh-aw-fleet/issues/49) Compile
-  workflows with `--strict` on public repos by default `[S]` `security`
-  *Shipped 2026-05-21 in PR #88. Auto-flips `gh aw compile --strict`
-  on when the target repo is public (queried via `gh api`); operators
-  on private repos remain opt-in via flag. Closes v0.3's release-
-  composition security half. Pairs with #57 on the cost half — the
-  composition pair the v0.3 release-please cut now ships.*
-- [x] [#57](https://github.com/rshade/gh-aw-fleet/issues/57) Add
-  `gh-aw-fleet consumption` subcommand for cross-fleet billing rollups
-  `[L]`
-  *Shipped 2026-05-15 in PR #83. Read-only fleet-wide aggregator over
-  each repo's `api-consumption-report` output. Two-layer fetch:
-  discovery via `gh api` discussions (`audits` category + tracker
-  marker), data via `aw_info.json` + `run_summary.json` from run
-  artifacts. Three temporal modes (`--latest` / `--trailing Nd` /
-  `--since YYYY-MM-DD`); four group-by axes (`--by
-  repo|profile|cost-center|workflow`). `cost *float64` placeholder ships
-  nil-until-positive — populated when upstream `aw_info.json` `cost`
-  field stabilizes (tracked as #59). The fleet feature the
-  2026-06-01 usage-based Copilot billing transition justifies; satisfies
-  v0.3's release-composition cost half.*
-- [x] [#48](https://github.com/rshade/gh-aw-fleet/issues/48) `sync`
-  preflight + apply mis-trigger "refusing to resume" check on
-  internally-prepared clones `[S]`
-  *Shipped 2026-05-14 in PR #81. Resume guard now correctly bypasses the
-  check on internally-prepared clone directories that flow through
-  deploy/sync's own state-prep path. Closes the last v0.2 correctness
-  blocker.*
-- [x] [#73](https://github.com/rshade/gh-aw-fleet/issues/73) Support HuJson
-  for inline config documentation `[M]`
-  *Shipped 2026-05-12 in PR #78. `internal/fleet/load.go` runs every
-  config file (`fleet.json`, `fleet.local.json`, `templates.json`,
-  `profiles/default.json`) through `hujson.Standardize()` before
-  `json.Unmarshal`; writes use direct AST mutation (`Add`) or RFC 6902
-  patches (`SaveTemplates`) to preserve operator-authored comments. The
-  boundary note on third-party deps was resolved by Constitution v1.1.0
-  §Third-Party Dependencies, which adds `tailscale/hujson` as an
-  approved direct dependency.*
-- [x] [#55](https://github.com/rshade/gh-aw-fleet/issues/55) Add optional
-  `cost_center` field to `RepoSpec` `[M]`
-  *Shipped 2026-05-12 in PR #78. Free-form string per repo, surfaced as
-  an appended column in `gh-aw-fleet list`. Additive: no `SchemaVersion`
-  bump, no envelope change, silently accepted when absent. Becomes the
-  `--by cost-center` group-by key for #57.*
-- [x] [#54](https://github.com/rshade/gh-aw-fleet/issues/54) Add optional
-  `tier` annotation to profile definitions `[M]`
-  *Shipped 2026-05-12 in PR #78. Advisory `minimal | standard | premium`
-  field on `Profile`, surfaced as a parallel `TIERS` column in `list`.
-  No enforcement — annotation only. Becomes the `--by tier` group-by
-  key for #57.*
-- [x] [#56](https://github.com/rshade/gh-aw-fleet/issues/56) Add
-  `api-consumption-report` workflow to a fleet profile `[S]`
-  *Shipped 2026-05-10 as the new `observability-plus` opt-in profile in
-  `profiles/default.json`. Provides the per-repo data feed the upcoming
-  `consumption` subcommand (#57) aggregates. Pure profile composition,
-  no Go code. Opting a repo in incurs recurring Copilot-credit cost since
-  the report is itself an LLM workflow.*
-- [x] [#52](https://github.com/rshade/gh-aw-fleet/issues/52) Add diagnostic
-  hint for HTTP 402 / Copilot billing-quota exceeded errors `[S]`
-  *Shipped 2026-05-10 in the same release as #56. Added a `hints[]` entry
-  in `internal/fleet/diagnostics.go` for `HTTP 402` / `Payment Required`
-  patterns. Lands before the 2026-06-01 usage-based billing transition so
-  operators get an actionable message on first cap hit. Follow-up #53
-  expands the pattern catalog once real failures are observed.*
-- [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) Layer 1
-  security scanner: secrets + compiled-YAML + fleet-structural rules `[L]`
-  *First foundation of the security epic (#36): added `internal/security`
-  scanner that runs against the resolved workflow set and surfaces findings
-  on `DeployResult` / `SyncResult` / `UpgradeResult`. Advisory-only at this
-  layer; promotion to blocking arrives with #38's `--strict` flag.*
-- [x] [#11](https://github.com/rshade/gh-aw-fleet/issues/11) Preflight
-  check for Actions enabled and workflow write permissions `[M]`
-  *`checkActionsSettings()` runs alongside `checkEngineSecret()` during
-  deploy preflight; surfaces direct settings-page links when either repo-
-  level setting would silently break deployed workflows. Pure preflight,
-  no auto-remediation.*
-- [x] [#10](https://github.com/rshade/gh-aw-fleet/issues/10) Implement
-  `status [repo]` subcommand `[M]`
-  *Diffs desired (`fleet.json`) vs actual (per-repo workflow set + pins)
-  via `gh api` without cloning. Human-readable drift report by default,
-  `--output json` envelope for CI/LLM consumption, non-zero exit on drift.
-  Strict-string comparison; SHA-resolution mode tracked separately as
-  #62.*
-- [x] [#32](https://github.com/rshade/gh-aw-fleet/issues/32) `upgrade`
-  first changed-file missing leading dot (TrimSpace eats porcelain status
-  char) `[S]`
-  *Parser now reads `git status --porcelain` by column offset instead of
-  trimming, preserving leading-dot paths like `.github/workflows/...`.*
-- [x] [#8](https://github.com/rshade/gh-aw-fleet/issues/8) Resume `deploy`
-  from `--work-dir` instead of re-cloning `[M]`
-  *`Deploy` now detects a populated `--work-dir` with staged changes and
-  re-enters at the commit gate (`hasStagedOrUnstagedWorkflowChanges`),
-  skipping clone/init/add. Tested by interrupting `--apply` after gpg
-  failure and re-running with `--work-dir <clone>`.*
-- [x] [#7](https://github.com/rshade/gh-aw-fleet/issues/7) Surface
-  missing-secret warning in PR body `[S]`
-  *PR body now appends a `⚠ Setup Required` section when `MissingSecret`
-  is set, so reviewers landing the PR hours later don't ship broken
-  workflows.*
-- [x] [#12](https://github.com/rshade/gh-aw-fleet/issues/12) Fix
-  `default.json` pinning `githubnext/agentics` to `main` `[S]`
-  *Default profile now pins agentics to a SHA, restoring the
-  pin-to-released-tag invariant from CONTEXT.md (closest equivalent until
-  upstream tags arrive).*
-- [x] [#25](https://github.com/rshade/gh-aw-fleet/issues/25) Add
-  `--output json` to `list`/`deploy`/`sync`/`upgrade` for LLM consumption
+- [x] [#40](https://github.com/rshade/gh-aw-fleet/issues/40) `security`:
+  defense-in-depth UX: stderr, prompt, PR-body findings. Closed 2026-06-30.
   `[M]`
-  *Versioned JSON envelope (`schema_version: 1`) on stdout when
-  `-o json` is set; tabwriter remains the default. Unlocks agentic
-  consumers without regex-scraping. Spec at `specs/003-cli-output-json/`.*
-- [x] [#30](https://github.com/rshade/gh-aw-fleet/issues/30) Errors
-  double-print to stderr (cobra + `main` both print) `[S]`
-  *Cobra's default error rendering silenced; main's zerolog handler now
-  the sole error sink.*
-- [x] [#31](https://github.com/rshade/gh-aw-fleet/issues/31) `not tracked
-  in fleet.json` error ignores `fleet.local.json` `[S]`
-  *Error message now names both `fleet.json` and `fleet.local.json` so
-  operators know where to add the missing repo.*
-- [x] [#24](https://github.com/rshade/gh-aw-fleet/issues/24) Introduce
-  zerolog for errors, warnings, and diagnostics `[M]`
-  *Added `internal/log` over zerolog, wired via cobra `PersistentPreRunE`
-  with `--log-level` / `--log-format`. Warnings and subprocess summaries
-  now emit as structured events on stderr; user-facing tabwriter output
-  stays on stdout. Unblocked #25.*
-- [x] [#9](https://github.com/rshade/gh-aw-fleet/issues/9) Implement
-  `add <owner/repo>` subcommand for fleet onboarding `[M]`
-  *New `gh-aw-fleet add <owner/repo>` cobra subcommand onboards repos into
-  `fleet.local.json` with profile selection and post-add validation.
-  Dry-run by default; `--apply` is the explicit gate. Replaces the manual
-  JSON-edit step in the `fleet-onboard-repo` skill.*
-- [x] [#6](https://github.com/rshade/gh-aw-fleet/issues/6) Check org-level
-  secrets to avoid false-positive missing-secret warnings `[S]`
-  *`checkEngineSecret` now queries repo secrets first, then falls back to
-  org secrets — mirroring upstream `add-wizard`. Eliminates spurious
-  warnings on org-managed installations. Unblocked #7.*
+- [x] [#153](https://github.com/rshade/gh-aw-fleet/issues/153) `overview`:
+  cross-repo health + cost + drift dashboard. Closed 2026-06-29. `[L]`
+- [x] [#129](https://github.com/rshade/gh-aw-fleet/issues/129) `consumption`:
+  read-only over-budget highlighting via `--budget`. Closed 2026-06-23. `[M]`
+- [x] [#38](https://github.com/rshade/gh-aw-fleet/issues/38) `security`:
+  `--strict` promotes HIGH Layer 1 findings to blocking. Closed 2026-06-23.
+  `[S]`
+- [x] [#156](https://github.com/rshade/gh-aw-fleet/issues/156) `config`: adopt
+  `ax-go` phase 1: config primitives + `__schema`. Closed 2026-06-22. `[L]`
+- [x] [#148](https://github.com/rshade/gh-aw-fleet/issues/148) `pkg/fleet`:
+  export the fleet config contract into public `pkg/fleet`. Closed 2026-06-21.
+  `[S]`
+- [x] [#138](https://github.com/rshade/gh-aw-fleet/issues/138) `docs`: scaffold
+  Astro Starlight docs site on `rshade-theme`. Closed 2026-06-20. `[M]`
+- [x] [#104](https://github.com/rshade/gh-aw-fleet/issues/104) `security`:
+  cost-oriented trigger-risk lint over the resolved fleet. Closed 2026-06-18.
+  `[S]`
+- [x] [#101](https://github.com/rshade/gh-aw-fleet/issues/101) `security`:
+  detect Dependabot configs conflicting with gh-aw pins. Closed 2026-06-17.
+  `[M]`
+- [x] [#100](https://github.com/rshade/gh-aw-fleet/issues/100) `security`:
+  detect Renovate configs conflicting with gh-aw pins. Closed 2026-06-16. `[M]`
+- [x] [#98](https://github.com/rshade/gh-aw-fleet/issues/98) `deploy`: fix
+  `ensureInit` stale-marker probe re-initing every run. Closed 2026-06-14. `[M]`
+- [x] [#114](https://github.com/rshade/gh-aw-fleet/issues/114) `deploy`:
+  per-repo fleet manifest drives init version drift. Closed 2026-06-13. `[L]`
+- [x] [#108](https://github.com/rshade/gh-aw-fleet/issues/108) `finops`: gh-aw
+  v0.79.2 baseline + `--json` / compile-env spikes. Closed 2026-06-12. `[M]`
+- [x] [#103](https://github.com/rshade/gh-aw-fleet/issues/103) `consumption`:
+  source AIC from `gh aw logs --json`. Closed 2026-06-12. `[M]`
+- [x] [#43](https://github.com/rshade/gh-aw-fleet/issues/43) `install`:
+  checksum-verified `install.sh` / `install.ps1` installers. Closed 2026-06-10.
+  `[M]`
+- [x] [#49](https://github.com/rshade/gh-aw-fleet/issues/49) `deploy`: compile
+  with `--strict` on public repos by default. Closed 2026-05-21. `[S]`
+- [x] [#57](https://github.com/rshade/gh-aw-fleet/issues/57) `consumption`:
+  cross-fleet billing rollup subcommand. Closed 2026-05-15. `[L]`
+- [x] [#48](https://github.com/rshade/gh-aw-fleet/issues/48) `sync`: fix false
+  "refusing to resume" on prepared clones. Closed 2026-05-14. `[S]`
+- [x] [#73](https://github.com/rshade/gh-aw-fleet/issues/73) `config`: HuJson
+  comments and trailing commas in config files. Closed 2026-05-12. `[M]`
+- [x] [#55](https://github.com/rshade/gh-aw-fleet/issues/55) `config`: optional
+  `cost_center` field on `RepoSpec`. Closed 2026-05-12. `[M]`
+- [x] [#54](https://github.com/rshade/gh-aw-fleet/issues/54) `config`: optional
+  `tier` annotation on profiles. Closed 2026-05-12. `[M]`
+- [x] [#56](https://github.com/rshade/gh-aw-fleet/issues/56) `profiles`:
+  `observability-plus` profile with `api-consumption-report`. Closed 2026-05-10.
+  `[S]`
+- [x] [#52](https://github.com/rshade/gh-aw-fleet/issues/52) `diagnostics`: hint
+  for HTTP 402 Copilot billing-quota errors. Closed 2026-05-10. `[S]`
+- [x] [#37](https://github.com/rshade/gh-aw-fleet/issues/37) `security`: Layer 1
+  scanner: secrets, compiled-YAML, structural rules. Closed 2026-05-07. `[L]`
+- [x] [#11](https://github.com/rshade/gh-aw-fleet/issues/11) `deploy`: preflight
+  for Actions enabled + workflow write permissions. Closed 2026-05-01. `[M]`
+- [x] [#10](https://github.com/rshade/gh-aw-fleet/issues/10) `status`: `status
+  [repo]` drift subcommand without cloning. Closed 2026-04-29. `[M]`
+- [x] [#32](https://github.com/rshade/gh-aw-fleet/issues/32) `upgrade`: keep
+  leading dot on first changed-file path. Closed 2026-04-28. `[S]`
+- [x] [#8](https://github.com/rshade/gh-aw-fleet/issues/8) `deploy`: resume from
+  `--work-dir` instead of re-cloning. Closed 2026-04-28. `[M]`
+- [x] [#7](https://github.com/rshade/gh-aw-fleet/issues/7) `deploy`:
+  missing-secret warning in the PR body. Closed 2026-04-28. `[S]`
+- [x] [#12](https://github.com/rshade/gh-aw-fleet/issues/12) `profiles`: pin
+  `githubnext/agentics` to a SHA, not `main`. Closed 2026-04-24. `[S]`
+- [x] [#25](https://github.com/rshade/gh-aw-fleet/issues/25) `cmd`: `--output
+  json` envelope for list/deploy/sync/upgrade. Closed 2026-04-23. `[M]`
+- [x] [#30](https://github.com/rshade/gh-aw-fleet/issues/30) `cmd`: stop errors
+  double-printing to stderr. Closed 2026-04-23. `[S]`
+- [x] [#31](https://github.com/rshade/gh-aw-fleet/issues/31) `config`: "not
+  tracked" error names `fleet.local.json` too. Closed 2026-04-23. `[S]`
+- [x] [#24](https://github.com/rshade/gh-aw-fleet/issues/24) `log`: zerolog for
+  errors, warnings, and diagnostics. Closed 2026-04-22. `[M]`
+- [x] [#9](https://github.com/rshade/gh-aw-fleet/issues/9) `add`: `add
+  <owner/repo>` onboarding subcommand. Closed 2026-04-20. `[M]`
+- [x] [#6](https://github.com/rshade/gh-aw-fleet/issues/6) `deploy`: check
+  org-level secrets before warning missing secret. Closed 2026-04-19. `[S]`
 - [x] Bootstrap CLI, profiles, and operator skills (commit `8543956`)
-  *Initial scaffolding: `cmd/`, `internal/fleet/`, `profiles/default.json`,
-  four Claude skills, CI + release tooling, commitlint, golangci-lint.*
 
 ## Boundary Safeguards
 
@@ -792,32 +560,20 @@ Any roadmap item that violates these is rejected, not negotiated.
 
 [meta-spec]: ./CONTEXT.md#roadmap-meta-issue-body-convention
 
-> Tracked as GitHub issues: Immediate Focus — the coupled `--strict`-gate
-> remediation pair #180 (`fix`, demote actionlint HIGH→MEDIUM) and #179 (`feat`,
-> `security.suppress` waiver), both security, kept together per operator
-> direction 2026-07-07, plus the promoted cost item #102 (forecast) that
-> balances the release's composition; Near-Term — the overview drill-down
-> companion (#154, trigger now met), the model-support advisory (#201), the
-> FinOps build-out (#198, #119), the deploy/consumption follow-ups (#112, #115),
-> a
-> diagnostics hint (#99), the docs-theme adoption (#147), and docs items (#94,
-> #95, #127, #128); Future Vision — the security epic (#36 with child #39), the
-> renovate-hardening follow-up (#197), the FinOps deferred set (#105, #106,
-> #107, #113, #53, #59, #60), the control-plane enablement cluster (#146 epic
-> with #141–#145 and #163), the overview CI gate (#155), and the Status
-> refinements (#61, #62). **Shipped in v0.2.5** (tagged 2026-06-30): the cost +
-> security set #129 / #153 / #38 / #40, alongside the ax-go phase 1 (#156) and
-> the `pkg/fleet` export (#148). Post-v0.2.5 in-flight: #180 / #179 (security) +
-> #102 forecast (cost, promoted 2026-07-07) — composition balanced; #102 must
-> land in the release carrying #179, or #180 ships first as a `fix`-hotfix.
-> Excluded as operational
-> noise: #5 (Dependency Dashboard), #200 (`[aw]` No-Op Runs), #196 (pin-align
-> chore, `dependencies`), and the `[aw]` bot failure reports (#140 / #151 /
-> #157 / #165 / #166 / #167 / #174 / #175 / #183 / #188 / #190–#192 / #199).
-> Flagged for manual close: #162 (Pluggable ConfigSource) duplicates #163 and is
-> unlabeled — close it as a dup (`/roadmap sync` lacks permission to close issues
-> it did not open). #197 was mislabeled `dependencies` (a noise label) and off
-> the roadmap; `/roadmap sync` reclassified it as a `security` follow-up (remove
-> the `dependencies` label to keep it tracked). The unlinked Near-Term and Future
-> items don't have issues yet — open them as work picks up, then run
+> Tracked as GitHub issues: Immediate Focus — the cost item #102 (forecast),
+> the last open piece of the post-v0.2.5 release; Near-Term — the overview
+> drill-down companion (#154), the FinOps build-out (#198, #204, #119), the
+> agentics-maintenance strict-check follow-up (#115), and the docs-theme
+> adoption (#147); Future Vision — the security epic (#36 with child #39), the
+> FinOps deferred set (#105, #106, #107, #113, #53, #59, #60), and the
+> control-plane enablement cluster (#146 epic with #141–#145 and #163).
+> **Closed 2026-11-20, unreleased** (release-please PR #181, `0.2.6`): the
+> security half #180 / #179 / #197 plus #201, #155, #112, #99, #61, #62, #94,
+> #95, #127, #128. Hold #181 until #102 lands so the release carries a cost
+> item. Excluded as operational noise: #5 (Dependency Dashboard), #200 (`[aw]`
+> No-Op Runs), #196 (pin-align chore, `dependencies`), and the `[aw]` Code
+> Simplifier failure reports (#292–#295). Flagged for manual close: #162
+> (Pluggable ConfigSource) duplicates #163 — close it as a dup (`/roadmap sync`
+> lacks permission to close issues it did not open). The unlinked Near-Term and
+> Future items don't have issues yet — open them as work picks up, then run
 > `/roadmap sync`.
