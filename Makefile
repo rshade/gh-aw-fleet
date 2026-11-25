@@ -9,7 +9,7 @@
 # its own. See the Toolchain note in AGENTS.md.
 GOLANGCI_LINT_VERSION := $(shell awk -F'"' '/^golangci-lint =/{print $$2}' mise.toml)
 
-.PHONY: build test vet fmt fmt-check lint ci drift tidy clean help ensure docs-vale secrets
+.PHONY: build test vet fmt fmt-check lint ci drift tidy clean help ensure docs-vale secrets speckit-upgrade
 
 VALE := $(shell mise which vale 2>/dev/null)
 TRUFFLEHOG := $(shell mise which trufflehog 2>/dev/null)
@@ -73,6 +73,8 @@ help:
 	@echo "  ensure     — install pinned tools from mise.toml"
 	@echo "  docs-vale  — lint docs prose with Vale (not part of ci)"
 	@echo "  secrets    — scan the checkout with trufflehog (not part of ci)"
+	@echo "  speckit-upgrade — upgrade Spec Kit files to the mise.toml specify-cli pin"
+	@echo "               (FORCE=1 overwrites locally customized templates)"
 
 docs-vale:
 	@test -n "$(VALE)" || (echo "vale not found. Run: make ensure" >&2; exit 1)
@@ -83,3 +85,6 @@ secrets:
 	@test -n "$(TRUFFLEHOG)" || (echo "trufflehog not found. Run: make ensure" >&2; exit 1)
 	"$(TRUFFLEHOG)" filesystem . --no-update --no-verification \
 		--exclude-paths .trufflehog-exclude --fail
+
+speckit-upgrade:
+	@FORCE=$(FORCE) ./scripts/speckit-upgrade.sh
