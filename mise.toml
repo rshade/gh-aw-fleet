@@ -42,7 +42,7 @@ jq = "1.8.2"
 
 # Prose lint for docs/. `make docs-vale` syncs styles and runs it.
 # Not part of `make ci`.
-vale = "3.27.0"
+vale = "3.29.0"
 
 # Local secret scan. Gitleaks stays the in-tree scanner for target repos;
 # this is the checkout scan (`make secrets`). Not part of `make ci`.
